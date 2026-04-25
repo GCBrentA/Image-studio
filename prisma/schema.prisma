@@ -115,9 +115,12 @@ model ImageJob {
   original_url               String
   processed_url              String?
   status                     ImageJobStatus @default(queued)
+  original_image_hash        String?
+  duplicate_of_job_id        String?
   original_storage_path      String?
   processed_storage_path     String?
   debug_cutout_storage_path  String?
+  seo_metadata               Json?
   original_uploaded_at       DateTime?
   processed_uploaded_at      DateTime?
   debug_cutout_uploaded_at   DateTime?
@@ -128,6 +131,7 @@ model ImageJob {
   user                       User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
+  @@index([user_id, original_image_hash])
   @@index([status])
   @@index([storage_cleanup_after])
   @@map("image_jobs")

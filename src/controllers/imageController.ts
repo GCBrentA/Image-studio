@@ -75,6 +75,8 @@ export const processImage = async (
       },
       data: {
         processed_url: result.processedUrl,
+        original_image_hash: result.originalImageHash,
+        duplicate_of_job_id: result.duplicateOfJobId,
         original_storage_path: result.originalStoragePath,
         processed_storage_path: result.processedStoragePath,
         debug_cutout_storage_path: result.debugCutoutStoragePath,
@@ -82,9 +84,23 @@ export const processImage = async (
         processed_uploaded_at: result.processedUploadedAt,
         debug_cutout_uploaded_at: result.debugCutoutUploadedAt,
         storage_cleanup_after: result.storageCleanupAfter,
+        seo_metadata: result.seoMetadata,
         status: ImageJobStatus.completed
       }
     });
+
+    if (!result.creditDeductionRequired) {
+      response.status(200).json({
+        status: "completed",
+        duplicate: true,
+        duplicate_of_job_id: result.duplicateOfJobId,
+        processed_url: result.processedUrl,
+        credits_remaining: credits.credits_remaining,
+        low_credit_thresholds: credits.low_credit_thresholds,
+        seo_metadata: result.seoMetadata
+      });
+      return;
+    }
 
     const deduction = await deductCredit(auth.userId, {
       imageJobId: imageJob.id
@@ -103,9 +119,11 @@ export const processImage = async (
 
     response.status(201).json({
       status: "completed",
+      duplicate: false,
       processed_url: result.processedUrl,
       credits_remaining: deduction.credits_remaining,
-      low_credit_thresholds: deduction.low_credit_thresholds
+      low_credit_thresholds: deduction.low_credit_thresholds,
+      seo_metadata: result.seoMetadata
     });
   } catch (error) {
     console.error("Image processing failed", {

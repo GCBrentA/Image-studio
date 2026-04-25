@@ -1,29 +1,51 @@
 import { env } from "../../config/env";
 
 export const removeImageBackground = async (imageBuffer: Buffer): Promise<Buffer> => {
-  if (!env.backgroundRemovalApiUrl) {
-    if (env.nodeEnv !== "test") {
-      console.warn("BACKGROUND_REMOVAL_API_URL is not configured; using local image passthrough.");
-    }
-
-    return imageBuffer;
+  if (!env.openAiApiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
   }
 
-  const response = await fetch(env.backgroundRemovalApiUrl, {
+  const formData = new FormData();
+  formData.append(
+    "image",
+    new Blob([new Uint8Array(imageBuffer)], {
+      type: "image/png"
+    }),
+    "product.png"
+  );
+  formData.append("model", "gpt-image-1");
+  formData.append(
+    "prompt",
+    "Create a precise ecommerce product cutout from this image. Remove the entire background and keep only the product. Preserve product geometry, colors, labels, texture, and edges. Return a clean transparent-background PNG with no shadows, reflections, floor, text overlays, borders, or added objects."
+  );
+  formData.append("background", "transparent");
+  formData.append("output_format", "png");
+  formData.append("quality", "high");
+  formData.append("size", "1024x1024");
+
+  const response = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
     headers: {
-      "content-type": "application/octet-stream",
-      ...(env.backgroundRemovalApiKey ? { authorization: `Bearer ${env.backgroundRemovalApiKey}` } : {})
+      authorization: `Bearer ${env.openAiApiKey}`
     },
-    body: new Blob([new Uint8Array(imageBuffer)], {
-      type: "application/octet-stream"
-    })
+    body: formData
   });
 
   if (!response.ok) {
     const responseBody = await response.text().catch(() => "");
-    throw new Error(`Background removal failed with ${response.status}: ${responseBody}`);
+    throw new Error(`OpenAI background removal failed with ${response.status}: ${responseBody}`);
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  const body = await response.json() as {
+    data?: Array<{
+      b64_json?: string;
+    }>;
+  };
+  const imageBase64 = body.data?.[0]?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error("OpenAI background removal did not return image data");
+  }
+
+  return Buffer.from(imageBase64, "base64");
 };

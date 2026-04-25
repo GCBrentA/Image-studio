@@ -1,6 +1,7 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import sharp from "sharp";
 import { env } from "../../config/env";
+import { prisma } from "../utils/prisma";
 import { removeImageBackground } from "./backgroundRemovalService";
 import {
   createStorageSignedUrl,
@@ -18,18 +19,31 @@ export type ProcessImageInput = {
 
 export type ProcessedImageResult = {
   processedUrl: string;
+  originalImageHash: string;
   originalStoragePath: string;
-  processedStoragePath: string;
-  debugCutoutStoragePath: string;
+  processedStoragePath: string | null;
+  debugCutoutStoragePath: string | null;
   originalUploadedAt: Date;
-  processedUploadedAt: Date;
-  debugCutoutUploadedAt: Date;
+  processedUploadedAt: Date | null;
+  debugCutoutUploadedAt: Date | null;
   storageCleanupAfter: Date;
+  duplicateOfJobId: string | null;
+  creditDeductionRequired: boolean;
+  seoMetadata: SuggestedSeoMetadata;
+};
+
+export type SuggestedSeoMetadata = {
+  title: string;
+  alt_text: string;
+  description: string;
+  file_name: string;
+  keywords: string[];
 };
 
 const maxImageBytes = 15 * 1024 * 1024;
-const outputSize = 1200;
+const outputSize = 2000;
 const defaultScalePercent = 82;
+const signedUrlExpirySeconds = env.storageSignedUrlExpiresSeconds;
 
 type DownloadedImage = {
   buffer: Buffer;
@@ -79,6 +93,72 @@ const getStorageCleanupAfter = (): Date => {
   return cleanupAfter;
 };
 
+const getSha256 = (buffer: Buffer): string =>
+  createHash("sha256").update(buffer).digest("hex");
+
+const getUrlTokens = (imageUrl: string): string[] => {
+  try {
+    const url = new URL(imageUrl);
+    const fileName = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
+    return fileName
+      .replace(/\.[a-z0-9]+$/i, "")
+      .split(/[^a-z0-9]+/i)
+      .map((token) => token.toLowerCase())
+      .filter((token) => token.length > 2 && !["image", "photo", "product", "main"].includes(token));
+  } catch {
+    return [];
+  }
+};
+
+const getSiteName = (imageUrl: string): string => {
+  try {
+    return new URL(imageUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return "store";
+  }
+};
+
+const getSuggestedSeoMetadata = (imageUrl: string, imageHash: string): SuggestedSeoMetadata => {
+  const tokens = getUrlTokens(imageUrl);
+  const productName = tokens.length > 0
+    ? tokens.map((token) => token[0].toUpperCase() + token.slice(1)).join(" ")
+    : "Product Image";
+  const siteName = getSiteName(imageUrl);
+  const shortHash = imageHash.slice(0, 10);
+  const slug = (tokens.length > 0 ? tokens.join("-") : `product-${shortHash}`).slice(0, 80);
+
+  return {
+    title: `${productName} | ${siteName}`,
+    alt_text: `${productName} on a clean branded ecommerce background`,
+    description: `Optimized 2000x2000 WebP product image for ${siteName}.`,
+    file_name: `${slug}-${shortHash}.webp`,
+    keywords: Array.from(new Set([...tokens, "product", "ecommerce", "webp"])).slice(0, 10)
+  };
+};
+
+const findDuplicateJob = async (userId: string, imageJobId: string, imageHash: string) =>
+  prisma.imageJob.findFirst({
+    where: {
+      user_id: userId,
+      original_image_hash: imageHash,
+      status: "completed",
+      processed_storage_path: {
+        not: null
+      },
+      id: {
+        not: imageJobId
+      }
+    },
+    orderBy: {
+      created_at: "desc"
+    },
+    select: {
+      id: true,
+      processed_storage_path: true,
+      seo_metadata: true
+    }
+  });
+
 const downloadImage = async (imageUrl: string): Promise<DownloadedImage> => {
   assertValidImageUrl(imageUrl);
 
@@ -127,6 +207,18 @@ const validateImage = async (imageBuffer: Buffer): Promise<void> => {
   }
 };
 
+const normalizeImageForOpenAi = async (imageBuffer: Buffer): Promise<Buffer> =>
+  sharp(imageBuffer)
+    .rotate()
+    .resize({
+      width: 1536,
+      height: 1536,
+      fit: "inside",
+      withoutEnlargement: true
+    })
+    .png()
+    .toBuffer();
+
 const normalizeScalePercent = (scalePercent?: number): number => {
   if (!scalePercent) {
     return defaultScalePercent;
@@ -135,14 +227,34 @@ const normalizeScalePercent = (scalePercent?: number): number => {
   return Math.min(Math.max(scalePercent, 75), 88);
 };
 
-const buildShadow = async (width: number, height: number): Promise<Buffer> => {
+const buildShadow = async (width: number, height: number, productWidth: number, productHeight: number, productTop: number): Promise<Buffer> => {
+  const shadowCy = Math.min(height - 100, productTop + productHeight * 0.9);
   const shadowSvg = `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="${width / 2}" cy="${height * 0.82}" rx="${width * 0.32}" ry="${height * 0.055}" fill="rgba(0,0,0,0.24)" />
+      <ellipse cx="${width / 2}" cy="${shadowCy}" rx="${Math.max(productWidth * 0.34, width * 0.12)}" ry="${Math.max(productHeight * 0.045, height * 0.025)}" fill="rgba(0,0,0,0.23)" />
     </svg>
   `;
 
   return sharp(Buffer.from(shadowSvg)).blur(22).png().toBuffer();
+};
+
+const buildBrandedBackground = (background: string): Buffer => {
+  const safeBackground = /^#[0-9a-f]{6}$/i.test(background) ? background : "#ffffff";
+  const backgroundSvg = `
+    <svg width="${outputSize}" height="${outputSize}" viewBox="0 0 ${outputSize} ${outputSize}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset="0.55" stop-color="${safeBackground}"/>
+          <stop offset="1" stop-color="#f4f6f8"/>
+        </linearGradient>
+      </defs>
+      <rect width="2000" height="2000" fill="url(#bg)"/>
+      <rect x="80" y="80" width="1840" height="1840" rx="120" fill="none" stroke="rgba(0,0,0,0.035)" stroke-width="4"/>
+    </svg>
+  `;
+
+  return Buffer.from(backgroundSvg);
 };
 
 export const processImageForProduct = async ({
@@ -154,6 +266,8 @@ export const processImageForProduct = async ({
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
   const originalImage = await downloadImage(imageUrl);
   await validateImage(originalImage.buffer);
+  const originalImageHash = getSha256(originalImage.buffer);
+  const seoMetadata = getSuggestedSeoMetadata(imageUrl, originalImageHash);
 
   const originalStoragePath = getStoragePath(
     userId,
@@ -167,8 +281,34 @@ export const processImageForProduct = async ({
     contentType: originalImage.contentType
   });
   const originalUploadedAt = new Date();
+  const storageCleanupAfter = getStorageCleanupAfter();
+  const duplicateJob = await findDuplicateJob(userId, imageJobId, originalImageHash);
 
-  const cutout = await removeImageBackground(originalImage.buffer);
+  if (duplicateJob?.processed_storage_path) {
+    const processedUrl = await createStorageSignedUrl({
+      bucket: storageBuckets.processedImages,
+      path: duplicateJob.processed_storage_path,
+      expiresInSeconds: signedUrlExpirySeconds
+    });
+
+    return {
+      processedUrl,
+      originalImageHash,
+      originalStoragePath,
+      processedStoragePath: null,
+      debugCutoutStoragePath: null,
+      originalUploadedAt,
+      processedUploadedAt: null,
+      debugCutoutUploadedAt: null,
+      storageCleanupAfter,
+      duplicateOfJobId: duplicateJob.id,
+      creditDeductionRequired: false,
+      seoMetadata: (duplicateJob.seo_metadata as SuggestedSeoMetadata | null) ?? seoMetadata
+    };
+  }
+
+  const openAiInput = await normalizeImageForOpenAi(originalImage.buffer);
+  const cutout = await removeImageBackground(openAiInput);
   await validateImage(cutout);
 
   const debugCutoutStoragePath = getStoragePath(userId, imageJobId, `cutout-${randomUUID()}.png`);
@@ -181,11 +321,20 @@ export const processImageForProduct = async ({
   const debugCutoutUploadedAt = new Date();
 
   const targetProductSize = Math.round(outputSize * (normalizeScalePercent(scalePercent) / 100));
+  const margin = Math.round(outputSize * 0.08);
   const productBuffer = await sharp(cutout)
     .rotate()
+    .trim({
+      background: {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0
+      }
+    })
     .resize({
-      width: targetProductSize,
-      height: targetProductSize,
+      width: Math.min(targetProductSize, outputSize - margin * 2),
+      height: Math.min(targetProductSize, outputSize - margin * 2),
       fit: "inside",
       withoutEnlargement: true
     })
@@ -195,18 +344,11 @@ export const processImageForProduct = async ({
   const productMetadata = await sharp(productBuffer).metadata();
   const productWidth = productMetadata.width ?? targetProductSize;
   const productHeight = productMetadata.height ?? targetProductSize;
-  const left = Math.round((outputSize - productWidth) / 2);
-  const top = Math.round((outputSize - productHeight) / 2);
-  const shadow = await buildShadow(outputSize, outputSize);
+  const left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), margin), outputSize - productWidth - margin);
+  const top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2), margin), outputSize - productHeight - margin);
+  const shadow = await buildShadow(outputSize, outputSize, productWidth, productHeight, top);
 
-  const processedImage = await sharp({
-    create: {
-      width: outputSize,
-      height: outputSize,
-      channels: 4,
-      background
-    }
-  })
+  const processedImage = await sharp(buildBrandedBackground(background))
     .composite([
       {
         input: shadow,
@@ -219,17 +361,18 @@ export const processImageForProduct = async ({
         left
       }
     ])
-    .png({
-      compressionLevel: 9
+    .webp({
+      quality: 92,
+      smartSubsample: true
     })
     .toBuffer();
 
-  const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.png`);
+  const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.webp`);
   await uploadStorageObject({
     bucket: storageBuckets.processedImages,
     path: processedStoragePath,
     body: processedImage,
-    contentType: "image/png"
+    contentType: "image/webp"
   });
   const processedUploadedAt = new Date();
   const processedUrl = await createStorageSignedUrl({
@@ -240,12 +383,16 @@ export const processImageForProduct = async ({
 
   return {
     processedUrl,
+    originalImageHash,
     originalStoragePath,
     processedStoragePath,
     debugCutoutStoragePath,
     originalUploadedAt,
     processedUploadedAt,
     debugCutoutUploadedAt,
-    storageCleanupAfter: getStorageCleanupAfter()
+    storageCleanupAfter,
+    duplicateOfJobId: null,
+    creditDeductionRequired: true,
+    seoMetadata
   };
 };

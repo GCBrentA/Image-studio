@@ -322,7 +322,9 @@ Free trials start with 20 credits. Monthly plan resets add one credit ledger ent
 
 ## Image Processing
 
-`POST /images/process` validates a connected-site API token, checks credits, downloads the source image, uploads the original to Supabase Storage, sends it through the configured background-removal service, stores a debug cutout, composes a product image with Sharp, stores the processed image in Supabase Storage, deducts one credit, and returns a signed processed image URL.
+`POST /images/process` validates a connected-site API token, checks credits, downloads the source image, uploads the original to Supabase Storage, sends a normalized source image to the OpenAI Image API for a transparent product cutout, stores a debug cutout, composites the cutout onto a branded background with smart scaling and a soft shadow, stores the final `2000x2000` WebP in Supabase Storage, deducts one credit, and returns a signed processed image URL with suggested SEO metadata.
+
+Exact duplicate source images are detected by SHA-256 hash. If the same user has already completed a matching job, the backend returns a fresh signed URL for the existing processed image and does not deduct another credit.
 
 Send the API token as either:
 
@@ -353,7 +355,8 @@ Response:
 ```json
 {
   "status": "completed",
-  "processed_url": "http://localhost:3000/processed-images/example.png",
+  "duplicate": false,
+  "processed_url": "https://example.supabase.co/storage/v1/object/sign/processed-images/user/job/processed.webp?token=...",
   "credits_remaining": 19,
   "low_credit_thresholds": [
     {
@@ -376,11 +379,18 @@ Response:
       "reached": false,
       "credits_remaining_at_threshold": 0
     }
-  ]
+  ],
+  "seo_metadata": {
+    "title": "Example Product | store.example.com",
+    "alt_text": "Example Product on a clean branded ecommerce background",
+    "description": "Optimized 2000x2000 WebP product image for store.example.com.",
+    "file_name": "example-product-a1b2c3d4e5.webp",
+    "keywords": ["example", "product", "ecommerce", "webp"]
+  }
 }
 ```
 
-Credits are deducted only after successful processing. Failed downloads, invalid images, background-removal failures, and Sharp processing errors do not deduct credits. Credit deductions are recorded in the credit ledger and are rejected when they would make the balance negative.
+Credits are deducted only after successful processing and Supabase Storage upload. Failed downloads, invalid images, OpenAI cutout failures, compositing errors, and storage errors do not deduct credits. Credit deductions are recorded in the credit ledger and are rejected when they would make the balance negative.
 
 ## WooCommerce Plugin
 
