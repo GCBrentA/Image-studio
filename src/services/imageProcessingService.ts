@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "crypto";
 import sharp from "sharp";
-import { env } from "../../config/env";
+import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
 import { removeImageBackground } from "./backgroundRemovalService";
 import {

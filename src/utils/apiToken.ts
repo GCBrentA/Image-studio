@@ -1,5 +1,5 @@
 import { createHmac, createHash, randomBytes } from "crypto";
-import { env } from "../../config/env";
+import { env } from "../config/env";
 
 export const hashApiToken = (token: string): string =>
   env.apiTokenSalt

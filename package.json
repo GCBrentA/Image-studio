@@ -2,11 +2,11 @@
   "name": "optivra-backend",
   "version": "1.0.0",
   "description": "Production-ready Node.js backend for the Optivra SaaS platform.",
-  "main": "dist/src/server.js",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
-    "start": "node dist/src/server.js",
+    "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

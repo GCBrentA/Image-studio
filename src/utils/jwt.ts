@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { env } from "../../config/env";
+import { env } from "../config/env";
 import { HttpError } from "./httpError";
 
 type JwtPayload = {

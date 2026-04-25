@@ -1,4 +1,4 @@
-import { env } from "../../config/env";
+import { env } from "../config/env";
 
 export const removeImageBackground = async (imageBuffer: Buffer): Promise<Buffer> => {
   if (!env.openAiApiKey) {

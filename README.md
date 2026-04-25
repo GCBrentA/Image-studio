@@ -86,13 +86,15 @@ The app loads `.env` first and `.env.local` second, so local overrides can live 
 
 ### Render Environment Variables
 
-In Render, add the same variables from `.env.example` under the service Environment settings. Use these commands:
+In Render, add the same variables from `.env.example` under the service Environment settings.
+
+Build Command:
 
 ```bash
 npm install && npm run build
 ```
 
-Start command:
+Start Command:
 
 ```bash
 npm run start

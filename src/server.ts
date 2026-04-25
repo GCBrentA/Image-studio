@@ -1,4 +1,4 @@
-import { env } from "../config/env";
+import { env } from "./config/env";
 import { app } from "./app";
 import { disconnectPrisma } from "./utils/prisma";
 

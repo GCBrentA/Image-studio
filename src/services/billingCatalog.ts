@@ -1,5 +1,5 @@
 import { SubscriptionPlan } from "@prisma/client";
-import { env } from "../../config/env";
+import { env } from "../config/env";
 import { HttpError } from "../utils/httpError";
 
 export const subscriptionPlans = {

@@ -1,5 +1,5 @@
 import Stripe = require("stripe");
-import { env } from "../../config/env";
+import { env } from "../config/env";
 import { HttpError } from "../utils/httpError";
 
 export type StripeWebhookEvent = {

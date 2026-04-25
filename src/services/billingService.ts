@@ -1,5 +1,5 @@
 import { CreditLedgerReason, Prisma, SubscriptionStatus } from "@prisma/client";
-import { env } from "../../config/env";
+import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
 import { HttpError } from "../utils/httpError";
 import { addCredits, resetMonthlyCredits } from "./creditService";
