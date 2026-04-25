@@ -13,5 +13,8 @@ export const getUsage = async (
     return;
   }
 
-  response.status(200).json(await getUsageForUser(request.auth.userId));
+  response.status(200).json({
+    ...(await getUsageForUser(request.auth.userId)),
+    domain: request.auth.domain
+  });
 };

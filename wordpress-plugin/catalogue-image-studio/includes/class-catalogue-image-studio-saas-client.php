@@ -33,7 +33,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
 				'catalogue_image_studio_missing_api_settings',
-				__('The image processing API URL and token must be configured.', 'catalogue-image-studio')
+				__('Paste your Site API Token to connect this store.', 'catalogue-image-studio')
 			);
 		}
 
@@ -95,7 +95,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
 				'catalogue_image_studio_missing_api_settings',
-				__('The image processing API URL and token must be configured.', 'catalogue-image-studio')
+				__('Paste your Site API Token to connect this store.', 'catalogue-image-studio')
 			);
 		}
 

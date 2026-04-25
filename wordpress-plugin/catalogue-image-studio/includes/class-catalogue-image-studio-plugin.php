@@ -192,16 +192,17 @@ class Catalogue_Image_Studio_Plugin {
 	public function get_default_settings(): array {
 		return [
 			'enabled'                 => true,
-			'api_base_url'            => '',
+			'api_base_url'            => 'https://api.optivra.app',
 			'api_token'               => '',
-			'background'              => '#ffffff',
-			'scale_percent'           => 82,
+			'background'              => 'optivra-default',
+			'scale_percent'           => 'auto',
+			'smart_scaling_enabled'   => true,
+			'shadow_enabled'          => true,
 			'enable_filename_seo'     => true,
 			'enable_alt_text'         => true,
 			'only_fill_missing'       => true,
 			'overwrite_existing_meta' => false,
-			'upgrade_url'             => '',
-			'buy_credits_url'         => '',
+			'debug_mode'              => false,
 		];
 	}
 

@@ -128,4 +128,15 @@ class Catalogue_Image_Studio_Job_Repository {
 
 		return (array) $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
 	}
+
+	/**
+	 * Clear locally cached image jobs.
+	 *
+	 * @return void
+	 */
+	public function delete_all(): void {
+		global $wpdb;
+
+		$wpdb->query('DELETE FROM ' . catalogue_image_studio_table_name());
+	}
 }
