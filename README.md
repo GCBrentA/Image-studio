@@ -94,6 +94,8 @@ Build Command:
 npm install && npm run build
 ```
 
+If the Render service is still configured with only `npm install`, the repo also runs the production build during `postinstall` so `dist/server.js` is present before Render uploads the build artifact.
+
 Start Command:
 
 ```bash
