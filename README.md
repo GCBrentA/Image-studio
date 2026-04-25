@@ -69,7 +69,7 @@ wordpress-plugin/
 ## Scripts
 
 - `npm run dev` - start the local development server with watch mode
-- `npm run build` - compile TypeScript into `dist`
+- `npm run build` - generate Prisma Client and compile TypeScript into `dist`
 - `npm start` - run the compiled production server
 - `npm run typecheck` - run TypeScript without emitting files
 - `npm run prisma:generate` - generate Prisma client
