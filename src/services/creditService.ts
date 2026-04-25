@@ -13,11 +13,26 @@ export const PLAN_CREDIT_LIMITS: Record<SubscriptionPlan, number> = {
   agency: 5000
 };
 
+export const FREE_TRIAL_CREDITS = 20;
+
+const lowCreditThresholdPercents = [50, 80, 95, 0] as const;
+
+export type LowCreditThresholdPercent = (typeof lowCreditThresholdPercents)[number];
+
+export type LowCreditThreshold = {
+  percent: LowCreditThresholdPercent;
+  reached: boolean;
+  credits_remaining_at_threshold: number;
+};
+
 export type CreditResponse = {
   credits_remaining: number;
   credits_total: number;
+  low_credit_thresholds: LowCreditThreshold[];
   error_if_any: string | null;
 };
+
+type CreditTotals = Pick<CreditResponse, "credits_remaining" | "credits_total">;
 
 export type DeductCreditOptions = {
   imageJobId?: string;
@@ -76,7 +91,7 @@ const getPeriodStart = async (
 const getCreditTotals = async (
   userId: string,
   client: Prisma.TransactionClient | typeof prisma
-): Promise<Omit<CreditResponse, "error_if_any">> => {
+): Promise<CreditTotals> => {
   const periodStart = await getPeriodStart(userId, client);
   const periodFilter = periodStart ? { gte: periodStart } : undefined;
 
@@ -111,12 +126,31 @@ const getCreditTotals = async (
 };
 
 const toCreditResponse = (
-  totals: Omit<CreditResponse, "error_if_any">,
+  totals: CreditTotals,
   error: string | null = null
 ): CreditResponse => ({
   ...totals,
+  low_credit_thresholds: getLowCreditThresholds(totals.credits_remaining, totals.credits_total),
   error_if_any: error
 });
+
+export const getLowCreditThresholds = (
+  creditsRemaining: number,
+  creditsTotal: number
+): LowCreditThreshold[] =>
+  lowCreditThresholdPercents.map((percent) => {
+    const creditsRemainingAtThreshold =
+      percent === 0 ? 0 : Math.floor(creditsTotal * ((100 - percent) / 100));
+
+    return {
+      percent,
+      reached:
+        percent === 0
+          ? creditsRemaining <= 0
+          : creditsTotal > 0 && creditsRemaining <= creditsRemainingAtThreshold,
+      credits_remaining_at_threshold: creditsRemainingAtThreshold
+    };
+  });
 
 export const getUserCredits = async (userId: string): Promise<CreditResponse> => {
   const totals = await getCreditTotals(userId, prisma);

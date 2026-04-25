@@ -46,6 +46,7 @@ export const processImage = async (
       status: "error",
       processed_url: null,
       credits_remaining: credits.credits_remaining,
+      low_credit_thresholds: credits.low_credit_thresholds,
       error: credits.error_if_any ?? "No credits remaining"
     });
     return;
@@ -85,6 +86,7 @@ export const processImage = async (
         status: "error",
         processed_url: null,
         credits_remaining: deduction.credits_remaining,
+        low_credit_thresholds: deduction.low_credit_thresholds,
         error: deduction.error_if_any
       });
       return;
@@ -93,7 +95,8 @@ export const processImage = async (
     response.status(201).json({
       status: "completed",
       processed_url: result.processedUrl,
-      credits_remaining: deduction.credits_remaining
+      credits_remaining: deduction.credits_remaining,
+      low_credit_thresholds: deduction.low_credit_thresholds
     });
   } catch (error) {
     console.error("Image processing failed", {
@@ -116,6 +119,7 @@ export const processImage = async (
       status: "failed",
       processed_url: null,
       credits_remaining: credits.credits_remaining,
+      low_credit_thresholds: credits.low_credit_thresholds,
       error: error instanceof Error ? error.message : "Image processing failed"
     });
   }

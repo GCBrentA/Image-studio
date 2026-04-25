@@ -3,7 +3,7 @@ import { prisma } from "../utils/prisma";
 import { HttpError } from "../utils/httpError";
 import { createJwt } from "../utils/jwt";
 import { hashPassword, verifyPassword } from "../utils/password";
-import { PLAN_CREDIT_LIMITS } from "./creditService";
+import { FREE_TRIAL_CREDITS } from "./creditService";
 
 type AuthResult = {
   token: string;
@@ -35,7 +35,6 @@ export const registerUser = async (email: string, password: string): Promise<Aut
     throw new HttpError(409, "An account already exists for this email");
   }
 
-  const trialCredits = PLAN_CREDIT_LIMITS[SubscriptionPlan.starter];
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + 14);
 
@@ -63,7 +62,7 @@ export const registerUser = async (email: string, password: string): Promise<Aut
     await transaction.creditLedger.create({
       data: {
         user_id: createdUser.id,
-        change_amount: trialCredits,
+        change_amount: FREE_TRIAL_CREDITS,
         reason: CreditLedgerReason.trial,
         idempotency_key: `trial:${createdUser.id}`
       }

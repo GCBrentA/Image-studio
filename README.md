@@ -188,11 +188,35 @@ Response:
 ```json
 {
   "plan": "starter",
-  "credits_remaining": 80,
-  "credits_total": 80,
+  "credits_remaining": 20,
+  "credits_total": 20,
+  "low_credit_thresholds": [
+    {
+      "percent": 50,
+      "reached": false,
+      "credits_remaining_at_threshold": 10
+    },
+    {
+      "percent": 80,
+      "reached": false,
+      "credits_remaining_at_threshold": 4
+    },
+    {
+      "percent": 95,
+      "reached": false,
+      "credits_remaining_at_threshold": 1
+    },
+    {
+      "percent": 0,
+      "reached": false,
+      "credits_remaining_at_threshold": 0
+    }
+  ],
   "subscription_status": "trialing"
 }
 ```
+
+Free trials start with 20 credits. Monthly plan resets add one credit ledger entry for the plan amount: Starter 80, Growth 600, Pro 1500, and Agency 5000. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
 
 ## Image Processing
 
@@ -228,11 +252,33 @@ Response:
 {
   "status": "completed",
   "processed_url": "http://localhost:3000/processed-images/example.png",
-  "credits_remaining": 79
+  "credits_remaining": 19,
+  "low_credit_thresholds": [
+    {
+      "percent": 50,
+      "reached": false,
+      "credits_remaining_at_threshold": 10
+    },
+    {
+      "percent": 80,
+      "reached": false,
+      "credits_remaining_at_threshold": 4
+    },
+    {
+      "percent": 95,
+      "reached": false,
+      "credits_remaining_at_threshold": 1
+    },
+    {
+      "percent": 0,
+      "reached": false,
+      "credits_remaining_at_threshold": 0
+    }
+  ]
 }
 ```
 
-Credits are deducted only after successful processing. Failed downloads, invalid images, background-removal failures, and Sharp processing errors do not deduct credits.
+Credits are deducted only after successful processing. Failed downloads, invalid images, background-removal failures, and Sharp processing errors do not deduct credits. Credit deductions are recorded in the credit ledger and are rejected when they would make the balance negative.
 
 ## WooCommerce Plugin
 
