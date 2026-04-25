@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionPlan {
+  starter
+  growth
+  pro
+  agency
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  unpaid
+  incomplete
+}
+
+enum CreditLedgerReason {
+  trial
+  usage
+  reset
+  purchase
+}
+
+enum ImageJobStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  password_hash String
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+  sites         ConnectedSite[]
+  subscriptions Subscription[]
+  credit_ledger CreditLedger[]
+  image_jobs    ImageJob[]
+
+  @@map("users")
+}
+
+model ConnectedSite {
+  id             String   @id @default(cuid())
+  user_id        String
+  domain         String
+  api_token_hash String
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, domain])
+  @@index([user_id])
+  @@map("connected_sites")
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  user_id            String
+  plan               SubscriptionPlan
+  status             SubscriptionStatus
+  current_period_end DateTime
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model CreditLedger {
+  id              String             @id @default(cuid())
+  user_id         String
+  change_amount   Int
+  reason          CreditLedgerReason
+  idempotency_key String?            @unique
+  created_at      DateTime           @default(now())
+  user            User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([reason])
+  @@map("credit_ledger")
+}
+
+model ImageJob {
+  id                 String         @id @default(cuid())
+  user_id            String
+  original_url       String
+  processed_url      String?
+  status             ImageJobStatus @default(queued)
+  credit_deducted_at DateTime?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  user               User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+  @@map("image_jobs")
+}

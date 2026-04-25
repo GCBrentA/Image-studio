@@ -1,0 +1,12 @@
+.catalogue-image-studio-admin .catalogue-image-studio-panel {
+	max-width: 760px;
+	margin-top: 16px;
+	padding: 20px;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-panel h2 {
+	margin-top: 0;
+}
