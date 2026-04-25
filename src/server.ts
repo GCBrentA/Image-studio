@@ -1,16 +1,16 @@
 import { env } from "../config/env";
 import { app } from "./app";
-import { prisma } from "./utils/prisma";
+import { disconnectPrisma } from "./utils/prisma";
 
 const server = app.listen(env.port, () => {
-  console.info(`Optivra backend listening on port ${env.port}`);
+  console.info(`Image Studio listening on port ${env.port}`);
 });
 
 const shutdown = async (signal: string): Promise<void> => {
-  console.info(`${signal} received. Shutting down Optivra backend.`);
+  console.info(`${signal} received. Shutting down Image Studio.`);
 
   server.close(async () => {
-    await prisma.$disconnect();
+    await disconnectPrisma();
     process.exit(0);
   });
 };

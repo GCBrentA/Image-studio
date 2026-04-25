@@ -3,15 +3,13 @@ import { env } from "../../config/env";
 export type HealthStatus = {
   status: "ok";
   service: string;
-  environment: string;
-  uptime: number;
   timestamp: string;
+  database: "configured" | "missing";
 };
 
 export const getHealthStatus = (): HealthStatus => ({
   status: "ok",
-  service: "optivra-backend",
-  environment: env.nodeEnv,
-  uptime: process.uptime(),
-  timestamp: new Date().toISOString()
+  service: "image-studio",
+  timestamp: new Date().toISOString(),
+  database: env.hasDatabaseUrl ? "configured" : "missing"
 });
