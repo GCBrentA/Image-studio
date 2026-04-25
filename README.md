@@ -92,10 +92,8 @@ In Render, add the same variables from `.env.example` under the service Environm
 Build Command:
 
 ```bash
-npm install && npm run build
+npm install && npx prisma migrate deploy && npm run build
 ```
-
-If the Render service is still configured with only `npm install`, the repo also runs the production build during `postinstall` so `dist/server.js` is present before Render uploads the build artifact.
 
 Start Command:
 

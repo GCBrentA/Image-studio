@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc && node -e \"require('node:fs').accessSync('dist/server.js')\"",
-    "postinstall": "npm run build",
     "start": "node scripts/start.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
