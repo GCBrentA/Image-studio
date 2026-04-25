@@ -14,16 +14,23 @@ class Catalogue_Image_Studio_ApprovalManager {
 
 	private Catalogue_Image_Studio_MediaManager $media;
 
+	/**
+	 * @var array<string,mixed>
+	 */
+	private array $settings;
+
 	private Catalogue_Image_Studio_Logger $logger;
 
 	public function __construct(
 		Catalogue_Image_Studio_Job_Repository $jobs,
 		Catalogue_Image_Studio_MediaManager $media,
+		array $settings,
 		Catalogue_Image_Studio_Logger $logger
 	) {
-		$this->jobs   = $jobs;
-		$this->media  = $media;
-		$this->logger = $logger;
+		$this->jobs     = $jobs;
+		$this->media    = $media;
+		$this->settings = $settings;
+		$this->logger   = $logger;
 	}
 
 	/**
@@ -46,7 +53,9 @@ class Catalogue_Image_Studio_ApprovalManager {
 			$processed_attachment_id = $this->media->sideload_processed_image(
 				(string) $job['processed_url'],
 				(int) $job['product_id'],
-				(int) $job['attachment_id']
+				(int) $job['attachment_id'],
+				$this->get_seo_from_job($job),
+				$this->settings
 			);
 
 			if (is_wp_error($processed_attachment_id)) {
@@ -69,6 +78,20 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$this->logger->info('Processed image approved.', ['job_id' => $job_id]);
 
 		return true;
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 * @return array<string,string>
+	 */
+	private function get_seo_from_job(array $job): array {
+		return [
+			'filename'    => isset($job['seo_filename']) ? (string) $job['seo_filename'] : '',
+			'alt_text'    => isset($job['seo_alt_text']) ? (string) $job['seo_alt_text'] : '',
+			'title'       => isset($job['seo_title']) ? (string) $job['seo_title'] : '',
+			'caption'     => isset($job['seo_caption']) ? (string) $job['seo_caption'] : '',
+			'description' => isset($job['seo_description']) ? (string) $job['seo_description'] : '',
+		];
 	}
 
 	/**

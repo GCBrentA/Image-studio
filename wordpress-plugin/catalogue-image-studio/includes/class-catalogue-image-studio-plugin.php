@@ -132,6 +132,11 @@ class Catalogue_Image_Studio_Plugin {
 			processed_attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			original_file_path text NULL,
 			processed_url text NULL,
+			seo_filename text NULL,
+			seo_alt_text text NULL,
+			seo_title text NULL,
+			seo_caption text NULL,
+			seo_description longtext NULL,
 			status varchar(20) NOT NULL DEFAULT 'unprocessed',
 			error_message longtext NULL,
 			created_at datetime NOT NULL,
@@ -166,7 +171,7 @@ class Catalogue_Image_Studio_Plugin {
 			$this->logger
 		);
 		$this->media     = new Catalogue_Image_Studio_MediaManager($this->logger);
-		$this->approval  = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $this->logger);
+		$this->approval  = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $settings, $this->logger);
 		$this->processor = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->logger);
 	}
 
@@ -186,11 +191,15 @@ class Catalogue_Image_Studio_Plugin {
 	 */
 	public function get_default_settings(): array {
 		return [
-			'enabled'       => true,
-			'api_base_url'  => '',
-			'api_token'     => '',
-			'background'    => '#ffffff',
-			'scale_percent' => 82,
+			'enabled'                 => true,
+			'api_base_url'            => '',
+			'api_token'               => '',
+			'background'              => '#ffffff',
+			'scale_percent'           => 82,
+			'enable_filename_seo'     => true,
+			'enable_alt_text'         => true,
+			'only_fill_missing'       => true,
+			'overwrite_existing_meta' => false,
 		];
 	}
 

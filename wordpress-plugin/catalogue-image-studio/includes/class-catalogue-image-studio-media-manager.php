@@ -24,7 +24,7 @@ class Catalogue_Image_Studio_MediaManager {
 	 * @param int    $source_attachment_id Original attachment ID.
 	 * @return int|\WP_Error
 	 */
-	public function sideload_processed_image(string $processed_url, int $product_id, int $source_attachment_id = 0) {
+	public function sideload_processed_image(string $processed_url, int $product_id, int $source_attachment_id = 0, array $seo = [], array $settings = []) {
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/media.php';
@@ -36,7 +36,14 @@ class Catalogue_Image_Studio_MediaManager {
 		}
 
 		$source_post = $source_attachment_id ? get_post($source_attachment_id) : null;
-		$file_name   = sanitize_file_name(($source_post ? $source_post->post_title : 'catalogue-image') . '-processed.webp');
+		$file_name   = ! empty($settings['enable_filename_seo']) && ! empty($seo['filename'])
+			? sanitize_file_name((string) $seo['filename'])
+			: sanitize_file_name(($source_post ? $source_post->post_title : 'catalogue-image') . '-processed.webp');
+
+		if ('' === pathinfo($file_name, PATHINFO_EXTENSION)) {
+			$file_name .= '.webp';
+		}
+
 		$file_array  = [
 			'name'     => $file_name,
 			'tmp_name' => $tmp,
@@ -59,6 +66,8 @@ class Catalogue_Image_Studio_MediaManager {
 			update_post_meta($attachment_id, '_catalogue_image_studio_original_attachment_id', $source_attachment_id);
 		}
 
+		$this->apply_seo_metadata((int) $attachment_id, $seo, $settings);
+
 		$this->logger->info(
 			'Processed image saved to media library.',
 			[
@@ -68,5 +77,50 @@ class Catalogue_Image_Studio_MediaManager {
 		);
 
 		return (int) $attachment_id;
+	}
+
+	/**
+	 * @param array<string,string> $seo SEO metadata.
+	 * @param array<string,mixed>  $settings Settings.
+	 */
+	private function apply_seo_metadata(int $attachment_id, array $seo, array $settings): void {
+		$only_fill_missing = ! empty($settings['only_fill_missing']);
+		$overwrite         = ! empty($settings['overwrite_existing_meta']);
+
+		$post = get_post($attachment_id);
+
+		if (! $post) {
+			return;
+		}
+
+		$post_update = [
+			'ID' => $attachment_id,
+		];
+
+		if (! empty($seo['title']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_title))) {
+			$post_update['post_title'] = sanitize_text_field((string) $seo['title']);
+		}
+
+		if (! empty($seo['caption']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_excerpt))) {
+			$post_update['post_excerpt'] = sanitize_text_field((string) $seo['caption']);
+		}
+
+		if (! empty($seo['description']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_content))) {
+			$post_update['post_content'] = wp_kses_post((string) $seo['description']);
+		}
+
+		if (count($post_update) > 1) {
+			wp_update_post($post_update);
+		}
+
+		if (empty($settings['enable_alt_text']) || empty($seo['alt_text'])) {
+			return;
+		}
+
+		$current_alt = get_post_meta($attachment_id, '_wp_attachment_image_alt', true);
+
+		if ($overwrite || ! $only_fill_missing || '' === trim((string) $current_alt)) {
+			update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field((string) $seo['alt_text']));
+		}
 	}
 }

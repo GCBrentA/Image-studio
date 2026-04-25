@@ -50,6 +50,11 @@
 	font-size: 12px;
 }
 
+.catalogue-image-studio-admin .catalogue-image-studio-checkboxes label {
+	display: block;
+	margin: 0 0 6px;
+}
+
 .catalogue-image-studio-admin .catalogue-image-studio-thumb {
 	width: 84px;
 	height: 84px;
@@ -81,6 +86,33 @@
 .catalogue-image-studio-admin .catalogue-image-studio-status-rejected {
 	background: #fcf0f1;
 	color: #b32d2e;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-seo-fields {
+	display: grid;
+	grid-template-columns: minmax(180px, 1fr);
+	gap: 6px;
+	max-width: 280px;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-seo-fields label {
+	display: grid;
+	gap: 2px;
+	margin: 0;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-seo-fields span {
+	color: #646970;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-seo-fields input,
+.catalogue-image-studio-admin .catalogue-image-studio-seo-fields textarea {
+	width: 100%;
+	min-height: 30px;
+	font-size: 12px;
 }
 
 @media (max-width: 1200px) {

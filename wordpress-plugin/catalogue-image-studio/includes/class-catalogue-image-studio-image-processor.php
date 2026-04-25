@@ -69,10 +69,15 @@ class Catalogue_Image_Studio_ImageProcessor {
 		}
 
 		$result = [
-			'status'        => 'completed',
-			'processed_url' => (string) $processed['processed_url'],
-			'processed_at'  => current_time('mysql', true),
-			'error_message' => '',
+			'status'          => 'completed',
+			'processed_url'   => (string) $processed['processed_url'],
+			'processed_at'    => current_time('mysql', true),
+			'error_message'   => '',
+			'seo_filename'    => $this->get_seo_value($processed, 'seo_filename', 'file_name'),
+			'seo_alt_text'    => $this->get_seo_value($processed, 'alt_text'),
+			'seo_title'       => $this->get_seo_value($processed, 'title'),
+			'seo_caption'     => $this->get_seo_value($processed, 'caption'),
+			'seo_description' => $this->get_seo_value($processed, 'description'),
 		];
 
 		$this->jobs->update($job_id, $result);
@@ -97,5 +102,22 @@ class Catalogue_Image_Studio_ImageProcessor {
 				'message' => $error->get_error_message(),
 			]
 		);
+	}
+
+	/**
+	 * @param array<string,mixed> $processed API response.
+	 */
+	private function get_seo_value(array $processed, string $key, string $fallback_key = ''): string {
+		$metadata = isset($processed['seo_metadata']) && is_array($processed['seo_metadata']) ? $processed['seo_metadata'] : [];
+
+		if (isset($metadata[$key]) && is_string($metadata[$key])) {
+			return sanitize_text_field($metadata[$key]);
+		}
+
+		if ('' !== $fallback_key && isset($metadata[$fallback_key]) && is_string($metadata[$fallback_key])) {
+			return sanitize_text_field($metadata[$fallback_key]);
+		}
+
+		return '';
 	}
 }

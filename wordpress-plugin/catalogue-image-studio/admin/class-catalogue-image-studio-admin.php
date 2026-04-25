@@ -33,6 +33,7 @@ class Catalogue_Image_Studio_Admin {
 		$this->plugin = $plugin;
 
 		add_action('admin_menu', [$this, 'register_menu']);
+		add_action('admin_init', ['Catalogue_Image_Studio_Plugin', 'create_tables']);
 		add_action('admin_init', [$this, 'handle_settings_post']);
 		add_action('admin_init', [$this, 'handle_workflow_post']);
 		add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
@@ -98,6 +99,10 @@ class Catalogue_Image_Studio_Admin {
 		$settings['api_token']     = isset($_POST['api_token']) ? sanitize_text_field(wp_unslash($_POST['api_token'])) : '';
 		$settings['background']    = isset($_POST['background']) ? sanitize_hex_color(wp_unslash($_POST['background'])) : '#ffffff';
 		$settings['scale_percent'] = isset($_POST['scale_percent']) ? max(1, min(100, absint($_POST['scale_percent']))) : 82;
+		$settings['enable_filename_seo']     = isset($_POST['enable_filename_seo']);
+		$settings['enable_alt_text']         = isset($_POST['enable_alt_text']);
+		$settings['only_fill_missing']       = isset($_POST['only_fill_missing']);
+		$settings['overwrite_existing_meta'] = isset($_POST['overwrite_existing_meta']);
 
 		if (empty($settings['background'])) {
 			$settings['background'] = '#ffffff';
@@ -163,6 +168,8 @@ class Catalogue_Image_Studio_Admin {
 		$success = 0;
 		$failed  = 0;
 
+		$this->save_posted_seo_metadata();
+
 		foreach ($job_ids as $job_id) {
 			$result = $this->run_job_action($action, $job_id);
 
@@ -192,6 +199,31 @@ class Catalogue_Image_Studio_Admin {
 					__('%d image action(s) failed.', 'catalogue-image-studio'),
 					$failed
 				)
+			);
+		}
+	}
+
+	private function save_posted_seo_metadata(): void {
+		if (empty($_POST['seo']) || ! is_array($_POST['seo'])) {
+			return;
+		}
+
+		$seo_rows = wp_unslash($_POST['seo']);
+
+		foreach ((array) $seo_rows as $job_id => $seo) {
+			if (! is_array($seo)) {
+				continue;
+			}
+
+			$this->plugin->jobs()->update(
+				absint($job_id),
+				[
+					'seo_filename'    => isset($seo['filename']) ? sanitize_file_name((string) $seo['filename']) : '',
+					'seo_alt_text'    => isset($seo['alt_text']) ? sanitize_text_field((string) $seo['alt_text']) : '',
+					'seo_title'       => isset($seo['title']) ? sanitize_text_field((string) $seo['title']) : '',
+					'seo_caption'     => isset($seo['caption']) ? sanitize_text_field((string) $seo['caption']) : '',
+					'seo_description' => isset($seo['description']) ? wp_kses_post((string) $seo['description']) : '',
+				]
 			);
 		}
 	}
@@ -306,6 +338,15 @@ class Catalogue_Image_Studio_Admin {
 							<th scope="row"><label for="catalogue-image-studio-scale-percent"><?php echo esc_html__('Scale', 'catalogue-image-studio'); ?></label></th>
 							<td><input type="number" id="catalogue-image-studio-scale-percent" name="scale_percent" min="1" max="100" value="<?php echo esc_attr((string) $settings['scale_percent']); ?>" class="small-text" /> %</td>
 						</tr>
+						<tr>
+							<th scope="row"><?php echo esc_html__('Image SEO', 'catalogue-image-studio'); ?></th>
+							<td class="catalogue-image-studio-checkboxes">
+								<label><input type="checkbox" name="enable_filename_seo" value="1" <?php checked(! empty($settings['enable_filename_seo'])); ?> /> <?php echo esc_html__('Enable filename SEO', 'catalogue-image-studio'); ?></label>
+								<label><input type="checkbox" name="enable_alt_text" value="1" <?php checked(! empty($settings['enable_alt_text'])); ?> /> <?php echo esc_html__('Enable alt text', 'catalogue-image-studio'); ?></label>
+								<label><input type="checkbox" name="only_fill_missing" value="1" <?php checked(! empty($settings['only_fill_missing'])); ?> /> <?php echo esc_html__('Only fill missing metadata', 'catalogue-image-studio'); ?></label>
+								<label><input type="checkbox" name="overwrite_existing_meta" value="1" <?php checked(! empty($settings['overwrite_existing_meta'])); ?> /> <?php echo esc_html__('Overwrite existing metadata', 'catalogue-image-studio'); ?></label>
+							</td>
+						</tr>
 					</tbody>
 				</table>
 				<p class="submit">
@@ -389,12 +430,13 @@ class Catalogue_Image_Studio_Admin {
 							<th><?php echo esc_html__('After', 'catalogue-image-studio'); ?></th>
 							<th><?php echo esc_html__('Slot', 'catalogue-image-studio'); ?></th>
 							<th><?php echo esc_html__('Status', 'catalogue-image-studio'); ?></th>
+							<th><?php echo esc_html__('SEO', 'catalogue-image-studio'); ?></th>
 							<th><?php echo esc_html__('Updated', 'catalogue-image-studio'); ?></th>
 						</tr>
 					</thead>
 					<tbody>
 						<?php if (empty($jobs)) : ?>
-							<tr><td colspan="7"><?php echo esc_html__('No image jobs yet. Run a scan to find WooCommerce product images.', 'catalogue-image-studio'); ?></td></tr>
+							<tr><td colspan="8"><?php echo esc_html__('No image jobs yet. Run a scan to find WooCommerce product images.', 'catalogue-image-studio'); ?></td></tr>
 						<?php else : ?>
 							<?php foreach ($jobs as $job) : ?>
 								<?php $this->render_job_row($job); ?>
@@ -431,8 +473,45 @@ class Catalogue_Image_Studio_Admin {
 			<td><?php $this->render_thumbnail($processed_source, __('After', 'catalogue-image-studio')); ?></td>
 			<td><?php echo esc_html((string) $job['image_role']); ?> <?php echo 'gallery' === (string) $job['image_role'] ? esc_html('#' . ((int) $job['gallery_index'] + 1)) : ''; ?></td>
 			<td><span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html((string) $job['status']); ?></span><?php echo ! empty($job['error_message']) ? '<br /><small>' . esc_html((string) $job['error_message']) . '</small>' : ''; ?></td>
+			<td><?php $this->render_seo_fields($job); ?></td>
 			<td><?php echo esc_html((string) ($job['updated_at'] ?? '')); ?></td>
 		</tr>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 * @return void
+	 */
+	private function render_seo_fields(array $job): void {
+		$job_id = (int) $job['id'];
+		$fields = [
+			'filename'    => __('Filename', 'catalogue-image-studio'),
+			'alt_text'    => __('Alt', 'catalogue-image-studio'),
+			'title'       => __('Title', 'catalogue-image-studio'),
+			'caption'     => __('Caption', 'catalogue-image-studio'),
+			'description' => __('Description', 'catalogue-image-studio'),
+		];
+		$values = [
+			'filename'    => (string) ($job['seo_filename'] ?? ''),
+			'alt_text'    => (string) ($job['seo_alt_text'] ?? ''),
+			'title'       => (string) ($job['seo_title'] ?? ''),
+			'caption'     => (string) ($job['seo_caption'] ?? ''),
+			'description' => (string) ($job['seo_description'] ?? ''),
+		];
+		?>
+		<div class="catalogue-image-studio-seo-fields">
+			<?php foreach ($fields as $field => $label) : ?>
+				<label>
+					<span><?php echo esc_html($label); ?></span>
+					<?php if ('description' === $field) : ?>
+						<textarea name="seo[<?php echo esc_attr((string) $job_id); ?>][<?php echo esc_attr($field); ?>]" rows="2"><?php echo esc_textarea($values[$field]); ?></textarea>
+					<?php else : ?>
+						<input type="text" name="seo[<?php echo esc_attr((string) $job_id); ?>][<?php echo esc_attr($field); ?>]" value="<?php echo esc_attr($values[$field]); ?>" />
+					<?php endif; ?>
+				</label>
+			<?php endforeach; ?>
+		</div>
 		<?php
 	}
 

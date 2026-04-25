@@ -33,8 +33,10 @@ export type ProcessedImageResult = {
 };
 
 export type SuggestedSeoMetadata = {
+  seo_filename: string;
   title: string;
   alt_text: string;
+  caption: string;
   description: string;
   file_name: string;
   keywords: string[];
@@ -128,8 +130,10 @@ const getSuggestedSeoMetadata = (imageUrl: string, imageHash: string): Suggested
   const slug = (tokens.length > 0 ? tokens.join("-") : `product-${shortHash}`).slice(0, 80);
 
   return {
+    seo_filename: `${slug}-${shortHash}.webp`,
     title: `${productName} | ${siteName}`,
     alt_text: `${productName} on a clean branded ecommerce background`,
+    caption: `${productName} product image`,
     description: `Optimized 2000x2000 WebP product image for ${siteName}.`,
     file_name: `${slug}-${shortHash}.webp`,
     keywords: Array.from(new Set([...tokens, "product", "ecommerce", "webp"])).slice(0, 10)

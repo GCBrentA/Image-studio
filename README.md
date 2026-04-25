@@ -381,8 +381,10 @@ Response:
     }
   ],
   "seo_metadata": {
-    "title": "Example Product | store.example.com",
+    "seo_filename": "example-product-a1b2c3d4e5.webp",
     "alt_text": "Example Product on a clean branded ecommerce background",
+    "title": "Example Product | store.example.com",
+    "caption": "Example Product product image",
     "description": "Optimized 2000x2000 WebP product image for store.example.com.",
     "file_name": "example-product-a1b2c3d4e5.webp",
     "keywords": ["example", "product", "ecommerce", "webp"]
