@@ -93,7 +93,7 @@ In Render, add the same variables from `.env.example` under the service Environm
 Build Command:
 
 ```bash
-npm install && npm run prisma:deploy && npm run build
+npm install && npm run build
 ```
 
 Start Command:
@@ -172,10 +172,10 @@ Local development uses Prisma Migrate Dev. After setting `DATABASE_URL` in `.env
 npm run prisma:migrate -- --name init_optivra_schema
 ```
 
-Render and production Supabase databases use Prisma Migrate Deploy. Apply only committed migrations with:
+Render and production Supabase databases use Prisma Migrate Deploy. Run migrations manually before deploy with:
 
 ```bash
-npm run prisma:deploy
+npx prisma migrate deploy
 ```
 
 Do not use `prisma db push` in production.

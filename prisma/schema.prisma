@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum SubscriptionPlan {
@@ -38,16 +39,17 @@ enum ImageJobStatus {
 }
 
 model User {
-  id                 String          @id @default(cuid())
-  email              String          @unique
+  id                 String           @id @default(cuid())
+  email              String           @unique
   password_hash      String
-  stripe_customer_id String?         @unique
-  created_at         DateTime        @default(now())
-  updated_at         DateTime        @updatedAt
+  stripe_customer_id String?          @unique
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
   sites              ConnectedSite[]
   subscriptions      Subscription[]
   credit_ledger      CreditLedger[]
   image_jobs         ImageJob[]
+  processed_images   ProcessedImage[]
 
   @@map("optivra_users")
 }
@@ -86,10 +88,10 @@ model Subscription {
 }
 
 model StripeEvent {
-  id           String   @id
+  id           String    @id
   type         String
   processed_at DateTime?
-  created_at   DateTime @default(now())
+  created_at   DateTime  @default(now())
 
   @@index([type])
   @@map("stripe_events")
@@ -110,29 +112,48 @@ model CreditLedger {
 }
 
 model ImageJob {
-  id                         String         @id @default(cuid())
-  user_id                    String
-  original_url               String
-  processed_url              String?
-  status                     ImageJobStatus @default(queued)
-  original_image_hash        String?
-  duplicate_of_job_id        String?
-  original_storage_path      String?
-  processed_storage_path     String?
-  debug_cutout_storage_path  String?
-  seo_metadata               Json?
-  original_uploaded_at       DateTime?
-  processed_uploaded_at      DateTime?
-  debug_cutout_uploaded_at   DateTime?
-  storage_cleanup_after      DateTime?
-  credit_deducted_at         DateTime?
-  created_at                 DateTime       @default(now())
-  updated_at                 DateTime       @updatedAt
-  user                       User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                        String           @id @default(cuid())
+  user_id                   String
+  original_url              String
+  processed_url             String?
+  status                    ImageJobStatus   @default(queued)
+  original_image_hash       String?
+  duplicate_of_job_id       String?
+  original_storage_path     String?
+  processed_storage_path    String?
+  debug_cutout_storage_path String?
+  seo_metadata              Json?
+  original_uploaded_at      DateTime?
+  processed_uploaded_at     DateTime?
+  debug_cutout_uploaded_at  DateTime?
+  storage_cleanup_after     DateTime?
+  credit_deducted_at        DateTime?
+  created_at                DateTime         @default(now())
+  updated_at                DateTime         @updatedAt
+  user                      User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  processed_images          ProcessedImage[]
 
   @@index([user_id])
   @@index([user_id, original_image_hash])
   @@index([status])
   @@index([storage_cleanup_after])
   @@map("image_jobs")
+}
+
+model ProcessedImage {
+  id            String    @id @default(cuid())
+  image_job_id  String
+  user_id       String
+  processed_url String
+  storage_path  String?
+  seo_metadata  Json?
+  created_at    DateTime  @default(now())
+  cleanup_after DateTime?
+  image_job     ImageJob  @relation(fields: [image_job_id], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([image_job_id])
+  @@index([user_id])
+  @@index([cleanup_after])
+  @@map("processed_images")
 }
