@@ -7,7 +7,7 @@ Image Studio contains the Optivra image-processing SaaS backend and the standalo
 ```text
 src/                         Node/Express backend
 prisma/                      Prisma schema
-config/                      Backend runtime config
+src/config/                  Backend runtime config
 wordpress-plugin/
   catalogue-image-studio/    Sellable WooCommerce plugin
 ```
@@ -73,7 +73,8 @@ wordpress-plugin/
 - `npm start` - run the compiled production server
 - `npm run typecheck` - run TypeScript without emitting files
 - `npm run prisma:generate` - generate Prisma client
-- `npm run prisma:migrate` - create and apply a local Prisma migration
+- `npm run prisma:migrate` - create and apply a local development migration
+- `npm run prisma:deploy` - apply committed migrations in production
 - `npm run prisma:studio` - open Prisma Studio
 
 ## Runtime Environment
@@ -166,17 +167,19 @@ Subscribe the webhook endpoint to `checkout.session.completed`, `customer.subscr
 
 ## Database Migrations
 
-After setting `DATABASE_URL` in `.env.local`, create and apply the initial Image Studio schema migration:
+Local development uses Prisma Migrate Dev. After setting `DATABASE_URL` in `.env.local`, create and apply local schema changes with:
 
 ```bash
 npm run prisma:migrate -- --name init_optivra_schema
 ```
 
-For deployed Supabase environments, apply committed migrations with:
+Render and production Supabase databases use Prisma Migrate Deploy. Apply only committed migrations with:
 
 ```bash
-npx prisma migrate deploy
+npm run prisma:deploy
 ```
+
+Do not use `prisma db push` in production.
 
 Regenerate Prisma Client after schema changes:
 

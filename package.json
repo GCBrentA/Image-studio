@@ -10,6 +10,7 @@
     "start": "node scripts/start.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
