@@ -104,6 +104,23 @@ In Supabase, open Project Settings, then Database, then Connection string. Use t
 
 Keep `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` from the Supabase API settings. Never commit real Supabase, Stripe, OpenAI, or JWT secret values.
 
+### Supabase Storage
+
+Create these private Supabase Storage buckets:
+
+- `original-images`
+- `processed-images`
+- `debug-cutouts`
+
+The backend uploads downloaded source images to `original-images`, background-removal cutouts to `debug-cutouts`, and final generated product images to `processed-images`. The WooCommerce plugin receives only a signed URL for the processed image. The Supabase service role key stays server-side in Render as `SUPABASE_SERVICE_ROLE_KEY` and is never returned to clients.
+
+Image jobs store storage object paths plus upload timestamps and `storage_cleanup_after`, so a future cleanup job can safely remove old artifacts. Optional retention settings:
+
+```env
+STORAGE_SIGNED_URL_EXPIRES_SECONDS=604800
+IMAGE_STORAGE_RETENTION_DAYS=30
+```
+
 ### Stripe Billing Variables
 
 Create monthly recurring Stripe Prices for:
@@ -305,7 +322,7 @@ Free trials start with 20 credits. Monthly plan resets add one credit ledger ent
 
 ## Image Processing
 
-`POST /images/process` validates a connected-site API token, checks credits, downloads the source image, sends it through the configured background-removal service, composes a product image with Sharp, saves it under `storage/processed-images`, deducts one credit, and returns the processed image URL.
+`POST /images/process` validates a connected-site API token, checks credits, downloads the source image, uploads the original to Supabase Storage, sends it through the configured background-removal service, stores a debug cutout, composes a product image with Sharp, stores the processed image in Supabase Storage, deducts one credit, and returns a signed processed image URL.
 
 Send the API token as either:
 

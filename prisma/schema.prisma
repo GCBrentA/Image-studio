@@ -110,17 +110,25 @@ model CreditLedger {
 }
 
 model ImageJob {
-  id                 String         @id @default(cuid())
-  user_id            String
-  original_url       String
-  processed_url      String?
-  status             ImageJobStatus @default(queued)
-  credit_deducted_at DateTime?
-  created_at         DateTime       @default(now())
-  updated_at         DateTime       @updatedAt
-  user               User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                         String         @id @default(cuid())
+  user_id                    String
+  original_url               String
+  processed_url              String?
+  status                     ImageJobStatus @default(queued)
+  original_storage_path      String?
+  processed_storage_path     String?
+  debug_cutout_storage_path  String?
+  original_uploaded_at       DateTime?
+  processed_uploaded_at      DateTime?
+  debug_cutout_uploaded_at   DateTime?
+  storage_cleanup_after      DateTime?
+  credit_deducted_at         DateTime?
+  created_at                 DateTime       @default(now())
+  updated_at                 DateTime       @updatedAt
+  user                       User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([status])
+  @@index([storage_cleanup_after])
   @@map("image_jobs")
 }

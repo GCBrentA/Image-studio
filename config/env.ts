@@ -59,6 +59,8 @@ export const env = {
   apiBaseUrl: process.env.API_BASE_URL ?? "",
   backgroundRemovalApiUrl: process.env.BACKGROUND_REMOVAL_API_URL ?? "",
   backgroundRemovalApiKey: process.env.BACKGROUND_REMOVAL_API_KEY ?? "",
+  storageSignedUrlExpiresSeconds: Number(process.env.STORAGE_SIGNED_URL_EXPIRES_SECONDS ?? 60 * 60 * 24 * 7),
+  imageStorageRetentionDays: Number(process.env.IMAGE_STORAGE_RETENTION_DAYS ?? 30),
   publicBaseUrl:
     process.env.API_BASE_URL ??
     process.env.APP_URL ??

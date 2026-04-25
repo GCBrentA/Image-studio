@@ -62,6 +62,8 @@ export const processImage = async (
 
   try {
     const result = await processImageForProduct({
+      imageJobId: imageJob.id,
+      userId: auth.userId,
       imageUrl: body.image_url,
       background: typeof body.background === "string" ? body.background : undefined,
       scalePercent: typeof body.scale_percent === "number" ? body.scale_percent : undefined
@@ -73,6 +75,13 @@ export const processImage = async (
       },
       data: {
         processed_url: result.processedUrl,
+        original_storage_path: result.originalStoragePath,
+        processed_storage_path: result.processedStoragePath,
+        debug_cutout_storage_path: result.debugCutoutStoragePath,
+        original_uploaded_at: result.originalUploadedAt,
+        processed_uploaded_at: result.processedUploadedAt,
+        debug_cutout_uploaded_at: result.debugCutoutUploadedAt,
+        storage_cleanup_after: result.storageCleanupAfter,
         status: ImageJobStatus.completed
       }
     });

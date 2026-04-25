@@ -1,11 +1,16 @@
 import { randomUUID } from "crypto";
-import { mkdir } from "fs/promises";
-import path from "path";
 import sharp from "sharp";
 import { env } from "../../config/env";
 import { removeImageBackground } from "./backgroundRemovalService";
+import {
+  createStorageSignedUrl,
+  storageBuckets,
+  uploadStorageObject
+} from "./supabaseStorageService";
 
 export type ProcessImageInput = {
+  imageJobId: string;
+  userId: string;
   imageUrl: string;
   background?: string;
   scalePercent?: number;
@@ -13,13 +18,24 @@ export type ProcessImageInput = {
 
 export type ProcessedImageResult = {
   processedUrl: string;
-  outputPath: string;
+  originalStoragePath: string;
+  processedStoragePath: string;
+  debugCutoutStoragePath: string;
+  originalUploadedAt: Date;
+  processedUploadedAt: Date;
+  debugCutoutUploadedAt: Date;
+  storageCleanupAfter: Date;
 };
 
-const processedImageDirectory = path.resolve(process.cwd(), "storage", "processed-images");
 const maxImageBytes = 15 * 1024 * 1024;
 const outputSize = 1200;
 const defaultScalePercent = 82;
+
+type DownloadedImage = {
+  buffer: Buffer;
+  contentType: string;
+  extension: string;
+};
 
 const assertValidImageUrl = (imageUrl: string): void => {
   let parsedUrl: URL;
@@ -35,7 +51,35 @@ const assertValidImageUrl = (imageUrl: string): void => {
   }
 };
 
-const downloadImage = async (imageUrl: string): Promise<Buffer> => {
+const getImageExtension = (contentType: string): string => {
+  switch (contentType.toLowerCase().split(";")[0]?.trim()) {
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/avif":
+      return "avif";
+    default:
+      return "img";
+  }
+};
+
+const getStoragePath = (userId: string, imageJobId: string, fileName: string): string =>
+  `${userId}/${imageJobId}/${fileName}`;
+
+const getStorageCleanupAfter = (): Date => {
+  const cleanupAfter = new Date();
+  cleanupAfter.setDate(cleanupAfter.getDate() + env.imageStorageRetentionDays);
+
+  return cleanupAfter;
+};
+
+const downloadImage = async (imageUrl: string): Promise<DownloadedImage> => {
   assertValidImageUrl(imageUrl);
 
   const response = await fetch(imageUrl, {
@@ -66,7 +110,11 @@ const downloadImage = async (imageUrl: string): Promise<Buffer> => {
     throw new Error("Image is too large");
   }
 
-  return imageBuffer;
+  return {
+    buffer: imageBuffer,
+    contentType,
+    extension: getImageExtension(contentType)
+  };
 };
 
 const validateImage = async (imageBuffer: Buffer): Promise<void> => {
@@ -98,15 +146,39 @@ const buildShadow = async (width: number, height: number): Promise<Buffer> => {
 };
 
 export const processImageForProduct = async ({
+  imageJobId,
+  userId,
   imageUrl,
   background = "#ffffff",
   scalePercent
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
   const originalImage = await downloadImage(imageUrl);
-  await validateImage(originalImage);
+  await validateImage(originalImage.buffer);
 
-  const cutout = await removeImageBackground(originalImage);
+  const originalStoragePath = getStoragePath(
+    userId,
+    imageJobId,
+    `original-${randomUUID()}.${originalImage.extension}`
+  );
+  await uploadStorageObject({
+    bucket: storageBuckets.originalImages,
+    path: originalStoragePath,
+    body: originalImage.buffer,
+    contentType: originalImage.contentType
+  });
+  const originalUploadedAt = new Date();
+
+  const cutout = await removeImageBackground(originalImage.buffer);
   await validateImage(cutout);
+
+  const debugCutoutStoragePath = getStoragePath(userId, imageJobId, `cutout-${randomUUID()}.png`);
+  await uploadStorageObject({
+    bucket: storageBuckets.debugCutouts,
+    path: debugCutoutStoragePath,
+    body: cutout,
+    contentType: "image/png"
+  });
+  const debugCutoutUploadedAt = new Date();
 
   const targetProductSize = Math.round(outputSize * (normalizeScalePercent(scalePercent) / 100));
   const productBuffer = await sharp(cutout)
@@ -127,14 +199,7 @@ export const processImageForProduct = async ({
   const top = Math.round((outputSize - productHeight) / 2);
   const shadow = await buildShadow(outputSize, outputSize);
 
-  await mkdir(processedImageDirectory, {
-    recursive: true
-  });
-
-  const fileName = `${randomUUID()}.png`;
-  const outputPath = path.join(processedImageDirectory, fileName);
-
-  await sharp({
+  const processedImage = await sharp({
     create: {
       width: outputSize,
       height: outputSize,
@@ -157,10 +222,30 @@ export const processImageForProduct = async ({
     .png({
       compressionLevel: 9
     })
-    .toFile(outputPath);
+    .toBuffer();
+
+  const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.png`);
+  await uploadStorageObject({
+    bucket: storageBuckets.processedImages,
+    path: processedStoragePath,
+    body: processedImage,
+    contentType: "image/png"
+  });
+  const processedUploadedAt = new Date();
+  const processedUrl = await createStorageSignedUrl({
+    bucket: storageBuckets.processedImages,
+    path: processedStoragePath,
+    expiresInSeconds: env.storageSignedUrlExpiresSeconds
+  });
 
   return {
-    outputPath,
-    processedUrl: `${env.publicBaseUrl.replace(/\/$/, "")}/processed-images/${fileName}`
+    processedUrl,
+    originalStoragePath,
+    processedStoragePath,
+    debugCutoutStoragePath,
+    originalUploadedAt,
+    processedUploadedAt,
+    debugCutoutUploadedAt,
+    storageCleanupAfter: getStorageCleanupAfter()
   };
 };
