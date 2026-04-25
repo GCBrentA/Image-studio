@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Optivra | Optimise your store. Increase impact.</title>
+    <meta
+      name="description"
+      content="Optivra helps WooCommerce teams turn ordinary catalogue images into approved, SEO-ready product visuals."
+    />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" data-link>
+        <span class="brand-mark">O</span>
+        <span>Optivra</span>
+      </a>
+      <nav class="main-nav" aria-label="Primary">
+        <a href="/plugins" data-link>Plugins</a>
+        <a href="/catalogue-image-studio" data-link>Catalogue Image Studio</a>
+        <a href="/pricing" data-link>Pricing</a>
+        <a href="/docs" data-link>Docs</a>
+        <a href="/support" data-link>Support</a>
+      </nav>
+      <div class="header-actions">
+        <a class="button ghost" href="/login" data-link>Login</a>
+        <a class="button primary" href="/pricing" data-link>Start</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="page hero-page" data-page="/">
+        <img
+          class="hero-image"
+          src="https://images.unsplash.com/photo-1556742502-ec7c0e9f34b1?auto=format&fit=crop&w=1800&q=80"
+          alt="Store owner reviewing product photography on a laptop"
+        />
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+          <p class="eyebrow">Optivra for WooCommerce</p>
+          <h1>Optimise your store. Increase impact.</h1>
+          <p>
+            Turn product photos into consistent, SEO-ready catalogue assets with approval workflows, usage controls,
+            and a plugin built for real store operations.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="/pricing" data-link>View pricing</a>
+            <a class="button light" href="/catalogue-image-studio" data-link>Explore plugin</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/plugins">
+        <div class="page-band">
+          <p class="eyebrow">Plugins</p>
+          <h1>Production tools for product catalogues</h1>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <h2>Catalogue Image Studio</h2>
+              <p>Scan, process, review, approve, and revert WooCommerce product images without leaving admin.</p>
+              <a href="/catalogue-image-studio" data-link>Open plugin details</a>
+            </article>
+            <article class="feature-card muted-card">
+              <h2>Coming next</h2>
+              <p>Listing QA, image compliance checks, and marketplace-specific export helpers.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/catalogue-image-studio">
+        <div class="product-hero">
+          <div>
+            <p class="eyebrow">Catalogue Image Studio</p>
+            <h1>Approve better product images before they touch your store.</h1>
+            <p>
+              The WooCommerce plugin scans featured and gallery images, sends selected assets to Optivra, then lets
+              admins approve the processed version before replacing the original.
+            </p>
+            <a class="button primary" href="/pricing" data-link>Choose a plan</a>
+          </div>
+          <div class="workflow-preview" aria-label="Catalogue Image Studio workflow preview">
+            <div><span>1</span> Scan catalogue</div>
+            <div><span>2</span> Optimise images</div>
+            <div><span>3</span> Review before and after</div>
+            <div><span>4</span> Approve or revert</div>
+          </div>
+        </div>
+        <div class="page-band compact">
+          <div class="feature-grid three">
+            <article class="feature-card"><h2>Credit aware</h2><p>Admins see credits, selected images, upgrade prompts, and buy-credit CTAs.</p></article>
+            <article class="feature-card"><h2>SEO ready</h2><p>Suggested filename, alt text, title, caption, and description can be edited before approval.</p></article>
+            <article class="feature-card"><h2>Store safe</h2><p>Processed images replace WooCommerce product assets only after approval.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/pricing">
+        <div class="page-band">
+          <p class="eyebrow">Pricing</p>
+          <h1>Scale image optimisation with your catalogue</h1>
+          <div class="pricing-grid">
+            <article class="price-card"><h2>Starter</h2><strong>$19/mo</strong><p>80 credits monthly.</p><button data-plan="starter">Upgrade</button></article>
+            <article class="price-card featured"><h2>Growth</h2><strong>$69/mo</strong><p>600 credits monthly.</p><button data-plan="growth">Upgrade</button></article>
+            <article class="price-card"><h2>Pro</h2><strong>$159/mo</strong><p>1,500 credits monthly.</p><button data-plan="pro">Upgrade</button></article>
+            <article class="price-card"><h2>Agency</h2><strong>$429/mo</strong><p>5,000 credits monthly.</p><button data-plan="agency">Upgrade</button></article>
+          </div>
+          <h2 class="section-heading">Credit packs</h2>
+          <div class="pack-row">
+            <button data-pack="credits_100">100 credits · $19</button>
+            <button data-pack="credits_300">300 credits · $49</button>
+            <button data-pack="credits_1000">1000 credits · $129</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/login">
+        <div class="auth-layout">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h1>Login to Optivra</h1>
+            <p>Manage plans, sites, credits, billing, and API tokens from one workspace.</p>
+          </div>
+          <form class="auth-form" id="auth-form">
+            <label>Email<input type="email" name="email" required /></label>
+            <label>Password<input type="password" name="password" minlength="8" required /></label>
+            <div class="form-actions">
+              <button class="button primary" type="submit" value="login">Login</button>
+              <button class="button ghost" type="button" id="register-button">Create account</button>
+            </div>
+            <p class="form-message" id="auth-message"></p>
+          </form>
+        </div>
+      </section>
+
+      <section class="page" data-page="/dashboard">
+        <div class="dashboard-shell">
+          <div class="dashboard-head">
+            <div>
+              <p class="eyebrow">Dashboard</p>
+              <h1>Your Optivra workspace</h1>
+            </div>
+            <div class="dashboard-actions">
+              <button class="button ghost" id="portal-button">Billing portal</button>
+              <button class="button primary" data-plan="growth">Upgrade plan</button>
+              <button class="button ghost" data-pack="credits_300">Buy credits</button>
+            </div>
+          </div>
+          <div class="dashboard-grid">
+            <section class="dash-panel"><h2>Plan</h2><div id="dash-plan">Login required</div></section>
+            <section class="dash-panel"><h2>Credits remaining</h2><div id="dash-credits">-</div><div class="meter"><div id="dash-meter"></div></div></section>
+            <section class="dash-panel wide"><h2>Connected sites</h2><form id="site-form" class="inline-form"><input name="domain" placeholder="store.example.com" /><button>Add site</button></form><div id="dash-sites"></div></section>
+            <section class="dash-panel"><h2>API tokens</h2><div id="dash-tokens">Tokens are shown once when a site is connected.</div><pre id="new-token"></pre></section>
+            <section class="dash-panel wide"><h2>Usage history</h2><div id="dash-history"></div></section>
+            <section class="dash-panel wide"><h2>Invoices and billing</h2><p>Open the Stripe billing portal to update payment method, view invoices, or cancel.</p><button class="button primary" id="portal-button-secondary">Open billing portal</button></section>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/docs">
+        <div class="page-band prose">
+          <h1>Docs</h1>
+          <h2>Connect WooCommerce</h2>
+          <p>Install Catalogue Image Studio, paste your API base URL and site token, then run Test Connection.</p>
+          <h2>Image workflow</h2>
+          <p>Scan images, process selected assets, edit SEO suggestions, approve the final image, or revert to original.</p>
+          <h2>API basics</h2>
+          <p>Use account JWTs for dashboard actions and site API tokens for WooCommerce processing.</p>
+        </div>
+      </section>
+
+      <section class="page" data-page="/support">
+        <div class="page-band prose">
+          <h1>Support</h1>
+          <p>Email support@optivra.example with your store domain, plugin version, and a short description of the issue.</p>
+          <p>For billing issues, include the Stripe invoice number from your billing portal.</p>
+        </div>
+      </section>
+
+      <section class="page legal" data-page="/terms"><div class="page-band prose"><h1>Terms</h1><p>Use Optivra only for images you own or have permission to process. Service availability depends on third-party APIs including OpenAI, Supabase, Stripe, and your WordPress host.</p></div></section>
+      <section class="page legal" data-page="/privacy"><div class="page-band prose"><h1>Privacy</h1><p>Optivra stores account details, connected site records, billing references, image job metadata, and uploaded image artifacts required to provide the service. Service role credentials are never exposed to clients.</p></div></section>
+      <section class="page legal" data-page="/refund-policy"><div class="page-band prose"><h1>Refund Policy</h1><p>Subscription changes apply through Stripe billing. Unused credit pack refunds may be reviewed case by case when requested within 14 days and before credits are consumed.</p></div></section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Optivra</span>
+      <a href="/terms" data-link>Terms</a>
+      <a href="/privacy" data-link>Privacy</a>
+      <a href="/refund-policy" data-link>Refund Policy</a>
+    </footer>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

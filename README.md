@@ -191,6 +191,12 @@ npm run prisma:generate
 }
 ```
 
+## SaaS Website
+
+The Express app serves the Optivra website from `public/site` at `/`, `/plugins`, `/catalogue-image-studio`, `/pricing`, `/login`, `/dashboard`, `/docs`, `/support`, `/terms`, `/privacy`, and `/refund-policy`.
+
+The dashboard uses account JWT authentication and calls `/account/dashboard`, `/sites/connect`, `/billing/checkout-session`, and `/billing/portal` for real account, site, credit, and billing data.
+
 ## Account and Site Connection
 
 Create an account:

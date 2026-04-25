@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authRoutes } from "./authRoutes";
 import { billingRoutes } from "./billingRoutes";
+import { dashboardRoutes } from "./dashboardRoutes";
 import { healthRoutes } from "./healthRoutes";
 import { imageRoutes } from "./imageRoutes";
 import { siteRoutes } from "./siteRoutes";
@@ -10,6 +11,7 @@ export const routes = Router();
 
 routes.use("/auth", authRoutes);
 routes.use("/billing", billingRoutes);
+routes.use("/account/dashboard", dashboardRoutes);
 routes.use("/health", healthRoutes);
 routes.use("/images", imageRoutes);
 routes.use("/sites", siteRoutes);
