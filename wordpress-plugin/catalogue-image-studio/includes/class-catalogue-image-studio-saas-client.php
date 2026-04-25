@@ -75,7 +75,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
-			$message = isset($decoded['error']) ? (string) $decoded['error'] : __('Image processing failed.', 'catalogue-image-studio');
+			$message = $this->get_error_message($decoded, __('Image processing failed.', 'catalogue-image-studio'));
 			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
 		}
 
@@ -124,10 +124,25 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
-			$message = isset($decoded['error']) ? (string) $decoded['error'] : __('Connection test failed.', 'catalogue-image-studio');
+			$message = $this->get_error_message($decoded, __('Connection test failed.', 'catalogue-image-studio'));
 			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
 		}
 
 		return $decoded;
+	}
+
+	/**
+	 * @param array<string,mixed> $decoded API response body.
+	 */
+	private function get_error_message(array $decoded, string $fallback): string {
+		if (isset($decoded['error']) && is_string($decoded['error'])) {
+			return $decoded['error'];
+		}
+
+		if (isset($decoded['error']) && is_array($decoded['error']) && isset($decoded['error']['message']) && is_string($decoded['error']['message'])) {
+			return $decoded['error']['message'];
+		}
+
+		return $fallback;
 	}
 }

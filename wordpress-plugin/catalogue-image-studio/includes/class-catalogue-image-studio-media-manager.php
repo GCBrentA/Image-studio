@@ -36,7 +36,7 @@ class Catalogue_Image_Studio_MediaManager {
 		}
 
 		$source_post = $source_attachment_id ? get_post($source_attachment_id) : null;
-		$file_name   = sanitize_file_name(($source_post ? $source_post->post_title : 'catalogue-image') . '-processed.png');
+		$file_name   = sanitize_file_name(($source_post ? $source_post->post_title : 'catalogue-image') . '-processed.webp');
 		$file_array  = [
 			'name'     => $file_name,
 			'tmp_name' => $tmp,

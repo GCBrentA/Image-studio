@@ -12,10 +12,17 @@ if (! defined('ABSPATH')) {
 class Catalogue_Image_Studio_ApprovalManager {
 	private Catalogue_Image_Studio_Job_Repository $jobs;
 
+	private Catalogue_Image_Studio_MediaManager $media;
+
 	private Catalogue_Image_Studio_Logger $logger;
 
-	public function __construct(Catalogue_Image_Studio_Job_Repository $jobs, Catalogue_Image_Studio_Logger $logger) {
+	public function __construct(
+		Catalogue_Image_Studio_Job_Repository $jobs,
+		Catalogue_Image_Studio_MediaManager $media,
+		Catalogue_Image_Studio_Logger $logger
+	) {
 		$this->jobs   = $jobs;
+		$this->media  = $media;
 		$this->logger = $logger;
 	}
 
@@ -31,8 +38,20 @@ class Catalogue_Image_Studio_ApprovalManager {
 
 		$processed_attachment_id = (int) ($job['processed_attachment_id'] ?? 0);
 
-		if (! $processed_attachment_id) {
+		if (! $processed_attachment_id && empty($job['processed_url'])) {
 			return new WP_Error('catalogue_image_studio_missing_processed_image', __('This job does not have a processed image to approve.', 'catalogue-image-studio'));
+		}
+
+		if (! $processed_attachment_id) {
+			$processed_attachment_id = $this->media->sideload_processed_image(
+				(string) $job['processed_url'],
+				(int) $job['product_id'],
+				(int) $job['attachment_id']
+			);
+
+			if (is_wp_error($processed_attachment_id)) {
+				return $processed_attachment_id;
+			}
 		}
 
 		$this->replace_product_image($job, $processed_attachment_id);
@@ -41,6 +60,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 			[
 				'status'                => 'approved',
 				'current_attachment_id' => $processed_attachment_id,
+				'processed_attachment_id' => $processed_attachment_id,
 				'approved_at'           => current_time('mysql', true),
 				'error_message'         => '',
 			]

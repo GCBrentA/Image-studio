@@ -166,8 +166,8 @@ class Catalogue_Image_Studio_Plugin {
 			$this->logger
 		);
 		$this->media     = new Catalogue_Image_Studio_MediaManager($this->logger);
-		$this->approval  = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->logger);
-		$this->processor = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->media, $this->logger);
+		$this->approval  = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $this->logger);
+		$this->processor = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->logger);
 	}
 
 	/**

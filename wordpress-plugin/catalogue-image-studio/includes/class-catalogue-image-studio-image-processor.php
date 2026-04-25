@@ -14,25 +14,20 @@ class Catalogue_Image_Studio_ImageProcessor {
 
 	private Catalogue_Image_Studio_SaaSClient $client;
 
-	private Catalogue_Image_Studio_MediaManager $media;
-
 	private Catalogue_Image_Studio_Logger $logger;
 
 	/**
 	 * @param Catalogue_Image_Studio_Job_Repository $jobs Job repository.
 	 * @param Catalogue_Image_Studio_SaaSClient     $client SaaS client.
-	 * @param Catalogue_Image_Studio_MediaManager   $media Media manager.
 	 * @param Catalogue_Image_Studio_Logger         $logger Logger.
 	 */
 	public function __construct(
 		Catalogue_Image_Studio_Job_Repository $jobs,
 		Catalogue_Image_Studio_SaaSClient $client,
-		Catalogue_Image_Studio_MediaManager $media,
 		Catalogue_Image_Studio_Logger $logger
 	) {
 		$this->jobs   = $jobs;
 		$this->client = $client;
-		$this->media  = $media;
 		$this->logger = $logger;
 	}
 
@@ -73,23 +68,11 @@ class Catalogue_Image_Studio_ImageProcessor {
 			return $processed;
 		}
 
-		$processed_attachment_id = $this->media->sideload_processed_image(
-			(string) $processed['processed_url'],
-			(int) $job['product_id'],
-			(int) $job['attachment_id']
-		);
-
-		if (is_wp_error($processed_attachment_id)) {
-			$this->mark_failed($job_id, $processed_attachment_id);
-			return $processed_attachment_id;
-		}
-
 		$result = [
-			'status'                  => 'completed',
-			'processed_attachment_id' => (int) $processed_attachment_id,
-			'processed_url'           => (string) $processed['processed_url'],
-			'processed_at'            => current_time('mysql', true),
-			'error_message'           => '',
+			'status'        => 'completed',
+			'processed_url' => (string) $processed['processed_url'],
+			'processed_at'  => current_time('mysql', true),
+			'error_message' => '',
 		];
 
 		$this->jobs->update($job_id, $result);
