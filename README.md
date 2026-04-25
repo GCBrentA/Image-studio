@@ -100,6 +100,8 @@ Start Command:
 npm run start
 ```
 
+`npm run start` runs `dist/server.js`. If Render starts a runtime bundle without that compiled file, the start preflight rebuilds once before launching the server.
+
 ### Supabase Connection Strings
 
 In Supabase, open Project Settings, then Database, then Connection string. Use the pooled PostgreSQL connection string for `DATABASE_URL`, which is best for app runtime connections. Use the direct/session connection string for `DIRECT_URL` when running migrations or tools that need a non-pooled connection.
