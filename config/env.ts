@@ -13,6 +13,13 @@ const runtimeEnvVars = [
   "API_TOKEN_SALT",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_STARTER_PRICE_ID",
+  "STRIPE_GROWTH_PRICE_ID",
+  "STRIPE_PRO_PRICE_ID",
+  "STRIPE_AGENCY_PRICE_ID",
+  "STRIPE_CREDIT_PACK_100_PRICE_ID",
+  "STRIPE_CREDIT_PACK_300_PRICE_ID",
+  "STRIPE_CREDIT_PACK_1000_PRICE_ID",
   "OPENAI_API_KEY",
   "APP_URL",
   "API_BASE_URL"
@@ -36,6 +43,17 @@ export const env = {
   apiTokenSalt: process.env.API_TOKEN_SALT ?? "",
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  stripePriceIds: {
+    starter: process.env.STRIPE_STARTER_PRICE_ID ?? "",
+    growth: process.env.STRIPE_GROWTH_PRICE_ID ?? "",
+    pro: process.env.STRIPE_PRO_PRICE_ID ?? "",
+    agency: process.env.STRIPE_AGENCY_PRICE_ID ?? ""
+  },
+  stripeCreditPackPriceIds: {
+    credits_100: process.env.STRIPE_CREDIT_PACK_100_PRICE_ID ?? "",
+    credits_300: process.env.STRIPE_CREDIT_PACK_300_PRICE_ID ?? "",
+    credits_1000: process.env.STRIPE_CREDIT_PACK_1000_PRICE_ID ?? ""
+  },
   openAiApiKey: process.env.OPENAI_API_KEY ?? "",
   appUrl: process.env.APP_URL ?? "",
   apiBaseUrl: process.env.API_BASE_URL ?? "",

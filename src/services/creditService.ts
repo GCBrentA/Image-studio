@@ -161,7 +161,10 @@ export const getUserCredits = async (userId: string): Promise<CreditResponse> =>
 export const addCredits = async (
   userId: string,
   amount: number,
-  reason: CreditLedgerReason
+  reason: CreditLedgerReason,
+  options: {
+    idempotencyKey?: string;
+  } = {}
 ): Promise<CreditResponse> => {
   if (!Number.isInteger(amount) || amount <= 0) {
     const totals = await getCreditTotals(userId, prisma);
@@ -175,7 +178,8 @@ export const addCredits = async (
         data: {
           user_id: userId,
           change_amount: amount,
-          reason
+          reason,
+          idempotency_key: options.idempotencyKey
         }
       });
 
@@ -283,10 +287,14 @@ export const deductCredit = async (
 
 export const resetMonthlyCredits = async (
   userId: string,
-  plan: SubscriptionPlan
+  plan: SubscriptionPlan,
+  options: {
+    idempotencyKey?: string;
+  } = {}
 ): Promise<CreditResponse> => {
   const creditsForPlan = PLAN_CREDIT_LIMITS[plan];
   const resetMonth = new Date().toISOString().slice(0, 7);
+  const idempotencyKey = options.idempotencyKey ?? `monthly-reset:${userId}:${resetMonth}`;
 
   try {
     return await runSerializableTransaction(
@@ -296,7 +304,7 @@ export const resetMonthlyCredits = async (
             user_id: userId,
             change_amount: creditsForPlan,
             reason: CreditLedgerReason.reset,
-            idempotency_key: `monthly-reset:${userId}:${resetMonth}`
+            idempotency_key: idempotencyKey
           }
         });
 

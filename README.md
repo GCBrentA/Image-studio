@@ -104,6 +104,43 @@ In Supabase, open Project Settings, then Database, then Connection string. Use t
 
 Keep `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` from the Supabase API settings. Never commit real Supabase, Stripe, OpenAI, or JWT secret values.
 
+### Stripe Billing Variables
+
+Create monthly recurring Stripe Prices for:
+
+- Starter: `$19/month`
+- Growth: `$69/month`
+- Pro: `$159/month`
+- Agency: `$429/month`
+
+Create one-time Stripe Prices for:
+
+- `100` credits: `$19`
+- `300` credits: `$49`
+- `1000` credits: `$129`
+
+Set the matching Render environment variables:
+
+```env
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_STARTER_PRICE_ID=
+STRIPE_GROWTH_PRICE_ID=
+STRIPE_PRO_PRICE_ID=
+STRIPE_AGENCY_PRICE_ID=
+STRIPE_CREDIT_PACK_100_PRICE_ID=
+STRIPE_CREDIT_PACK_300_PRICE_ID=
+STRIPE_CREDIT_PACK_1000_PRICE_ID=
+```
+
+Configure the Stripe webhook URL as:
+
+```text
+https://your-render-service.onrender.com/billing/webhook
+```
+
+Subscribe the webhook endpoint to `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`.
+
 ## Database Migrations
 
 After setting `DATABASE_URL` in `.env.local`, create and apply the initial Image Studio schema migration:
@@ -175,6 +212,54 @@ Content-Type: application/json
 ```
 
 The response includes `api_token`. Store that value in the WooCommerce plugin settings. It is shown only once; the backend stores only a hash.
+
+## Billing
+
+Create a subscription checkout session with an account JWT:
+
+```http
+POST /billing/checkout-session
+Authorization: Bearer account-jwt
+Content-Type: application/json
+```
+
+```json
+{
+  "type": "subscription",
+  "plan": "starter"
+}
+```
+
+Valid plans are `starter`, `growth`, `pro`, and `agency`.
+
+Create a credit pack checkout session:
+
+```json
+{
+  "type": "credit_pack",
+  "pack": "credits_300"
+}
+```
+
+Valid packs are `credits_100`, `credits_300`, and `credits_1000`.
+
+Both checkout calls return:
+
+```json
+{
+  "id": "cs_test_...",
+  "url": "https://checkout.stripe.com/..."
+}
+```
+
+Open the Stripe customer portal:
+
+```http
+POST /billing/portal
+Authorization: Bearer account-jwt
+```
+
+The Stripe webhook stores processed event IDs to prevent duplicate processing. Plan credits are reset from paid subscription invoices with `billing_reason` of `subscription_create` or `subscription_cycle`.
 
 Check site usage with the site API token:
 

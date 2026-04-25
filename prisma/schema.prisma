@@ -38,15 +38,16 @@ enum ImageJobStatus {
 }
 
 model User {
-  id            String          @id @default(cuid())
-  email         String          @unique
-  password_hash String
-  created_at    DateTime        @default(now())
-  updated_at    DateTime        @updatedAt
-  sites         ConnectedSite[]
-  subscriptions Subscription[]
-  credit_ledger CreditLedger[]
-  image_jobs    ImageJob[]
+  id                 String          @id @default(cuid())
+  email              String          @unique
+  password_hash      String
+  stripe_customer_id String?         @unique
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+  sites              ConnectedSite[]
+  subscriptions      Subscription[]
+  credit_ledger      CreditLedger[]
+  image_jobs         ImageJob[]
 
   @@map("optivra_users")
 }
@@ -67,18 +68,31 @@ model ConnectedSite {
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  user_id            String
-  plan               SubscriptionPlan
-  status             SubscriptionStatus
-  current_period_end DateTime
-  created_at         DateTime           @default(now())
-  updated_at         DateTime           @updatedAt
-  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                     String             @id @default(cuid())
+  user_id                String
+  plan                   SubscriptionPlan
+  status                 SubscriptionStatus
+  current_period_end     DateTime
+  stripe_subscription_id String?            @unique
+  stripe_price_id        String?
+  cancel_at_period_end   Boolean            @default(false)
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+  user                   User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([status])
   @@map("subscriptions")
+}
+
+model StripeEvent {
+  id           String   @id
+  type         String
+  processed_at DateTime?
+  created_at   DateTime @default(now())
+
+  @@index([type])
+  @@map("stripe_events")
 }
 
 model CreditLedger {
