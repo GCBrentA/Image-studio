@@ -18,7 +18,8 @@ export type UsageResponse = {
   };
 };
 
-const getAccountBaseUrl = (): string => (env.appUrl || "https://optivra.app").replace(/\/+$/, "");
+const getAccountBaseUrl = (): string =>
+  (env.appUrl || env.apiBaseUrl || "https://image-studio.onrender.com").replace(/\/+$/, "");
 
 export const getUsageForUser = async (userId: string): Promise<UsageResponse> => {
   const [credits, subscription] = await Promise.all([

@@ -112,8 +112,9 @@ class Catalogue_Image_Studio_Job_Repository {
 		$params = [];
 
 		if (! empty($filters['status'])) {
-			$where[]  = 'status = %s';
-			$params[] = sanitize_key((string) $filters['status']);
+			$statuses = array_map('sanitize_key', (array) $filters['status']);
+			$where[]  = 'status IN (' . implode(',', array_fill(0, count($statuses), '%s')) . ')';
+			$params   = array_merge($params, $statuses);
 		}
 
 		if (! empty($filters['product_id'])) {
@@ -127,6 +128,46 @@ class Catalogue_Image_Studio_Job_Repository {
 		$sql = "SELECT * FROM {$table} WHERE " . implode(' AND ', $where) . ' ORDER BY updated_at DESC LIMIT %d OFFSET %d';
 
 		return (array) $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+	}
+
+	/**
+	 * Count jobs by current status.
+	 *
+	 * @return array<string,int>
+	 */
+	public function counts_by_status(): array {
+		global $wpdb;
+
+		$rows   = (array) $wpdb->get_results('SELECT status, COUNT(*) AS total FROM ' . catalogue_image_studio_table_name() . ' GROUP BY status', ARRAY_A);
+		$counts = [];
+
+		foreach ($rows as $row) {
+			$counts[(string) $row['status']] = (int) $row['total'];
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Set multiple jobs to one status.
+	 *
+	 * @param array<int,int> $job_ids Job IDs.
+	 * @return int Updated count.
+	 */
+	public function update_statuses(array $job_ids, string $status): int {
+		global $wpdb;
+
+		$job_ids = array_values(array_filter(array_map('absint', $job_ids)));
+
+		if (empty($job_ids)) {
+			return 0;
+		}
+
+		$table        = catalogue_image_studio_table_name();
+		$placeholders = implode(',', array_fill(0, count($job_ids), '%d'));
+		$params       = array_merge([sanitize_key($status), current_time('mysql', true)], $job_ids);
+
+		return (int) $wpdb->query($wpdb->prepare("UPDATE {$table} SET status = %s, updated_at = %s WHERE id IN ({$placeholders})", $params));
 	}
 
 	/**

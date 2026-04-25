@@ -32,7 +32,7 @@ class Catalogue_Image_Studio_ProductScanner {
 		foreach ($product_ids as $product_id) {
 			$featured_id = absint(get_post_thumbnail_id($product_id));
 
-			if ($featured_id && $this->is_supported_attachment($featured_id)) {
+			if (false !== ($args['include_featured'] ?? true) && $featured_id && $this->is_supported_attachment($featured_id)) {
 				$slots[] = [
 					'product_id'    => $product_id,
 					'attachment_id' => $featured_id,
@@ -41,7 +41,9 @@ class Catalogue_Image_Studio_ProductScanner {
 				];
 			}
 
-			$gallery_ids = array_values(array_filter(array_map('absint', explode(',', (string) get_post_meta($product_id, '_product_image_gallery', true)))));
+			$gallery_ids = false !== ($args['include_gallery'] ?? true)
+				? array_values(array_filter(array_map('absint', explode(',', (string) get_post_meta($product_id, '_product_image_gallery', true)))))
+				: [];
 
 			foreach ($gallery_ids as $index => $gallery_id) {
 				if (! $gallery_id || ! $this->is_supported_attachment($gallery_id)) {
@@ -108,6 +110,29 @@ class Catalogue_Image_Studio_ProductScanner {
 
 		if (! empty($args['status'])) {
 			$query_args['post_status'] = array_map('sanitize_key', (array) $args['status']);
+		}
+
+		if (! empty($args['category'])) {
+			$query_args['tax_query'][] = [
+				'taxonomy' => 'product_cat',
+				'field'    => 'term_id',
+				'terms'    => [absint($args['category'])],
+			];
+		}
+
+		if (! empty($args['product_type'])) {
+			$query_args['tax_query'][] = [
+				'taxonomy' => 'product_type',
+				'field'    => 'slug',
+				'terms'    => [sanitize_key((string) $args['product_type'])],
+			];
+		}
+
+		if (! empty($args['stock_status'])) {
+			$query_args['meta_query'][] = [
+				'key'   => '_stock_status',
+				'value' => sanitize_key((string) $args['stock_status']),
+			];
 		}
 
 		return array_map('absint', get_posts($query_args));

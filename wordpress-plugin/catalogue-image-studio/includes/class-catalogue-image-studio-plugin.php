@@ -192,16 +192,24 @@ class Catalogue_Image_Studio_Plugin {
 	public function get_default_settings(): array {
 		return [
 			'enabled'                 => true,
-			'api_base_url'            => 'https://api.optivra.app',
+			'api_base_url'            => 'https://image-studio.onrender.com',
 			'api_token'               => '',
+			'approval_required'       => true,
+			'auto_process_new_images' => false,
+			'process_featured_images' => true,
+			'process_gallery_images'  => true,
+			'duplicate_detection'     => true,
 			'background'              => 'optivra-default',
 			'scale_percent'           => 'auto',
 			'smart_scaling_enabled'   => true,
 			'shadow_enabled'          => true,
+			'shadow_strength'         => 'medium',
 			'enable_filename_seo'     => true,
 			'enable_alt_text'         => true,
 			'only_fill_missing'       => true,
 			'overwrite_existing_meta' => false,
+			'seo_brand_suffix'        => '',
+			'category_presets'        => [],
 			'debug_mode'              => false,
 		];
 	}
