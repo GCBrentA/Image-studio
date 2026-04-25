@@ -75,6 +75,7 @@ wordpress-plugin/
 - `npm run prisma:generate` - generate Prisma client
 - `npm run prisma:migrate` - create and apply a local development migration
 - `npm run prisma:deploy` - apply committed migrations in production
+- `npm run prisma:status` - inspect migration status for the configured database
 - `npm run prisma:studio` - open Prisma Studio
 
 ## Runtime Environment
@@ -92,7 +93,7 @@ In Render, add the same variables from `.env.example` under the service Environm
 Build Command:
 
 ```bash
-npm install && npx prisma migrate deploy && npm run build
+npm install && npm run prisma:deploy && npm run build
 ```
 
 Start Command:
