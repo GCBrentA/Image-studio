@@ -137,6 +137,63 @@ npm run prisma:generate
 }
 ```
 
+## Account and Site Connection
+
+Create an account:
+
+```http
+POST /auth/register
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "owner@example.com",
+  "password": "choose-a-long-password"
+}
+```
+
+Log in:
+
+```http
+POST /auth/login
+Content-Type: application/json
+```
+
+Both auth endpoints return a JWT as `token`. Use that JWT to connect a WooCommerce site:
+
+```http
+POST /sites/connect
+Authorization: Bearer account-jwt
+Content-Type: application/json
+```
+
+```json
+{
+  "domain": "store.example.com"
+}
+```
+
+The response includes `api_token`. Store that value in the WooCommerce plugin settings. It is shown only once; the backend stores only a hash.
+
+Check site usage with the site API token:
+
+```http
+GET /usage
+Authorization: Bearer site-api-token
+```
+
+Response:
+
+```json
+{
+  "plan": "starter",
+  "credits_remaining": 80,
+  "credits_total": 80,
+  "subscription_status": "trialing"
+}
+```
+
 ## Image Processing
 
 `POST /images/process` validates a connected-site API token, checks credits, downloads the source image, sends it through the configured background-removal service, composes a product image with Sharp, saves it under `storage/processed-images`, deducts one credit, and returns the processed image URL.
@@ -186,6 +243,8 @@ wordpress-plugin/catalogue-image-studio
 ```
 
 To install locally, copy or symlink that folder into a WordPress install under `wp-content/plugins/catalogue-image-studio`, then activate `Catalogue Image Studio` from WordPress admin.
+
+In WooCommerce admin, open Catalogue Image Studio, paste the Render API base URL and the site API token returned by `POST /sites/connect`, save settings, then use Test Connection to verify `/usage`.
 
 The plugin provides reusable classes for:
 

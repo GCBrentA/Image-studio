@@ -85,4 +85,49 @@ class Catalogue_Image_Studio_SaaSClient {
 
 		return $decoded;
 	}
+
+	/**
+	 * Get account usage for the configured site token.
+	 *
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function get_usage() {
+		if ('' === $this->api_base_url || '' === $this->api_token) {
+			return new WP_Error(
+				'catalogue_image_studio_missing_api_settings',
+				__('The image processing API URL and token must be configured.', 'catalogue-image-studio')
+			);
+		}
+
+		$response = wp_remote_get(
+			$this->api_base_url . '/usage',
+			[
+				'timeout' => 20,
+				'headers' => [
+					'Authorization' => 'Bearer ' . $this->api_token,
+					'Accept'        => 'application/json',
+				],
+			]
+		);
+
+		if (is_wp_error($response)) {
+			$this->logger->error('Usage API request failed.', ['message' => $response->get_error_message()]);
+			return $response;
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code($response);
+		$body        = (string) wp_remote_retrieve_body($response);
+		$decoded     = json_decode($body, true);
+
+		if (! is_array($decoded)) {
+			return new WP_Error('catalogue_image_studio_invalid_api_response', __('The image processing API returned invalid JSON.', 'catalogue-image-studio'));
+		}
+
+		if ($status_code < 200 || $status_code >= 300) {
+			$message = isset($decoded['error']) ? (string) $decoded['error'] : __('Connection test failed.', 'catalogue-image-studio');
+			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
+		}
+
+		return $decoded;
+	}
 }
