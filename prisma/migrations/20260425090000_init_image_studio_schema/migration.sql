@@ -30,14 +30,14 @@ EXCEPTION
 END
 $$;
 
-CREATE TABLE IF NOT EXISTS "users" (
+CREATE TABLE IF NOT EXISTS "optivra_users" (
 	"id" TEXT NOT NULL,
 	"email" TEXT NOT NULL,
 	"password_hash" TEXT NOT NULL,
 	"created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	"updated_at" TIMESTAMP(3) NOT NULL,
 
-	CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+	CONSTRAINT "optivra_users_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE IF NOT EXISTS "connected_sites" (
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS "image_jobs" (
 	CONSTRAINT "image_jobs_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "users"("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "optivra_users_email_key" ON "optivra_users"("email");
 CREATE UNIQUE INDEX IF NOT EXISTS "connected_sites_user_id_domain_key" ON "connected_sites"("user_id", "domain");
 CREATE INDEX IF NOT EXISTS "connected_sites_user_id_idx" ON "connected_sites"("user_id");
 CREATE INDEX IF NOT EXISTS "subscriptions_user_id_idx" ON "subscriptions"("user_id");
@@ -102,7 +102,7 @@ DO $$
 BEGIN
 	ALTER TABLE "connected_sites"
 		ADD CONSTRAINT "connected_sites_user_id_fkey"
-		FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+		FOREIGN KEY ("user_id") REFERENCES "optivra_users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION
 	WHEN duplicate_object THEN NULL;
 END
@@ -112,7 +112,7 @@ DO $$
 BEGIN
 	ALTER TABLE "subscriptions"
 		ADD CONSTRAINT "subscriptions_user_id_fkey"
-		FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+		FOREIGN KEY ("user_id") REFERENCES "optivra_users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION
 	WHEN duplicate_object THEN NULL;
 END
@@ -122,7 +122,7 @@ DO $$
 BEGIN
 	ALTER TABLE "credit_ledger"
 		ADD CONSTRAINT "credit_ledger_user_id_fkey"
-		FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+		FOREIGN KEY ("user_id") REFERENCES "optivra_users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION
 	WHEN duplicate_object THEN NULL;
 END
@@ -132,13 +132,13 @@ DO $$
 BEGIN
 	ALTER TABLE "image_jobs"
 		ADD CONSTRAINT "image_jobs_user_id_fkey"
-		FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+		FOREIGN KEY ("user_id") REFERENCES "optivra_users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION
 	WHEN duplicate_object THEN NULL;
 END
 $$;
 
-ALTER TABLE "users" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "optivra_users" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "connected_sites" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "subscriptions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "credit_ledger" ENABLE ROW LEVEL SECURITY;

@@ -48,7 +48,7 @@ model User {
   credit_ledger CreditLedger[]
   image_jobs    ImageJob[]
 
-  @@map("users")
+  @@map("optivra_users")
 }
 
 model ConnectedSite {
