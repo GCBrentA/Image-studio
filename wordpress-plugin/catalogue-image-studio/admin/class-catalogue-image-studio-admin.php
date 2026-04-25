@@ -76,6 +76,24 @@ class Catalogue_Image_Studio_Admin {
 			[],
 			CIS_VERSION
 		);
+		wp_enqueue_script('jquery');
+
+		wp_add_inline_script(
+			'jquery',
+			"function catalogueImageStudioUpdateSelectedCount() {
+				var selected = document.querySelectorAll('.catalogue-image-studio-job-check:checked').length;
+				document.querySelectorAll('[data-cis-selected-count]').forEach(function(node) {
+					node.textContent = String(selected);
+				});
+			}
+			document.addEventListener('change', function(event) {
+				if (!event.target.matches('.catalogue-image-studio-job-check, .catalogue-image-studio-check-all')) {
+					return;
+				}
+				catalogueImageStudioUpdateSelectedCount();
+			});
+			document.addEventListener('DOMContentLoaded', catalogueImageStudioUpdateSelectedCount);"
+		);
 	}
 
 	/**
@@ -103,6 +121,8 @@ class Catalogue_Image_Studio_Admin {
 		$settings['enable_alt_text']         = isset($_POST['enable_alt_text']);
 		$settings['only_fill_missing']       = isset($_POST['only_fill_missing']);
 		$settings['overwrite_existing_meta'] = isset($_POST['overwrite_existing_meta']);
+		$settings['upgrade_url']             = isset($_POST['upgrade_url']) ? esc_url_raw(wp_unslash($_POST['upgrade_url'])) : '';
+		$settings['buy_credits_url']         = isset($_POST['buy_credits_url']) ? esc_url_raw(wp_unslash($_POST['buy_credits_url'])) : '';
 
 		if (empty($settings['background'])) {
 			$settings['background'] = '#ffffff';
@@ -163,6 +183,22 @@ class Catalogue_Image_Studio_Admin {
 		if (empty($job_ids)) {
 			$this->add_error(__('Select at least one image.', 'catalogue-image-studio'));
 			return;
+		}
+
+		if ('process' === $action) {
+			$usage             = $this->get_usage();
+			$credits_remaining = is_wp_error($usage) ? 0 : max(0, (int) ($usage['credits_remaining'] ?? 0));
+
+			if ($credits_remaining < count($job_ids)) {
+				$job_ids = array_slice($job_ids, 0, $credits_remaining);
+
+				$this->add_error(__('Insufficient credits. Processing available images only; buy credits or upgrade plan to process the rest.', 'catalogue-image-studio'));
+			}
+
+			if (empty($job_ids)) {
+				$this->add_error(__('No credits available. Buy credits or upgrade plan to continue.', 'catalogue-image-studio'));
+				return;
+			}
 		}
 
 		$success = 0;
@@ -274,6 +310,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings = $this->plugin->get_settings();
 		$usage    = $this->get_usage();
 		$jobs     = $this->plugin->jobs()->query([], 100, 0);
+		$processable_count = $this->count_processable_jobs($jobs);
 		?>
 		<div class="wrap catalogue-image-studio-admin">
 			<h1><?php echo esc_html__('Catalogue Image Studio', 'catalogue-image-studio'); ?></h1>
@@ -281,7 +318,7 @@ class Catalogue_Image_Studio_Admin {
 
 			<div class="catalogue-image-studio-grid">
 				<?php $this->render_settings_panel($settings, $usage); ?>
-				<?php $this->render_workflow_panel($jobs); ?>
+				<?php $this->render_workflow_panel($jobs, $usage, $settings, $processable_count); ?>
 			</div>
 		</div>
 		<?php
@@ -347,6 +384,15 @@ class Catalogue_Image_Studio_Admin {
 								<label><input type="checkbox" name="overwrite_existing_meta" value="1" <?php checked(! empty($settings['overwrite_existing_meta'])); ?> /> <?php echo esc_html__('Overwrite existing metadata', 'catalogue-image-studio'); ?></label>
 							</td>
 						</tr>
+						<tr>
+							<th scope="row"><?php echo esc_html__('Billing links', 'catalogue-image-studio'); ?></th>
+							<td>
+								<input type="url" name="upgrade_url" class="regular-text" value="<?php echo esc_attr($this->get_upgrade_url($settings)); ?>" placeholder="https://your-app.example.com/account/billing" />
+								<p class="description"><?php echo esc_html__('Upgrade button URL.', 'catalogue-image-studio'); ?></p>
+								<input type="url" name="buy_credits_url" class="regular-text" value="<?php echo esc_attr($this->get_buy_credits_url($settings)); ?>" placeholder="https://your-app.example.com/account/credits" />
+								<p class="description"><?php echo esc_html__('Buy credits button URL.', 'catalogue-image-studio'); ?></p>
+							</td>
+						</tr>
 					</tbody>
 				</table>
 				<p class="submit">
@@ -389,13 +435,37 @@ class Catalogue_Image_Studio_Admin {
 			</div>
 		</div>
 		<?php
+		$remaining = max(0, (int) ($usage['credits_remaining'] ?? 0));
+		$total     = max(0, (int) ($usage['credits_total'] ?? 0));
+		$percent   = $total > 0 ? min(100, max(0, round(($remaining / $total) * 100))) : 0;
+		?>
+		<div class="catalogue-image-studio-credit-meter" aria-label="<?php echo esc_attr__('Credits remaining', 'catalogue-image-studio'); ?>">
+			<div style="width: <?php echo esc_attr((string) $percent); ?>%;"></div>
+		</div>
+		<p class="catalogue-image-studio-muted">
+			<?php
+			$next_reset = isset($usage['next_reset_at']) && is_string($usage['next_reset_at']) ? strtotime($usage['next_reset_at']) : false;
+			echo esc_html(
+				$next_reset
+					? sprintf(
+						/* translators: %s: reset date */
+						__('Next reset: %s', 'catalogue-image-studio'),
+						date_i18n(get_option('date_format'), $next_reset)
+					)
+					: __('Next reset date unavailable.', 'catalogue-image-studio')
+			);
+			?>
+		</p>
+		<?php
 	}
 
 	/**
 	 * @param array<int,array<string,mixed>> $jobs Jobs.
 	 * @return void
 	 */
-	private function render_workflow_panel(array $jobs): void {
+	private function render_workflow_panel(array $jobs, $usage, array $settings, int $processable_count): void {
+		$credits_remaining = is_wp_error($usage) ? 0 : max(0, (int) ($usage['credits_remaining'] ?? 0));
+		$insufficient      = $processable_count > $credits_remaining;
 		?>
 		<div class="catalogue-image-studio-panel catalogue-image-studio-panel-wide">
 			<div class="catalogue-image-studio-toolbar">
@@ -406,6 +476,7 @@ class Catalogue_Image_Studio_Admin {
 					<button type="submit" class="button"><?php echo esc_html__('Scan Product Images', 'catalogue-image-studio'); ?></button>
 				</form>
 			</div>
+			<?php $this->render_monetisation_prompt($credits_remaining, $processable_count, $settings, $insufficient); ?>
 
 			<form method="post" action="">
 				<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
@@ -424,7 +495,7 @@ class Catalogue_Image_Studio_Admin {
 				<table class="widefat fixed striped catalogue-image-studio-jobs">
 					<thead>
 						<tr>
-							<td class="check-column"><input type="checkbox" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked);" /></td>
+							<td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td>
 							<th><?php echo esc_html__('Product', 'catalogue-image-studio'); ?></th>
 							<th><?php echo esc_html__('Before', 'catalogue-image-studio'); ?></th>
 							<th><?php echo esc_html__('After', 'catalogue-image-studio'); ?></th>
@@ -447,6 +518,83 @@ class Catalogue_Image_Studio_Admin {
 			</form>
 		</div>
 		<?php
+	}
+
+	private function render_monetisation_prompt(int $credits_remaining, int $processable_count, array $settings, bool $insufficient): void {
+		$available_now = min($credits_remaining, $processable_count);
+		?>
+		<div class="catalogue-image-studio-monetisation <?php echo $insufficient ? 'catalogue-image-studio-monetisation-warning' : ''; ?>">
+			<div>
+				<strong>
+					<?php
+					echo esc_html(
+						sprintf(
+							/* translators: %d: images left */
+							__('You have %d images left to optimise.', 'catalogue-image-studio'),
+							$credits_remaining
+						)
+					);
+					?>
+				</strong>
+				<p>
+					<?php echo esc_html__('Selected:', 'catalogue-image-studio'); ?>
+					<span data-cis-selected-count>0</span>
+					<?php echo esc_html__('image(s). Available credits:', 'catalogue-image-studio'); ?>
+					<?php echo esc_html((string) $credits_remaining); ?>.
+				</p>
+				<?php if ($insufficient) : ?>
+					<p><?php echo esc_html(sprintf(
+						/* translators: %d: processable images */
+						__('Process %d now, then buy credits or upgrade plan. Upgrade to process your full catalogue.', 'catalogue-image-studio'),
+						$available_now
+					)); ?></p>
+				<?php else : ?>
+					<p><?php echo esc_html__('Upgrade to process your full catalogue.', 'catalogue-image-studio'); ?></p>
+				<?php endif; ?>
+			</div>
+			<div class="catalogue-image-studio-cta-buttons">
+				<a class="button button-primary" href="<?php echo esc_url($this->get_upgrade_url($settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Upgrade plan', 'catalogue-image-studio'); ?></a>
+				<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy credits', 'catalogue-image-studio'); ?></a>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $jobs Jobs.
+	 */
+	private function count_processable_jobs(array $jobs): int {
+		$count = 0;
+
+		foreach ($jobs as $job) {
+			if (in_array((string) ($job['status'] ?? ''), ['unprocessed', 'failed', 'rejected', 'reverted'], true)) {
+				$count++;
+			}
+		}
+
+		return $count;
+	}
+
+	/**
+	 * @param array<string,mixed> $settings Settings.
+	 */
+	private function get_upgrade_url(array $settings): string {
+		if (! empty($settings['upgrade_url'])) {
+			return (string) $settings['upgrade_url'];
+		}
+
+		return trailingslashit((string) ($settings['api_base_url'] ?? '')) . 'account/billing';
+	}
+
+	/**
+	 * @param array<string,mixed> $settings Settings.
+	 */
+	private function get_buy_credits_url(array $settings): string {
+		if (! empty($settings['buy_credits_url'])) {
+			return (string) $settings['buy_credits_url'];
+		}
+
+		return trailingslashit((string) ($settings['api_base_url'] ?? '')) . 'account/credits';
 	}
 
 	/**

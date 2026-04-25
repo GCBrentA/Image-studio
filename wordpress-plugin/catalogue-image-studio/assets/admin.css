@@ -43,11 +43,53 @@
 	border-radius: 4px;
 }
 
+.catalogue-image-studio-admin .catalogue-image-studio-credit-meter {
+	height: 10px;
+	margin: 12px 0 8px;
+	overflow: hidden;
+	background: #e9ecef;
+	border-radius: 999px;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-credit-meter div {
+	height: 100%;
+	background: #2271b1;
+	border-radius: inherit;
+}
+
 .catalogue-image-studio-admin .catalogue-image-studio-usage span {
 	display: block;
 	margin-bottom: 4px;
 	color: #646970;
 	font-size: 12px;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-monetisation {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin: 12px 0;
+	padding: 14px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-monetisation-warning {
+	background: #fff8e5;
+	border-color: #dba617;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-monetisation p {
+	margin: 4px 0 0;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-checkboxes label {
@@ -118,5 +160,14 @@
 @media (max-width: 1200px) {
 	.catalogue-image-studio-admin .catalogue-image-studio-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.catalogue-image-studio-admin .catalogue-image-studio-monetisation {
+		display: block;
+	}
+
+	.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
+		justify-content: flex-start;
+		margin-top: 10px;
 	}
 }

@@ -8,6 +8,7 @@ export type UsageResponse = {
   credits_total: number;
   low_credit_thresholds: LowCreditThreshold[];
   subscription_status: SubscriptionStatus;
+  next_reset_at: string | null;
 };
 
 export const getUsageForUser = async (userId: string): Promise<UsageResponse> => {
@@ -22,7 +23,8 @@ export const getUsageForUser = async (userId: string): Promise<UsageResponse> =>
       },
       select: {
         plan: true,
-        status: true
+        status: true,
+        current_period_end: true
       }
     })
   ]);
@@ -32,6 +34,7 @@ export const getUsageForUser = async (userId: string): Promise<UsageResponse> =>
     credits_remaining: credits.credits_remaining,
     credits_total: credits.credits_total,
     low_credit_thresholds: credits.low_credit_thresholds,
-    subscription_status: subscription?.status ?? SubscriptionStatus.incomplete
+    subscription_status: subscription?.status ?? SubscriptionStatus.incomplete,
+    next_reset_at: subscription?.current_period_end.toISOString() ?? null
   };
 };

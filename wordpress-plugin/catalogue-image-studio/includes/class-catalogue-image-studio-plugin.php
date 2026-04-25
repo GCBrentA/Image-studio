@@ -200,6 +200,8 @@ class Catalogue_Image_Studio_Plugin {
 			'enable_alt_text'         => true,
 			'only_fill_missing'       => true,
 			'overwrite_existing_meta' => false,
+			'upgrade_url'             => '',
+			'buy_credits_url'         => '',
 		];
 	}
 
