@@ -200,33 +200,47 @@ class Catalogue_Image_Studio_Plugin {
 		return [
 			'enabled'                 => true,
 			'api_base_url'            => 'https://image-studio-hzqk.onrender.com',
+			'api_base_url_override'   => '',
 			'api_token'               => '',
+			'require_approval'        => true,
 			'approval_required'       => true,
 			'auto_process_new_images' => false,
 			'process_featured_images' => true,
 			'process_gallery_images'  => true,
+			'process_category_images' => false,
 			'duplicate_detection'     => true,
 			'background_source'       => 'preset',
 			'custom_background_attachment_id' => 0,
 			'background_preset'       => 'optivra-default',
 			'background'              => 'optivra-default',
+			'default_scale_mode'      => 'auto',
 			'scale_mode'              => 'auto',
 			'scale_percent'           => 'auto',
+			'smart_scaling'           => true,
 			'smart_scaling_enabled'   => true,
+			'apply_shadow'            => true,
 			'shadow_enabled'          => true,
 			'shadow_strength'         => 'medium',
+			'generate_seo_filename'   => true,
 			'enable_filename_seo'     => true,
+			'generate_alt_text'       => true,
 			'enable_alt_text'         => true,
 			'generate_image_title'    => true,
+			'only_fill_missing_metadata' => true,
 			'only_fill_missing'       => true,
+			'overwrite_existing_metadata' => false,
 			'overwrite_existing_meta' => false,
+			'brand_keyword_suffix'    => '',
 			'seo_brand_suffix'        => '',
 			'batch_size'              => 10,
 			'retry_failed_jobs'       => true,
+			'pause_on_low_credits'    => true,
 			'pause_low_credits'       => true,
 			'auto_refresh_job_status' => true,
 			'show_low_credit_warning' => true,
+			'show_completion_alerts'  => true,
 			'show_job_completion_alerts' => true,
+			'show_failed_alerts'      => true,
 			'show_failed_job_alerts'  => true,
 			'category_presets'        => [],
 			'debug_mode'              => false,
@@ -241,8 +255,39 @@ class Catalogue_Image_Studio_Plugin {
 	public function get_settings(): array {
 		$settings = get_option($this->option_name, []);
 		$settings = is_array($settings) ? $settings : [];
+		$settings = wp_parse_args($settings, $this->get_default_settings());
 
-		return wp_parse_args($settings, $this->get_default_settings());
+		$settings['api_base_url_override'] = isset($settings['api_base_url_override']) ? (string) $settings['api_base_url_override'] : '';
+		$settings['api_base_url']          = '' !== $settings['api_base_url_override']
+			? $settings['api_base_url_override']
+			: (string) ($settings['api_base_url'] ?? $this->get_default_settings()['api_base_url']);
+
+		$settings['require_approval']      = array_key_exists('require_approval', $settings) ? (bool) $settings['require_approval'] : (bool) ($settings['approval_required'] ?? true);
+		$settings['approval_required']     = $settings['require_approval'];
+		$settings['smart_scaling']         = array_key_exists('smart_scaling', $settings) ? (bool) $settings['smart_scaling'] : (bool) ($settings['smart_scaling_enabled'] ?? true);
+		$settings['smart_scaling_enabled'] = $settings['smart_scaling'];
+		$settings['apply_shadow']          = array_key_exists('apply_shadow', $settings) ? (bool) $settings['apply_shadow'] : (bool) ($settings['shadow_enabled'] ?? true);
+		$settings['shadow_enabled']        = $settings['apply_shadow'];
+		$settings['default_scale_mode']    = isset($settings['default_scale_mode']) ? (string) $settings['default_scale_mode'] : (string) ($settings['scale_mode'] ?? 'auto');
+		$settings['scale_mode']            = $settings['default_scale_mode'];
+		$settings['generate_seo_filename'] = array_key_exists('generate_seo_filename', $settings) ? (bool) $settings['generate_seo_filename'] : (bool) ($settings['enable_filename_seo'] ?? true);
+		$settings['enable_filename_seo']   = $settings['generate_seo_filename'];
+		$settings['generate_alt_text']     = array_key_exists('generate_alt_text', $settings) ? (bool) $settings['generate_alt_text'] : (bool) ($settings['enable_alt_text'] ?? true);
+		$settings['enable_alt_text']       = $settings['generate_alt_text'];
+		$settings['only_fill_missing_metadata'] = array_key_exists('only_fill_missing_metadata', $settings) ? (bool) $settings['only_fill_missing_metadata'] : (bool) ($settings['only_fill_missing'] ?? true);
+		$settings['only_fill_missing']     = $settings['only_fill_missing_metadata'];
+		$settings['overwrite_existing_metadata'] = array_key_exists('overwrite_existing_metadata', $settings) ? (bool) $settings['overwrite_existing_metadata'] : (bool) ($settings['overwrite_existing_meta'] ?? false);
+		$settings['overwrite_existing_meta'] = $settings['overwrite_existing_metadata'];
+		$settings['brand_keyword_suffix']  = isset($settings['brand_keyword_suffix']) ? (string) $settings['brand_keyword_suffix'] : (string) ($settings['seo_brand_suffix'] ?? '');
+		$settings['seo_brand_suffix']      = $settings['brand_keyword_suffix'];
+		$settings['pause_on_low_credits']  = array_key_exists('pause_on_low_credits', $settings) ? (bool) $settings['pause_on_low_credits'] : (bool) ($settings['pause_low_credits'] ?? true);
+		$settings['pause_low_credits']     = $settings['pause_on_low_credits'];
+		$settings['show_completion_alerts'] = array_key_exists('show_completion_alerts', $settings) ? (bool) $settings['show_completion_alerts'] : (bool) ($settings['show_job_completion_alerts'] ?? true);
+		$settings['show_job_completion_alerts'] = $settings['show_completion_alerts'];
+		$settings['show_failed_alerts']    = array_key_exists('show_failed_alerts', $settings) ? (bool) $settings['show_failed_alerts'] : (bool) ($settings['show_failed_job_alerts'] ?? true);
+		$settings['show_failed_job_alerts'] = $settings['show_failed_alerts'];
+
+		return $settings;
 	}
 
 	public function logger(): Catalogue_Image_Studio_Logger {

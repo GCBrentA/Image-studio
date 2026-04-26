@@ -109,11 +109,32 @@ class Catalogue_Image_Studio_Admin {
 			document.addEventListener('DOMContentLoaded', function() {
 				catalogueImageStudioUpdateSelectedCount();
 				var button = document.getElementById('catalogue-image-studio-pick-background');
+				var removeButton = document.getElementById('catalogue-image-studio-remove-background');
 				if (!button || typeof wp === 'undefined' || !wp.media) {
+					if (removeButton) {
+						removeButton.addEventListener('click', function(event) {
+							event.preventDefault();
+							var attachmentField = document.getElementById('catalogue-image-studio-custom-background-id');
+							var preview = document.getElementById('catalogue-image-studio-custom-background-preview');
+							var filename = document.getElementById('catalogue-image-studio-custom-background-filename');
+							if (attachmentField) {
+								attachmentField.value = '';
+							}
+							if (preview) {
+								preview.src = '';
+								preview.hidden = true;
+							}
+							if (filename) {
+								filename.textContent = '';
+								filename.hidden = true;
+							}
+						});
+					}
 					return;
 				}
 				var attachmentField = document.getElementById('catalogue-image-studio-custom-background-id');
 				var preview = document.getElementById('catalogue-image-studio-custom-background-preview');
+				var filename = document.getElementById('catalogue-image-studio-custom-background-filename');
 				var frame;
 				button.addEventListener('click', function(event) {
 					event.preventDefault();
@@ -140,9 +161,29 @@ class Catalogue_Image_Studio_Admin {
 							preview.src = attachment.url;
 							preview.hidden = false;
 						}
+						if (filename) {
+							filename.textContent = attachment.filename || '';
+							filename.hidden = !(attachment.filename || '');
+						}
 					});
 					frame.open();
 				});
+				if (removeButton) {
+					removeButton.addEventListener('click', function(event) {
+						event.preventDefault();
+						if (attachmentField) {
+							attachmentField.value = '';
+						}
+						if (preview) {
+							preview.src = '';
+							preview.hidden = true;
+						}
+						if (filename) {
+							filename.textContent = '';
+							filename.hidden = true;
+						}
+					});
+				}
 			});"
 		);
 	}
@@ -169,7 +210,8 @@ class Catalogue_Image_Studio_Admin {
 		if (isset($_POST['disconnect_store'])) {
 			$settings['api_token'] = '';
 			update_option($this->plugin->get_option_name(), $settings, false);
-			$this->add_success(__('Store disconnected.', 'catalogue-image-studio'));
+			$this->queue_notice(__('Store disconnected.', 'catalogue-image-studio'), 'success');
+			$this->redirect_after_settings_post();
 			return;
 		}
 
@@ -177,6 +219,10 @@ class Catalogue_Image_Studio_Admin {
 
 		if (empty($input['api_token'])) {
 			$input['api_token'] = (string) $settings['api_token'];
+		}
+
+		if (empty($input['catalogue_image_studio_full_settings'])) {
+			$input = array_merge($settings, $input);
 		}
 
 		$settings = $this->sanitize_settings_payload($input);
@@ -190,15 +236,26 @@ class Catalogue_Image_Studio_Admin {
 
 		update_option($this->plugin->get_option_name(), $settings, false);
 
+		if (! empty($settings['debug_mode'])) {
+			$this->plugin->logger()->info(
+				'Catalogue Image Studio settings saved.',
+				[
+					'saved_option' => $this->sanitize_settings_for_debug_log($settings),
+				]
+			);
+		}
+
 		if (isset($_POST['clear_local_cache'])) {
 			$this->plugin->jobs()->delete_all();
-			$this->add_success(__('Local image job cache cleared.', 'catalogue-image-studio'));
+			$this->queue_notice(__('Local image job cache cleared.', 'catalogue-image-studio'), 'success');
+			$this->redirect_after_settings_post();
 			return;
 		}
 
 		if (isset($_POST['reset_local_data'])) {
 			$this->plugin->jobs()->delete_all();
-			$this->add_success(__('Plugin local data reset.', 'catalogue-image-studio'));
+			$this->queue_notice(__('Plugin local data reset.', 'catalogue-image-studio'), 'success');
+			$this->redirect_after_settings_post();
 			return;
 		}
 
@@ -211,13 +268,15 @@ class Catalogue_Image_Studio_Admin {
 			$usage = $client->get_usage();
 
 			if (is_wp_error($usage)) {
-				$this->add_error($usage->get_error_message());
+				$this->queue_notice($usage->get_error_message(), 'error');
 			} else {
-				$this->add_success(__('Store connected to Optivra.', 'catalogue-image-studio'));
+				$this->queue_notice(__('Store connected to Optivra.', 'catalogue-image-studio'), 'success');
 			}
 		} else {
-			$this->add_success(__('Settings saved.', 'catalogue-image-studio'));
+			$this->queue_notice(__('Settings saved.', 'catalogue-image-studio'), 'success');
 		}
+
+		$this->redirect_after_settings_post();
 	}
 
 	public function sanitize_settings_payload($input): array {
@@ -228,35 +287,48 @@ class Catalogue_Image_Studio_Admin {
 
 		$settings['enabled']                 = true;
 		$settings['api_token']               = isset($input['api_token']) ? trim(sanitize_text_field((string) $input['api_token'])) : (string) $settings['api_token'];
-		$settings['api_base_url']            = isset($input['api_base_url']) ? esc_url_raw((string) $input['api_base_url']) : (string) $settings['api_base_url'];
-		$settings['api_base_url']            = '' !== (string) $settings['api_base_url'] ? (string) $settings['api_base_url'] : (string) $defaults['api_base_url'];
-		$settings['approval_required']       = ! empty($input['approval_required']);
+		$settings['api_base_url_override']   = isset($input['api_base_url_override']) ? esc_url_raw((string) $input['api_base_url_override']) : (string) ($settings['api_base_url_override'] ?? '');
+		$settings['api_base_url']            = '' !== (string) $settings['api_base_url_override'] ? (string) $settings['api_base_url_override'] : (string) $defaults['api_base_url'];
+		$settings['require_approval']        = ! empty($input['require_approval']);
+		$settings['approval_required']       = $settings['require_approval'];
 		$settings['auto_process_new_images'] = ! empty($input['auto_process_new_images']);
 		$settings['process_featured_images'] = ! empty($input['process_featured_images']);
 		$settings['process_gallery_images']  = ! empty($input['process_gallery_images']);
-		$settings['smart_scaling_enabled']   = ! empty($input['smart_scaling_enabled']);
-		$settings['shadow_enabled']          = ! empty($input['shadow_enabled']);
+		$settings['process_category_images'] = ! empty($input['process_category_images']);
+		$settings['smart_scaling']           = ! empty($input['smart_scaling']);
+		$settings['smart_scaling_enabled']   = $settings['smart_scaling'];
+		$settings['apply_shadow']            = ! empty($input['apply_shadow']);
+		$settings['shadow_enabled']          = $settings['apply_shadow'];
 		$settings['duplicate_detection']     = ! empty($input['duplicate_detection']);
-		$settings['enable_filename_seo']     = ! empty($input['enable_filename_seo']);
-		$settings['enable_alt_text']         = ! empty($input['enable_alt_text']);
+		$settings['generate_seo_filename']   = ! empty($input['generate_seo_filename']);
+		$settings['enable_filename_seo']     = $settings['generate_seo_filename'];
+		$settings['generate_alt_text']       = ! empty($input['generate_alt_text']);
+		$settings['enable_alt_text']         = $settings['generate_alt_text'];
 		$settings['generate_image_title']    = ! empty($input['generate_image_title']);
-		$settings['only_fill_missing']       = ! empty($input['only_fill_missing']);
-		$settings['overwrite_existing_meta'] = ! empty($input['overwrite_existing_meta']);
+		$settings['only_fill_missing_metadata'] = ! empty($input['only_fill_missing_metadata']);
+		$settings['only_fill_missing']       = $settings['only_fill_missing_metadata'];
+		$settings['overwrite_existing_metadata'] = ! empty($input['overwrite_existing_metadata']);
+		$settings['overwrite_existing_meta'] = $settings['overwrite_existing_metadata'];
 		$settings['retry_failed_jobs']       = ! empty($input['retry_failed_jobs']);
-		$settings['pause_low_credits']       = ! empty($input['pause_low_credits']);
+		$settings['pause_on_low_credits']    = ! empty($input['pause_on_low_credits']);
+		$settings['pause_low_credits']       = $settings['pause_on_low_credits'];
 		$settings['auto_refresh_job_status'] = ! empty($input['auto_refresh_job_status']);
 		$settings['show_low_credit_warning'] = ! empty($input['show_low_credit_warning']);
-		$settings['show_job_completion_alerts'] = ! empty($input['show_job_completion_alerts']);
-		$settings['show_failed_job_alerts']  = ! empty($input['show_failed_job_alerts']);
+		$settings['show_completion_alerts']  = ! empty($input['show_completion_alerts']);
+		$settings['show_job_completion_alerts'] = $settings['show_completion_alerts'];
+		$settings['show_failed_alerts']      = ! empty($input['show_failed_alerts']);
+		$settings['show_failed_job_alerts']  = $settings['show_failed_alerts'];
 		$settings['debug_mode']              = ! empty($input['debug_mode']);
-		$settings['seo_brand_suffix']        = isset($input['seo_brand_suffix']) ? sanitize_text_field((string) $input['seo_brand_suffix']) : '';
+		$settings['brand_keyword_suffix']    = isset($input['brand_keyword_suffix']) ? sanitize_text_field((string) $input['brand_keyword_suffix']) : '';
+		$settings['seo_brand_suffix']        = $settings['brand_keyword_suffix'];
 		$settings['background_source']       = $this->sanitize_background_source($input['background_source'] ?? $settings['background_source']);
 		$settings['custom_background_attachment_id'] = isset($input['custom_background_attachment_id']) ? absint($input['custom_background_attachment_id']) : (int) ($settings['custom_background_attachment_id'] ?? 0);
 		$settings['shadow_strength']         = $this->sanitize_shadow_strength($input['shadow_strength'] ?? $settings['shadow_strength']);
 		$settings['background_preset']       = $this->sanitize_background_preset($input['background_preset'] ?? $settings['background_preset']);
 		$settings['background']              = $settings['background_preset'];
-		$settings['scale_mode']              = $this->sanitize_scale_mode($input['scale_mode'] ?? $settings['scale_mode']);
-		$settings['scale_percent']           = $this->map_scale_mode_to_percent($settings['scale_mode']);
+		$settings['default_scale_mode']      = $this->sanitize_scale_mode($input['default_scale_mode'] ?? $settings['default_scale_mode']);
+		$settings['scale_mode']              = $settings['default_scale_mode'];
+		$settings['scale_percent']           = $this->map_scale_mode_to_percent($settings['default_scale_mode']);
 		$settings['batch_size']              = isset($input['batch_size']) ? max(1, min(50, absint($input['batch_size']))) : (int) $defaults['batch_size'];
 
 		$presets = isset($settings['category_presets']) && is_array($settings['category_presets']) ? $settings['category_presets'] : [];
@@ -307,14 +379,18 @@ class Catalogue_Image_Studio_Admin {
 
 		if ('scan' === $action) {
 			$result = $this->plugin->scanner()->scan($this->get_scan_filters_from_request());
-			$this->add_success(
-				sprintf(
-					/* translators: 1: slots found, 2: jobs created/refreshed */
-					__('Scan complete. Found %1$d images and refreshed %2$d jobs.', 'catalogue-image-studio'),
-					(int) $result['slots_found'],
-					count((array) $result['job_ids'])
-				)
-			);
+			if ((int) $result['slots_found'] <= 0) {
+				$this->add_error(__('No images found. Check product status/category filters or run with debug mode enabled.', 'catalogue-image-studio'));
+			} else {
+				$this->add_success(
+					sprintf(
+						/* translators: 1: slots found, 2: jobs created/refreshed */
+						__('Scan complete. Found %1$d images and refreshed %2$d jobs.', 'catalogue-image-studio'),
+						(int) $result['slots_found'],
+						count((array) $result['job_ids'])
+					)
+				);
+			}
 			return;
 		}
 
@@ -457,24 +533,21 @@ class Catalogue_Image_Studio_Admin {
 		$settings = $this->plugin->get_settings();
 		$include_featured_default = ! empty($settings['process_featured_images']);
 		$include_gallery_default  = ! empty($settings['process_gallery_images']);
+		$include_category_default = ! empty($settings['process_category_images']);
 		$filters = [
 			'category'         => isset($_POST['filter_category']) ? absint($_POST['filter_category']) : 0,
 			'product_type'     => isset($_POST['filter_product_type']) ? sanitize_key(wp_unslash($_POST['filter_product_type'])) : '',
 			'stock_status'     => isset($_POST['filter_stock_status']) ? sanitize_key(wp_unslash($_POST['filter_stock_status'])) : '',
+			'include_category' => isset($_POST['filter_include_category']) ? true : $include_category_default,
 			'include_featured' => isset($_POST['filter_image_gallery_only']) ? false : $include_featured_default,
 			'include_gallery'  => isset($_POST['filter_image_featured_only']) ? false : $include_gallery_default,
 		];
 
-		if (! empty($_POST['filter_product_status'])) {
-			$filters['status'] = [sanitize_key(wp_unslash($_POST['filter_product_status']))];
-		}
+		$filters['status'] = ! empty($_POST['filter_product_status'])
+			? sanitize_key(wp_unslash($_POST['filter_product_status']))
+			: 'publish';
 
-		return array_filter(
-			$filters,
-			static function ($value) {
-				return '' !== $value && 0 !== $value && null !== $value;
-			}
-		);
+		return $filters;
 	}
 
 	/**
@@ -530,6 +603,69 @@ class Catalogue_Image_Studio_Admin {
 		add_settings_error('catalogue_image_studio_messages', uniqid('catalogue_image_studio_', true), $message, 'error');
 	}
 
+	private function queue_notice(string $message, string $type = 'success'): void {
+		$user_id = get_current_user_id();
+		if ($user_id <= 0) {
+			return;
+		}
+
+		$notices   = get_transient($this->get_notice_transient_key($user_id));
+		$notices   = is_array($notices) ? $notices : [];
+		$notices[] = [
+			'message' => $message,
+			'type'    => 'error' === $type ? 'error' : 'success',
+		];
+
+		set_transient($this->get_notice_transient_key($user_id), $notices, MINUTE_IN_SECONDS);
+	}
+
+	private function render_queued_notices(): void {
+		$user_id = get_current_user_id();
+		if ($user_id <= 0) {
+			return;
+		}
+
+		$key     = $this->get_notice_transient_key($user_id);
+		$notices = get_transient($key);
+		delete_transient($key);
+
+		if (! is_array($notices) || empty($notices)) {
+			return;
+		}
+
+		foreach ($notices as $notice) {
+			$type = ! empty($notice['type']) && 'error' === $notice['type'] ? 'notice-error' : 'notice-success';
+			echo '<div class="notice ' . esc_attr($type) . ' is-dismissible"><p>' . esc_html((string) ($notice['message'] ?? '')) . '</p></div>';
+		}
+	}
+
+	private function get_notice_transient_key(int $user_id): string {
+		return 'catalogue_image_studio_notices_' . $user_id;
+	}
+
+	private function redirect_after_settings_post(): void {
+		$target = admin_url('admin.php?page=catalogue-image-studio');
+		if (! empty($_POST['catalogue_image_studio_full_settings'])) {
+			$target = add_query_arg('cis_tab', 'settings', $target);
+		}
+
+		wp_safe_redirect($target);
+		exit;
+	}
+
+	/**
+	 * @param array<string,mixed> $settings Settings.
+	 * @return array<string,mixed>
+	 */
+	private function sanitize_settings_for_debug_log(array $settings): array {
+		$debug_settings = $settings;
+		if (! empty($debug_settings['api_token'])) {
+			$debug_settings['api_token'] = $this->mask_token((string) $debug_settings['api_token']);
+		}
+
+		return $debug_settings;
+	}
+
 	/**
 	 * Render admin page.
 	 *
@@ -548,6 +684,8 @@ class Catalogue_Image_Studio_Admin {
 		?>
 		<div class="wrap catalogue-image-studio-admin">
 			<h1><?php echo esc_html__('Catalogue Image Studio', 'catalogue-image-studio'); ?></h1>
+			<p class="catalogue-image-studio-page-intro"><?php echo esc_html__('Configure how Optivra optimises and writes product images back to your store.', 'catalogue-image-studio'); ?></p>
+			<?php $this->render_queued_notices(); ?>
 			<?php settings_errors('catalogue_image_studio_messages'); ?>
 
 			<?php if (! $connected) : ?>
@@ -657,7 +795,7 @@ class Catalogue_Image_Studio_Admin {
 					<thead><tr><td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td><th><?php echo esc_html__('Image', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Product', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Slot', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Status', 'catalogue-image-studio'); ?></th></tr></thead>
 					<tbody>
 						<?php if (empty($slots)) : ?>
-							<tr><td colspan="5"><?php echo esc_html__('No matching product images found.', 'catalogue-image-studio'); ?></td></tr>
+							<tr><td colspan="5"><?php echo esc_html__('No images found. Check product status/category filters or run with debug mode enabled.', 'catalogue-image-studio'); ?></td></tr>
 						<?php else : ?>
 							<?php foreach ($slots as $slot) : ?>
 								<?php $this->render_scan_slot_row($slot); ?>
@@ -674,17 +812,19 @@ class Catalogue_Image_Studio_Admin {
 		$settings = $this->plugin->get_settings();
 		$include_featured_default = ! empty($settings['process_featured_images']);
 		$include_gallery_default  = ! empty($settings['process_gallery_images']);
+		$include_category_default = ! empty($settings['process_category_images']);
 		$filters = [
 			'category'         => isset($_GET['filter_category']) ? absint($_GET['filter_category']) : 0,
 			'product_type'     => isset($_GET['filter_product_type']) ? sanitize_key(wp_unslash($_GET['filter_product_type'])) : '',
 			'stock_status'     => isset($_GET['filter_stock_status']) ? sanitize_key(wp_unslash($_GET['filter_stock_status'])) : '',
+			'include_category' => isset($_GET['filter_include_category']) ? true : $include_category_default,
 			'include_featured' => isset($_GET['filter_image_gallery_only']) ? false : $include_featured_default,
 			'include_gallery'  => isset($_GET['filter_image_featured_only']) ? false : $include_gallery_default,
 		];
 
-		if (! empty($_GET['filter_product_status'])) {
-			$filters['status'] = [sanitize_key(wp_unslash($_GET['filter_product_status']))];
-		}
+		$filters['status'] = ! empty($_GET['filter_product_status'])
+			? sanitize_key(wp_unslash($_GET['filter_product_status']))
+			: 'publish';
 
 		return $filters;
 	}
@@ -695,14 +835,15 @@ class Catalogue_Image_Studio_Admin {
 		<form method="get" action="" class="catalogue-image-studio-filters">
 			<input type="hidden" name="page" value="catalogue-image-studio" />
 			<input type="hidden" name="cis_tab" value="scan" />
-			<label><?php echo esc_html__('Category', 'catalogue-image-studio'); ?><select name="filter_category"><option value="0"><?php echo esc_html__('All categories', 'catalogue-image-studio'); ?></option><?php if (! is_wp_error($categories)) : foreach ($categories as $category) : ?><option value="<?php echo esc_attr((string) $category->term_id); ?>" <?php selected((int) ($filters['category'] ?? 0), (int) $category->term_id); ?>><?php echo esc_html($category->name); ?></option><?php endforeach; endif; ?></select></label>
-			<label><?php echo esc_html__('Product status', 'catalogue-image-studio'); ?><select name="filter_product_status"><option value=""><?php echo esc_html__('Published and private', 'catalogue-image-studio'); ?></option><option value="publish" <?php selected('publish', (string) (($filters['status'][0] ?? ''))); ?>><?php echo esc_html__('Published', 'catalogue-image-studio'); ?></option><option value="draft" <?php selected('draft', (string) (($filters['status'][0] ?? ''))); ?>><?php echo esc_html__('Draft', 'catalogue-image-studio'); ?></option><option value="private" <?php selected('private', (string) (($filters['status'][0] ?? ''))); ?>><?php echo esc_html__('Private', 'catalogue-image-studio'); ?></option></select></label>
-			<label><?php echo esc_html__('Product type', 'catalogue-image-studio'); ?><select name="filter_product_type"><option value=""><?php echo esc_html__('All types', 'catalogue-image-studio'); ?></option><option value="simple" <?php selected('simple', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Simple', 'catalogue-image-studio'); ?></option><option value="variable" <?php selected('variable', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Variable', 'catalogue-image-studio'); ?></option></select></label>
-			<label><?php echo esc_html__('Processing state', 'catalogue-image-studio'); ?><select name="filter_processing_state"><option value=""><?php echo esc_html__('All', 'catalogue-image-studio'); ?></option><option value="unprocessed" <?php selected('unprocessed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Unprocessed', 'catalogue-image-studio'); ?></option><option value="processed" <?php selected('processed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Already processed', 'catalogue-image-studio'); ?></option></select></label>
-			<label><?php echo esc_html__('Stock', 'catalogue-image-studio'); ?><select name="filter_stock_status"><option value=""><?php echo esc_html__('Any stock status', 'catalogue-image-studio'); ?></option><option value="instock" <?php selected('instock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('In stock', 'catalogue-image-studio'); ?></option><option value="outofstock" <?php selected('outofstock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('Out of stock', 'catalogue-image-studio'); ?></option></select></label>
-			<label><input type="checkbox" name="filter_image_featured_only" value="1" <?php checked(isset($_GET['filter_image_featured_only'])); ?> /> <?php echo esc_html__('Featured images only', 'catalogue-image-studio'); ?></label>
-			<label><input type="checkbox" name="filter_image_gallery_only" value="1" <?php checked(isset($_GET['filter_image_gallery_only'])); ?> /> <?php echo esc_html__('Gallery images only', 'catalogue-image-studio'); ?></label>
-			<button class="button"><?php echo esc_html__('Apply filters', 'catalogue-image-studio'); ?></button>
+			<label><span><?php echo esc_html__('Category', 'catalogue-image-studio'); ?></span><select name="filter_category"><option value="0"><?php echo esc_html__('All categories', 'catalogue-image-studio'); ?></option><?php if (! is_wp_error($categories)) : foreach ($categories as $category) : ?><option value="<?php echo esc_attr((string) $category->term_id); ?>" <?php selected((int) ($filters['category'] ?? 0), (int) $category->term_id); ?>><?php echo esc_html($category->name); ?></option><?php endforeach; endif; ?></select></label>
+			<label><span><?php echo esc_html__('Product status', 'catalogue-image-studio'); ?></span><select name="filter_product_status"><option value="publish" <?php selected('publish', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Published', 'catalogue-image-studio'); ?></option><option value="draft" <?php selected('draft', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Draft', 'catalogue-image-studio'); ?></option><option value="private" <?php selected('private', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Private', 'catalogue-image-studio'); ?></option><option value="all" <?php selected('all', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('All', 'catalogue-image-studio'); ?></option></select></label>
+			<label><span><?php echo esc_html__('Product type', 'catalogue-image-studio'); ?></span><select name="filter_product_type"><option value=""><?php echo esc_html__('All types', 'catalogue-image-studio'); ?></option><option value="simple" <?php selected('simple', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Simple', 'catalogue-image-studio'); ?></option><option value="variable" <?php selected('variable', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Variable', 'catalogue-image-studio'); ?></option></select></label>
+			<label><span><?php echo esc_html__('Processing state', 'catalogue-image-studio'); ?></span><select name="filter_processing_state"><option value=""><?php echo esc_html__('All', 'catalogue-image-studio'); ?></option><option value="unprocessed" <?php selected('unprocessed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Unprocessed', 'catalogue-image-studio'); ?></option><option value="processed" <?php selected('processed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Already processed', 'catalogue-image-studio'); ?></option></select></label>
+			<label><span><?php echo esc_html__('Stock', 'catalogue-image-studio'); ?></span><select name="filter_stock_status"><option value=""><?php echo esc_html__('Any stock status', 'catalogue-image-studio'); ?></option><option value="instock" <?php selected('instock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('In stock', 'catalogue-image-studio'); ?></option><option value="outofstock" <?php selected('outofstock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('Out of stock', 'catalogue-image-studio'); ?></option></select></label>
+			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_image_featured_only" value="1" <?php checked(isset($_GET['filter_image_featured_only'])); ?> /><span><?php echo esc_html__('Featured images only', 'catalogue-image-studio'); ?></span></label>
+			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_image_gallery_only" value="1" <?php checked(isset($_GET['filter_image_gallery_only'])); ?> /><span><?php echo esc_html__('Gallery images only', 'catalogue-image-studio'); ?></span></label>
+			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_include_category" value="1" <?php checked(! empty($filters['include_category'])); ?> /><span><?php echo esc_html__('Include category images', 'catalogue-image-studio'); ?></span></label>
+			<div class="catalogue-image-studio-filter-actions"><button class="button button-primary"><?php echo esc_html__('Apply filters', 'catalogue-image-studio'); ?></button></div>
 		</form>
 		<?php
 	}
@@ -714,12 +855,14 @@ class Catalogue_Image_Studio_Admin {
 			}
 		}
 
-		if (! empty($filters['status'][0])) {
-			echo '<input type="hidden" name="filter_product_status" value="' . esc_attr((string) $filters['status'][0]) . '" />';
-		}
+		echo '<input type="hidden" name="filter_product_status" value="' . esc_attr((string) ($filters['status'] ?? 'publish')) . '" />';
 
 		if (! empty($_GET['filter_processing_state'])) {
 			echo '<input type="hidden" name="filter_processing_state" value="' . esc_attr(sanitize_key(wp_unslash($_GET['filter_processing_state']))) . '" />';
+		}
+
+		if (! empty($filters['include_category'])) {
+			echo '<input type="hidden" name="filter_include_category" value="1" />';
 		}
 
 		if (empty($filters['include_featured'])) {
@@ -760,12 +903,19 @@ class Catalogue_Image_Studio_Admin {
 		$value         = implode(':', [$product_id, $attachment_id, sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]);
 		$job           = $this->plugin->jobs()->find_by_slot($slot);
 		$status        = $job ? $this->format_status((string) $job['status']) : __('Ready to queue', 'catalogue-image-studio');
+		$product_name  = ! empty($slot['product_name']) ? (string) $slot['product_name'] : get_the_title($product_id);
+		$slot_label    = (string) $slot['image_role'];
+		if ('gallery' === $slot_label) {
+			$slot_label .= ' #' . ((int) $slot['gallery_index'] + 1);
+		} elseif ('category' === $slot_label && ! empty($slot['category_name'])) {
+			$slot_label .= ': ' . (string) $slot['category_name'];
+		}
 		?>
 		<tr>
 			<th scope="row" class="check-column"><input type="checkbox" class="catalogue-image-studio-job-check" name="slots[]" value="<?php echo esc_attr($value); ?>" /></th>
-			<td><?php $this->render_thumbnail((string) wp_get_attachment_image_url($attachment_id, 'thumbnail'), __('Product image', 'catalogue-image-studio')); ?></td>
-			<td><strong><?php echo esc_html(get_the_title($product_id)); ?></strong><br /><a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'catalogue-image-studio'); ?></a></td>
-			<td><?php echo esc_html((string) $slot['image_role']); ?> <?php echo 'gallery' === (string) $slot['image_role'] ? esc_html('#' . ((int) $slot['gallery_index'] + 1)) : ''; ?></td>
+			<td><?php $this->render_thumbnail((string) ($slot['image_url'] ?? wp_get_attachment_image_url($attachment_id, 'thumbnail')), __('Product image', 'catalogue-image-studio')); ?></td>
+			<td><strong><?php echo esc_html($product_name); ?></strong><br /><a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'catalogue-image-studio'); ?></a></td>
+			<td><?php echo esc_html($slot_label); ?></td>
 			<td><?php echo esc_html($status); ?></td>
 		</tr>
 		<?php
@@ -827,7 +977,7 @@ class Catalogue_Image_Studio_Admin {
 		$categories = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
 		$selected_category_id = isset($_REQUEST['category_preset_category']) ? absint($_REQUEST['category_preset_category']) : 0;
 		$selected_preset = $selected_category_id > 0 && ! empty($settings['category_presets'][$selected_category_id]) ? $settings['category_presets'][$selected_category_id] : null;
-		$custom_background_url = $this->get_custom_background_preview_url($settings);
+		$custom_background = $this->get_custom_background_preview($settings);
 		?>
 		<div class="catalogue-image-studio-panel">
 			<h2><?php echo esc_html__('Settings', 'catalogue-image-studio'); ?></h2>
@@ -839,19 +989,26 @@ class Catalogue_Image_Studio_Admin {
 				<section class="catalogue-image-studio-settings-section">
 					<h3><?php echo esc_html__('Connection', 'catalogue-image-studio'); ?></h3>
 					<p class="catalogue-image-studio-help"><?php echo esc_html__('Paste your Site API Token to connect this store. That is the only setting most stores need.', 'catalogue-image-studio'); ?></p>
-					<?php $this->render_connection_form($settings, $usage, true); ?>
+					<?php $this->render_connection_form($settings, $usage, true, false); ?>
 				</section>
 
 				<div class="catalogue-image-studio-settings-grid">
 					<section class="catalogue-image-studio-settings-section">
 						<h3><?php echo esc_html__('Processing Defaults', 'catalogue-image-studio'); ?></h3>
-						<?php $this->render_toggle_field('approval_required', __('Require approval before replacing images', 'catalogue-image-studio'), ! empty($settings['approval_required']), __('Processed images stay in review until you approve them.', 'catalogue-image-studio')); ?>
+						<div class="catalogue-image-studio-toggle-grid">
+						<?php $this->render_toggle_field('require_approval', __('Require approval before replacing images', 'catalogue-image-studio'), ! empty($settings['require_approval']), __('Processed images stay in review until you approve them.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('auto_process_new_images', __('Auto-process new product images', 'catalogue-image-studio'), ! empty($settings['auto_process_new_images']), __('Newly scanned images are added to the queue automatically.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('process_featured_images', __('Process featured images', 'catalogue-image-studio'), ! empty($settings['process_featured_images']), __('Include main product images in scans and queues by default.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('process_gallery_images', __('Process gallery images', 'catalogue-image-studio'), ! empty($settings['process_gallery_images']), __('Include WooCommerce gallery images in scans and queues by default.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('smart_scaling_enabled', __('Smart scaling', 'catalogue-image-studio'), ! empty($settings['smart_scaling_enabled']), __('Keep products comfortably framed without clipping.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('shadow_enabled', __('Apply shadow', 'catalogue-image-studio'), ! empty($settings['shadow_enabled']), __('Add a soft grounding shadow to processed images.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('process_category_images', __('Process category images', 'catalogue-image-studio'), ! empty($settings['process_category_images']), __('Include category thumbnail images when you choose to scan them.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('smart_scaling', __('Smart scaling', 'catalogue-image-studio'), ! empty($settings['smart_scaling']), __('Keep products comfortably framed without clipping.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('apply_shadow', __('Apply shadow', 'catalogue-image-studio'), ! empty($settings['apply_shadow']), __('Add a soft grounding shadow to processed images.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('duplicate_detection', __('Duplicate detection', 'catalogue-image-studio'), ! empty($settings['duplicate_detection']), __('Reuse previous processed results when the source image has already been optimised.', 'catalogue-image-studio')); ?>
+						</div>
+					</section>
+
+					<section class="catalogue-image-studio-settings-section">
+						<h3><?php echo esc_html__('Background & Framing', 'catalogue-image-studio'); ?></h3>
 						<div class="catalogue-image-studio-control-grid">
 							<label>
 								<span><?php echo esc_html__('Background source', 'catalogue-image-studio'); ?></span>
@@ -868,7 +1025,7 @@ class Catalogue_Image_Studio_Admin {
 							</label>
 							<label>
 								<span><?php echo esc_html__('Default image framing', 'catalogue-image-studio'); ?></span>
-								<select name="scale_mode"><?php foreach ($this->get_scale_modes() as $mode_key => $mode_label) : ?><option value="<?php echo esc_attr($mode_key); ?>" <?php selected((string) ($settings['scale_mode'] ?? 'auto'), $mode_key); ?>><?php echo esc_html($mode_label); ?></option><?php endforeach; ?></select>
+								<select name="default_scale_mode"><?php foreach ($this->get_scale_modes() as $mode_key => $mode_label) : ?><option value="<?php echo esc_attr($mode_key); ?>" <?php selected((string) ($settings['default_scale_mode'] ?? 'auto'), $mode_key); ?>><?php echo esc_html($mode_label); ?></option><?php endforeach; ?></select>
 								<small class="catalogue-image-studio-help"><?php echo esc_html__('Choose how tightly products are framed by default.', 'catalogue-image-studio'); ?></small>
 							</label>
 							<div class="catalogue-image-studio-background-picker">
@@ -876,12 +1033,14 @@ class Catalogue_Image_Studio_Admin {
 								<input type="hidden" id="catalogue-image-studio-custom-background-id" name="custom_background_attachment_id" value="<?php echo esc_attr((string) ($settings['custom_background_attachment_id'] ?? 0)); ?>" />
 								<div class="catalogue-image-studio-actions">
 									<button type="button" class="button" id="catalogue-image-studio-pick-background"><?php echo esc_html__('Choose background', 'catalogue-image-studio'); ?></button>
+									<button type="button" class="button" id="catalogue-image-studio-remove-background"><?php echo esc_html__('Remove background', 'catalogue-image-studio'); ?></button>
 								</div>
-								<?php if ($custom_background_url) : ?>
-									<img id="catalogue-image-studio-custom-background-preview" class="catalogue-image-studio-background-preview" src="<?php echo esc_url($custom_background_url); ?>" alt="" />
+								<?php if (! empty($custom_background['url'])) : ?>
+									<img id="catalogue-image-studio-custom-background-preview" class="catalogue-image-studio-background-preview" src="<?php echo esc_url($custom_background['url']); ?>" alt="" />
 								<?php else : ?>
 									<img id="catalogue-image-studio-custom-background-preview" class="catalogue-image-studio-background-preview" src="" alt="" hidden />
 								<?php endif; ?>
+								<small id="catalogue-image-studio-custom-background-filename" class="catalogue-image-studio-background-filename" <?php echo empty($custom_background['filename']) ? 'hidden' : ''; ?>><?php echo ! empty($custom_background['filename']) ? esc_html($custom_background['filename']) : ''; ?></small>
 								<small class="catalogue-image-studio-help"><?php echo esc_html__('Upload or choose a background image from your Media Library for custom processing.', 'catalogue-image-studio'); ?></small>
 							</div>
 						</div>
@@ -923,40 +1082,46 @@ class Catalogue_Image_Studio_Admin {
 
 					<section class="catalogue-image-studio-settings-section">
 						<h3><?php echo esc_html__('SEO Settings', 'catalogue-image-studio'); ?></h3>
-						<?php $this->render_toggle_field('enable_filename_seo', __('Generate SEO filename', 'catalogue-image-studio'), ! empty($settings['enable_filename_seo']), __('Rename processed files to a cleaner, search-friendly filename.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('enable_alt_text', __('Generate alt text', 'catalogue-image-studio'), ! empty($settings['enable_alt_text']), __('Fill image alt text suggestions automatically.', 'catalogue-image-studio')); ?>
+						<div class="catalogue-image-studio-toggle-grid">
+						<?php $this->render_toggle_field('generate_seo_filename', __('Generate SEO filename', 'catalogue-image-studio'), ! empty($settings['generate_seo_filename']), __('Rename processed files to a cleaner, search-friendly filename.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('generate_alt_text', __('Generate alt text', 'catalogue-image-studio'), ! empty($settings['generate_alt_text']), __('Fill image alt text suggestions automatically.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('generate_image_title', __('Generate image title', 'catalogue-image-studio'), ! empty($settings['generate_image_title']), __('Fill the WordPress media title with the suggested image title.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('only_fill_missing', __('Only fill missing metadata', 'catalogue-image-studio'), ! empty($settings['only_fill_missing']), __('Leave existing attachment metadata alone unless the field is blank.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('overwrite_existing_meta', __('Overwrite existing metadata', 'catalogue-image-studio'), ! empty($settings['overwrite_existing_meta']), __('Allow generated SEO fields to replace existing values.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('only_fill_missing_metadata', __('Only fill missing metadata', 'catalogue-image-studio'), ! empty($settings['only_fill_missing_metadata']), __('Leave existing attachment metadata alone unless the field is blank.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('overwrite_existing_metadata', __('Overwrite existing metadata', 'catalogue-image-studio'), ! empty($settings['overwrite_existing_metadata']), __('Allow generated SEO fields to replace existing values.', 'catalogue-image-studio')); ?>
+						</div>
 						<label>
 							<span><?php echo esc_html__('Brand keyword suffix', 'catalogue-image-studio'); ?></span>
-							<input type="text" name="seo_brand_suffix" value="<?php echo esc_attr((string) ($settings['seo_brand_suffix'] ?? '')); ?>" />
+							<input type="text" name="brand_keyword_suffix" value="<?php echo esc_attr((string) ($settings['brand_keyword_suffix'] ?? '')); ?>" />
 							<small class="catalogue-image-studio-help"><?php echo esc_html__('Optional brand or collection term to append to generated SEO suggestions.', 'catalogue-image-studio'); ?></small>
 						</label>
 						<?php $this->render_seo_preview_example($settings); ?>
 					</section>
 
 					<section class="catalogue-image-studio-settings-section">
-						<h3><?php echo esc_html__('Workflow Settings', 'catalogue-image-studio'); ?></h3>
+						<h3><?php echo esc_html__('Workflow', 'catalogue-image-studio'); ?></h3>
 						<label>
 							<span><?php echo esc_html__('Batch size', 'catalogue-image-studio'); ?></span>
 							<input type="number" min="1" max="50" name="batch_size" value="<?php echo esc_attr((string) ($settings['batch_size'] ?? 10)); ?>" />
 							<small class="catalogue-image-studio-help"><?php echo esc_html__('How many queued images to process when you run the next batch.', 'catalogue-image-studio'); ?></small>
 						</label>
+						<div class="catalogue-image-studio-toggle-grid">
 						<?php $this->render_toggle_field('retry_failed_jobs', __('Retry failed jobs automatically', 'catalogue-image-studio'), ! empty($settings['retry_failed_jobs']), __('Keep failed jobs ready for a quick retry pass.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('pause_low_credits', __('Pause processing when credits are low', 'catalogue-image-studio'), ! empty($settings['pause_low_credits']), __('Prevent larger queue batches from running when your balance is nearly depleted.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('pause_on_low_credits', __('Pause processing when credits are low', 'catalogue-image-studio'), ! empty($settings['pause_on_low_credits']), __('Prevent larger queue batches from running when your balance is nearly depleted.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('auto_refresh_job_status', __('Auto-refresh job status', 'catalogue-image-studio'), ! empty($settings['auto_refresh_job_status']), __('Refresh the Queue tab automatically while jobs are moving.', 'catalogue-image-studio')); ?>
+						</div>
 					</section>
 
 					<section class="catalogue-image-studio-settings-section">
 						<h3><?php echo esc_html__('Notifications', 'catalogue-image-studio'); ?></h3>
+						<div class="catalogue-image-studio-toggle-grid">
 						<?php $this->render_toggle_field('show_low_credit_warning', __('Show low credit warning', 'catalogue-image-studio'), ! empty($settings['show_low_credit_warning']), __('Show a warning banner when your remaining credits are getting low.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('show_job_completion_alerts', __('Show job completion alerts', 'catalogue-image-studio'), ! empty($settings['show_job_completion_alerts']), __('Display confirmation notices after processing or approval actions complete.', 'catalogue-image-studio')); ?>
-						<?php $this->render_toggle_field('show_failed_job_alerts', __('Show failed job alerts', 'catalogue-image-studio'), ! empty($settings['show_failed_job_alerts']), __('Display failure notices when the API or processing workflow returns an error.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('show_completion_alerts', __('Show job completion alerts', 'catalogue-image-studio'), ! empty($settings['show_completion_alerts']), __('Display confirmation notices after processing or approval actions complete.', 'catalogue-image-studio')); ?>
+						<?php $this->render_toggle_field('show_failed_alerts', __('Show failed job alerts', 'catalogue-image-studio'), ! empty($settings['show_failed_alerts']), __('Display failure notices when the API or processing workflow returns an error.', 'catalogue-image-studio')); ?>
+						</div>
 					</section>
 				</div>
 				<?php $this->render_advanced_settings($settings); ?>
-				<p class="submit"><button type="submit" class="button button-primary"><?php echo esc_html__('Save settings', 'catalogue-image-studio'); ?></button></p>
+				<div class="catalogue-image-studio-save-bar"><button type="submit" class="button button-primary"><?php echo esc_html__('Save Settings', 'catalogue-image-studio'); ?></button></div>
 			</form>
 		</div>
 		<?php
@@ -1053,7 +1218,7 @@ class Catalogue_Image_Studio_Admin {
 			<div class="catalogue-image-studio-step">1</div>
 			<h2><?php echo esc_html__('Connect Catalogue Image Studio to Optivra', 'catalogue-image-studio'); ?></h2>
 			<p><?php echo esc_html__('Paste your Site API Token from your Optivra account to connect this store.', 'catalogue-image-studio'); ?></p>
-			<?php $this->render_connection_form($settings, $usage, false); ?>
+			<?php $this->render_connection_form($settings, $usage, false, true); ?>
 		</div>
 		<?php
 	}
@@ -1065,14 +1230,14 @@ class Catalogue_Image_Studio_Admin {
 	private function render_advanced_settings(array $settings): void {
 		?>
 		<details class="catalogue-image-studio-advanced">
-			<summary><?php echo esc_html__('Advanced Settings', 'catalogue-image-studio'); ?></summary>
+			<summary><?php echo esc_html__('Advanced (for support / development only)', 'catalogue-image-studio'); ?></summary>
 			<p class="catalogue-image-studio-warning"><?php echo esc_html__('These settings are for development/support use only. Most users should not change them.', 'catalogue-image-studio'); ?></p>
 			<div class="catalogue-image-studio-advanced-grid">
 				<label>
 					<span><?php echo esc_html__('API Base URL override', 'catalogue-image-studio'); ?></span>
-					<input type="url" name="api_base_url" class="regular-text" value="<?php echo esc_attr((string) $settings['api_base_url']); ?>" placeholder="https://image-studio-hzqk.onrender.com" />
+					<input type="url" name="api_base_url_override" class="regular-text" value="<?php echo esc_attr((string) ($settings['api_base_url_override'] ?? '')); ?>" placeholder="https://image-studio-hzqk.onrender.com" />
 				</label>
-				<label><input type="checkbox" name="debug_mode" value="1" <?php checked(! empty($settings['debug_mode'])); ?> /> <?php echo esc_html__('Debug mode', 'catalogue-image-studio'); ?></label>
+				<?php $this->render_toggle_field('debug_mode', __('Debug mode', 'catalogue-image-studio'), ! empty($settings['debug_mode']), __('Enable detailed logging for support and troubleshooting.', 'catalogue-image-studio')); ?>
 			</div>
 			<button type="submit" name="clear_local_cache" value="1" class="button"><?php echo esc_html__('Clear local cache', 'catalogue-image-studio'); ?></button>
 			<button type="submit" name="reset_local_data" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Reset plugin local data', 'catalogue-image-studio'); ?></button>
@@ -1302,13 +1467,15 @@ class Catalogue_Image_Studio_Admin {
 		return $count;
 	}
 
-	private function render_connection_form(array $settings, $usage, bool $show_status_inline = true): void {
+	private function render_connection_form(array $settings, $usage, bool $show_status_inline = true, bool $wrap_form = true): void {
 		$connected = ! is_wp_error($usage);
 		?>
 		<div class="catalogue-image-studio-connection-card">
-			<form method="post" action="" class="catalogue-image-studio-connection-form">
-				<?php settings_fields('catalogue_image_studio_settings_group'); ?>
-				<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
+			<?php if ($wrap_form) : ?><form method="post" action="" class="catalogue-image-studio-connection-form"><?php else : ?><div class="catalogue-image-studio-connection-form"><?php endif; ?>
+				<?php if ($wrap_form) : ?>
+					<?php settings_fields('catalogue_image_studio_settings_group'); ?>
+					<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
+				<?php endif; ?>
 				<label class="catalogue-image-studio-token-field" for="catalogue-image-studio-api-token">
 					<span><?php echo esc_html__('Site API Token', 'catalogue-image-studio'); ?></span>
 					<input
@@ -1327,7 +1494,7 @@ class Catalogue_Image_Studio_Admin {
 
 				<div class="catalogue-image-studio-link-row">
 					<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'catalogue-image-studio'); ?></a>
-					<a href="<?php echo esc_url(trailingslashit((string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com')) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'catalogue-image-studio'); ?></a>
+					<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'catalogue-image-studio'); ?></a>
 				</div>
 
 				<div class="catalogue-image-studio-actions">
@@ -1341,7 +1508,7 @@ class Catalogue_Image_Studio_Admin {
 				<?php if (! $show_status_inline) : ?>
 					<?php $this->render_advanced_settings($settings); ?>
 				<?php endif; ?>
-			</form>
+			<?php if ($wrap_form) : ?></form><?php else : ?></div><?php endif; ?>
 			<div class="catalogue-image-studio-connection-status-panel">
 				<?php $this->render_connection_status($usage, $connected); ?>
 			</div>
@@ -1388,7 +1555,7 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	private function render_seo_preview_example(array $settings): void {
-		$suffix = trim((string) ($settings['seo_brand_suffix'] ?? ''));
+		$suffix = trim((string) ($settings['brand_keyword_suffix'] ?? $settings['seo_brand_suffix'] ?? ''));
 		$example_filename = 'black-leather-wallet';
 		if ('' !== $suffix) {
 			$example_filename .= '-' . sanitize_title($suffix);
@@ -1510,13 +1677,23 @@ class Catalogue_Image_Studio_Admin {
 		return $map[$preset] ?? '#f4f6f8';
 	}
 
-	private function get_custom_background_preview_url(array $settings): string {
+	/**
+	 * @param array<string,mixed> $settings Settings.
+	 * @return array{url:string,filename:string}
+	 */
+	private function get_custom_background_preview(array $settings): array {
 		$attachment_id = absint($settings['custom_background_attachment_id'] ?? 0);
 		if ($attachment_id <= 0) {
-			return '';
+			return [
+				'url'      => '',
+				'filename' => '',
+			];
 		}
 
-		return (string) wp_get_attachment_image_url($attachment_id, 'medium');
+		return [
+			'url'      => (string) wp_get_attachment_image_url($attachment_id, 'medium'),
+			'filename' => (string) wp_basename((string) get_attached_file($attachment_id)),
+		];
 	}
 
 	private function is_low_credit_state(array $usage): bool {
@@ -1542,12 +1719,30 @@ class Catalogue_Image_Studio_Admin {
 	/**
 	 * @param array<string,mixed>|mixed $usage Usage.
 	 */
+	private function get_app_base_url($usage, array $settings = []): string {
+		if (is_array($usage) && ! empty($usage['app_url']) && is_string($usage['app_url'])) {
+			return $usage['app_url'];
+		}
+
+		if (is_array($usage) && ! empty($usage['account_urls']['account']) && is_string($usage['account_urls']['account'])) {
+			$path = wp_parse_url($usage['account_urls']['account'], PHP_URL_PATH);
+			if (is_string($path) && false !== strpos($path, '/account')) {
+				return (string) str_replace($path, '', $usage['account_urls']['account']);
+			}
+		}
+
+		return (string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com');
+	}
+
+	/**
+	 * @param array<string,mixed>|mixed $usage Usage.
+	 */
 	private function get_upgrade_url($usage, array $settings = []): string {
 		if (is_array($usage) && ! empty($usage['account_urls']['billing']) && is_string($usage['account_urls']['billing'])) {
 			return $usage['account_urls']['billing'];
 		}
 
-		return trailingslashit((string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com')) . 'account/billing';
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/billing';
 	}
 
 	/**
@@ -1558,7 +1753,7 @@ class Catalogue_Image_Studio_Admin {
 			return $usage['account_urls']['credits'];
 		}
 
-		return trailingslashit((string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com')) . 'account/credits';
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/credits';
 	}
 
 	/**
@@ -1569,7 +1764,7 @@ class Catalogue_Image_Studio_Admin {
 			return $usage['account_urls']['account'];
 		}
 
-		return trailingslashit((string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com')) . 'account';
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account';
 	}
 
 	/**
