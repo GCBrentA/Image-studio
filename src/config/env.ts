@@ -6,7 +6,7 @@ dotenv.config({ path: ".env.local", override: true });
 const runtimeEnvVars = [
   "DATABASE_URL",
   "DIRECT_URL",
-  "SUPABASE_URL",
+  "SUPABASE_PROJECT_URL",
   "SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "JWT_SECRET",
@@ -35,6 +35,8 @@ export const env = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL ?? "",
   directUrl: process.env.DIRECT_URL ?? "",
+  supabaseProjectUrl: process.env.SUPABASE_PROJECT_URL ?? "",
+  supabaseRestUrl: process.env.SUPABASE_REST_URL ?? "",
   supabaseUrl: process.env.SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? "",
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",

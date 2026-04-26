@@ -37,6 +37,8 @@ wordpress-plugin/
    ```env
    DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
    DIRECT_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
+   SUPABASE_PROJECT_URL=https://[PROJECT-REF].supabase.co
+   SUPABASE_REST_URL=https://[PROJECT-REF].supabase.co/rest/v1
    SUPABASE_URL=https://[PROJECT-REF].supabase.co
    SUPABASE_ANON_KEY=replace-with-supabase-anon-key
    SUPABASE_SERVICE_ROLE_KEY=replace-with-supabase-service-role-key
@@ -108,7 +110,9 @@ npm run start
 
 In Supabase, open Project Settings, then Database, then Connection string. Use the pooled PostgreSQL connection string for `DATABASE_URL`, which is best for app runtime connections. Use the direct/session connection string for `DIRECT_URL` when running migrations or tools that need a non-pooled connection.
 
-Keep `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` from the Supabase API settings. Never commit real Supabase, Stripe, OpenAI, or JWT secret values.
+Keep `SUPABASE_PROJECT_URL`, `SUPABASE_REST_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` from the Supabase API settings. Never commit real Supabase, Stripe, OpenAI, or JWT secret values.
+
+`SUPABASE_PROJECT_URL` must be the project base URL, for example `https://xxxx.supabase.co`. Storage uses this value to call `/storage/v1/bucket/{bucket}` and `/storage/v1/object/{bucket}/{objectPath}`. `SUPABASE_REST_URL` is only for database REST calls if those are introduced later. If `SUPABASE_PROJECT_URL` is missing, the backend can temporarily normalize `SUPABASE_URL` by stripping `/rest/v1`, but Render should set `SUPABASE_PROJECT_URL` directly.
 
 ### Supabase Storage
 
@@ -118,7 +122,7 @@ Create these private Supabase Storage buckets:
 - `processed-images`
 - `debug-cutouts`
 
-The backend uploads downloaded source images to `original-images`, background-removal cutouts to `debug-cutouts`, and final generated product images to `processed-images`. The WooCommerce plugin receives only a signed URL for the processed image. The Supabase service role key stays server-side in Render as `SUPABASE_SERVICE_ROLE_KEY` and is never returned to clients.
+The backend uploads downloaded source images to `original-images`, background-removal cutouts to `debug-cutouts`, and final generated product images to `processed-images`. Bucket validation uses `GET {SUPABASE_PROJECT_URL}/storage/v1/bucket/{bucket}`. Uploads use `POST {SUPABASE_PROJECT_URL}/storage/v1/object/{bucket}/{objectPath}`, where `objectPath` is only the path inside the bucket, such as `accountId/storeId/original-file.jpg`. The WooCommerce plugin receives only a signed URL for the processed image. The Supabase service role key stays server-side in Render as `SUPABASE_SERVICE_ROLE_KEY` and is never returned to clients.
 
 Image jobs store storage object paths plus upload timestamps and `storage_cleanup_after`, so a future cleanup job can safely remove old artifacts. Optional retention settings:
 

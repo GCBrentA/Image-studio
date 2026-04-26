@@ -1,4 +1,3 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../config/env";
 import { HttpError } from "../utils/httpError";
 
@@ -8,27 +7,56 @@ export const storageBuckets = {
   debugCutouts: "debug-cutouts"
 } as const;
 
-let supabaseClient: SupabaseClient | null = null;
-let knownBuckets: Set<string> | null = null;
+let warnedAboutSupabaseUrlFallback = false;
+const knownBuckets = new Set<string>();
+const knownStorageBucketIds = new Set<string>(Object.values(storageBuckets));
 
-const getSupabaseClient = (): SupabaseClient => {
-  if (!env.supabaseUrl || !env.supabaseServiceRoleKey) {
-    throw new HttpError(503, "Supabase Storage is not configured");
+const normalizeSupabaseProjectUrl = (value: string): string => {
+  const trimmed = value.trim().replace(/\/+$/, "");
+
+  if (!trimmed) {
+    return "";
   }
 
-  if (!supabaseClient) {
-    supabaseClient = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false
-      }
-    });
-  }
-
-  return supabaseClient;
+  return trimmed.replace(/\/rest\/v1$/i, "");
 };
 
-const safeSegment = (segment: string): string =>
+export const getSupabaseStorageBaseUrl = (): string => {
+  const projectUrl = normalizeSupabaseProjectUrl(env.supabaseProjectUrl);
+
+  if (projectUrl) {
+    return projectUrl;
+  }
+
+  const fallbackUrl = normalizeSupabaseProjectUrl(env.supabaseUrl);
+
+  if (fallbackUrl && !warnedAboutSupabaseUrlFallback) {
+    console.warn("SUPABASE_PROJECT_URL is not set. Using normalized SUPABASE_URL for Storage; set SUPABASE_PROJECT_URL directly in Render.");
+    warnedAboutSupabaseUrlFallback = true;
+  }
+
+  return fallbackUrl;
+};
+
+const assertStorageConfigured = (): void => {
+  if (!getSupabaseStorageBaseUrl() || !env.supabaseServiceRoleKey) {
+    throw new HttpError(503, "Supabase Storage is not configured");
+  }
+};
+
+const assertValidStorageBaseUrl = (baseUrl: string): void => {
+  try {
+    const parsedUrl = new URL(baseUrl);
+
+    if (!["http:", "https:"].includes(parsedUrl.protocol) || parsedUrl.pathname.replace(/\/+$/, "") !== "") {
+      throw new Error("Invalid Supabase project URL");
+    }
+  } catch {
+    throw new HttpError(503, "SUPABASE_PROJECT_URL must be a Supabase project base URL such as https://xxxx.supabase.co");
+  }
+};
+
+const sanitizePathSegment = (segment: string): string =>
   segment
     .trim()
     .replace(/^\/+|\/+$/g, "")
@@ -37,22 +65,64 @@ const safeSegment = (segment: string): string =>
     .replace(/-+/g, "-")
     .replace(/^\.+|\.+$/g, "");
 
+const assertNotFullUrl = (value: string): void => {
+  if (/^https?:\/\//i.test(value.trim())) {
+    throw new Error("Storage object path must not be a full URL");
+  }
+};
+
+const encodeObjectPath = (objectPath: string): string =>
+  objectPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
 export const normalizeStorageObjectPath = (...segments: string[]): string => {
   const normalized = segments
-    .flatMap((segment) => segment.split("/"))
-    .map(safeSegment)
+    .flatMap((segment) => {
+      assertNotFullUrl(segment);
+      const trimmed = segment.trim();
+
+      if (trimmed.includes("//")) {
+        throw new Error("Storage object path must not contain double slashes");
+      }
+
+      return trimmed.replace(/^\/+|\/+$/g, "").split("/");
+    })
+    .map(sanitizePathSegment)
     .filter(Boolean);
 
   if (normalized.length === 0) {
     throw new Error("Storage object path is empty");
   }
 
-  return normalized.join("/");
+  if (knownStorageBucketIds.has(normalized[0])) {
+    normalized.shift();
+  }
+
+  const objectPath = normalized.join("/");
+
+  if (!objectPath || objectPath.startsWith("/") || objectPath.includes("//")) {
+    throw new Error(`Invalid Supabase Storage object path: ${objectPath}`);
+  }
+
+  return objectPath;
 };
 
 const assertSafeBucket = (bucket: string): string => {
-  const safeBucket = safeSegment(bucket);
-  if (!safeBucket || safeBucket !== bucket) {
+  const trimmed = bucket.trim();
+
+  if (!trimmed) {
+    throw new Error("Supabase Storage bucket is empty");
+  }
+
+  if (trimmed.includes("/") || /^https?:\/\//i.test(trimmed)) {
+    throw new Error(`Invalid Supabase Storage bucket: ${bucket}`);
+  }
+
+  const safeBucket = sanitizePathSegment(trimmed);
+
+  if (!safeBucket || safeBucket !== trimmed) {
     throw new Error(`Invalid Supabase Storage bucket: ${bucket}`);
   }
 
@@ -61,30 +131,73 @@ const assertSafeBucket = (bucket: string): string => {
 
 const normalizeUploadPath = (bucket: string, path: string): string => {
   const safeBucket = assertSafeBucket(bucket);
-  const normalizedPath = normalizeStorageObjectPath(path);
+  const objectPath = normalizeStorageObjectPath(path);
   const bucketPrefix = `${safeBucket}/`;
 
-  return normalizedPath === safeBucket
-    ? normalizedPath
-    : normalizedPath.startsWith(bucketPrefix)
-      ? normalizedPath.slice(bucketPrefix.length)
-      : normalizedPath;
+  if (objectPath === safeBucket) {
+    throw new Error("Storage object path must include a file path inside the bucket");
+  }
+
+  return objectPath.startsWith(bucketPrefix)
+    ? objectPath.slice(bucketPrefix.length)
+    : objectPath;
+};
+
+const storageHeaders = (contentType?: string): HeadersInit => ({
+  apikey: env.supabaseServiceRoleKey,
+  authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+  ...(contentType ? { "content-type": contentType } : {})
+});
+
+const getStorageEndpoint = (endpointPath: string): string => {
+  const baseUrl = getSupabaseStorageBaseUrl();
+  assertValidStorageBaseUrl(baseUrl);
+
+  return `${baseUrl}${endpointPath}`;
+};
+
+const logStorageOperation = ({
+  bucket,
+  objectPath,
+  endpointPath
+}: {
+  bucket: string;
+  objectPath?: string;
+  endpointPath: string;
+}): void => {
+  console.info("Supabase Storage", {
+    storageBaseUrl: getSupabaseStorageBaseUrl(),
+    bucket,
+    ...(objectPath ? { objectPath } : {}),
+    endpointPath
+  });
 };
 
 const assertBucketExists = async (bucket: string): Promise<void> => {
-  if (!knownBuckets) {
-    const { data, error } = await getSupabaseClient().storage.listBuckets();
+  const safeBucket = assertSafeBucket(bucket);
 
-    if (error) {
-      throw new Error(`Supabase Storage bucket validation failed: ${error.message}`);
-    }
-
-    knownBuckets = new Set((data ?? []).map((entry) => entry.name));
+  if (knownBuckets.has(safeBucket)) {
+    return;
   }
 
-  if (!knownBuckets.has(bucket)) {
-    throw new Error(`Supabase Storage bucket does not exist: ${bucket}`);
+  assertStorageConfigured();
+
+  const endpointPath = `/storage/v1/bucket/${encodeURIComponent(safeBucket)}`;
+  logStorageOperation({
+    bucket: safeBucket,
+    endpointPath
+  });
+
+  const response = await fetch(getStorageEndpoint(endpointPath), {
+    method: "GET",
+    headers: storageHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase Storage bucket validation failed for ${safeBucket}: ${response.status} ${response.statusText}`);
   }
+
+  knownBuckets.add(safeBucket);
 };
 
 export const uploadStorageObject = async ({
@@ -102,21 +215,25 @@ export const uploadStorageObject = async ({
   const objectPath = normalizeUploadPath(safeBucket, path);
   await assertBucketExists(safeBucket);
 
-  console.info("Supabase Storage upload", {
+  const endpointPath = `/storage/v1/object/${encodeURIComponent(safeBucket)}/${encodeObjectPath(objectPath)}`;
+  logStorageOperation({
     bucket: safeBucket,
     objectPath,
-    endpoint: `/storage/v1/object/${safeBucket}/${objectPath}`,
-    fileSize: body.byteLength,
-    contentType
+    endpointPath
   });
 
-  const { error } = await getSupabaseClient().storage.from(safeBucket).upload(objectPath, body, {
-    contentType,
-    upsert: false
+  const response = await fetch(getStorageEndpoint(endpointPath), {
+    method: "POST",
+    headers: {
+      ...storageHeaders(contentType),
+      "x-upsert": "false"
+    },
+    body: body as unknown as BodyInit
   });
 
-  if (error) {
-    throw new Error(`Supabase Storage upload failed for ${safeBucket}/${objectPath}: ${error.message}`);
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase Storage upload failed for ${safeBucket}/${objectPath}: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ""}`);
   }
 };
 
@@ -131,14 +248,30 @@ export const createStorageSignedUrl = async ({
 }): Promise<string> => {
   const safeBucket = assertSafeBucket(bucket);
   const objectPath = normalizeUploadPath(safeBucket, path);
-  const { data, error } = await getSupabaseClient()
-    .storage
-    .from(safeBucket)
-    .createSignedUrl(objectPath, expiresInSeconds);
+  await assertBucketExists(safeBucket);
 
-  if (error || !data?.signedUrl) {
-    throw new Error(`Supabase Storage signed URL failed for ${safeBucket}/${objectPath}: ${error?.message ?? "No URL returned"}`);
+  const endpointPath = `/storage/v1/object/sign/${encodeURIComponent(safeBucket)}/${encodeObjectPath(objectPath)}`;
+  const response = await fetch(getStorageEndpoint(endpointPath), {
+    method: "POST",
+    headers: storageHeaders("application/json"),
+    body: JSON.stringify({
+      expiresIn: expiresInSeconds
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase Storage signed URL failed for ${safeBucket}/${objectPath}: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ""}`);
   }
 
-  return data.signedUrl;
+  const data = await response.json() as { signedURL?: string; signedUrl?: string; signedURLPath?: string };
+  const signedPath = data.signedURL ?? data.signedUrl ?? data.signedURLPath;
+
+  if (!signedPath) {
+    throw new Error(`Supabase Storage signed URL failed for ${safeBucket}/${objectPath}: No URL returned`);
+  }
+
+  return signedPath.startsWith("http")
+    ? signedPath
+    : `${getSupabaseStorageBaseUrl()}${signedPath.startsWith("/") ? signedPath : `/${signedPath}`}`;
 };
