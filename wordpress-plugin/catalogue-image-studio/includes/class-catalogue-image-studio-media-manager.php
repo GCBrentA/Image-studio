@@ -37,7 +37,7 @@ class Catalogue_Image_Studio_MediaManager {
 				'catalogue_image_studio_processed_download_failed',
 				sprintf(
 					/* translators: %s: download error */
-					__('Processed image could not be found or downloaded. Reprocess this image. Details: %s', 'optivra'),
+					__('Processed image could not be found or downloaded. Reprocess this image. Details: %s', 'optivra-image-studio'),
 					$tmp->get_error_message()
 				)
 			);
@@ -66,7 +66,7 @@ class Catalogue_Image_Studio_MediaManager {
 				'catalogue_image_studio_processed_import_failed',
 				sprintf(
 					/* translators: %s: import error */
-					__('Processed image could not be saved to the Media Library. Details: %s', 'optivra'),
+					__('Processed image could not be saved to the Media Library. Details: %s', 'optivra-image-studio'),
 					$attachment_id->get_error_message()
 				)
 			);

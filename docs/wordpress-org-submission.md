@@ -6,11 +6,11 @@ Plugin: Optivra Image Studio for WooCommerce
 
 The production plugin zip should contain only the plugin folder and runtime files:
 
-- `catalogue-image-studio/`
+- `optivra-image-studio-for-woocommerce/`
 - PHP plugin files
 - `assets/admin.css`
 - `readme.txt`
-- `LICENSE`
+- `license.txt`
 
 Excluded from the release zip:
 
@@ -33,7 +33,8 @@ Service links used in the plugin/readme:
 - Terms: https://www.optivra.app/terms
 - Privacy: https://www.optivra.app/privacy
 - Data Processing: https://www.optivra.app/docs/ai-image-studio
-- Support: https://www.optivra.app/support
+- Support: support@optivra.app
+- Support page: https://www.optivra.app/support
 
 ## SVN Structure
 

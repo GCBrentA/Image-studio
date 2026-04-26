@@ -60,13 +60,13 @@ class Catalogue_Image_Studio_ImageProcessor {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra'));
+			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio'));
 		}
 
 		$image_url = wp_get_attachment_url((int) ($job['attachment_id'] ?? 0));
 
 		if (! $image_url) {
-			$error = new WP_Error('catalogue_image_studio_missing_source_url', __('The source image URL could not be resolved.', 'optivra'));
+			$error = new WP_Error('catalogue_image_studio_missing_source_url', __('The source image URL could not be resolved.', 'optivra-image-studio'));
 			$this->mark_failed($job_id, $error);
 			return $error;
 		}
@@ -88,7 +88,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 
 		$processed_url = $this->get_processed_url($processed);
 		if ('' === $processed_url) {
-			$error = new WP_Error('catalogue_image_studio_missing_processed_url', __('The processing API did not return a usable processed image URL.', 'optivra'));
+			$error = new WP_Error('catalogue_image_studio_missing_processed_url', __('The processing API did not return a usable processed image URL.', 'optivra-image-studio'));
 			$this->mark_failed($job_id, $error);
 			return $error;
 		}
@@ -116,7 +116,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 		if (is_wp_error($processed_attachment_id)) {
 			$import_error = sprintf(
 				/* translators: %s: error message */
-				__('Processed image is ready in Optivra, but WordPress could not import it yet. You can still review it and approve will try again. Details: %s', 'optivra'),
+				__('Processed image is ready in Optivra, but WordPress could not import it yet. You can still review it and approve will try again. Details: %s', 'optivra-image-studio'),
 				$processed_attachment_id->get_error_message()
 			);
 			$this->logger->error(
