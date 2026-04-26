@@ -102,6 +102,8 @@ export const processImage = async (
         duplicate: true,
         duplicate_of_job_id: result.duplicateOfJobId,
         processed_url: result.processedUrl,
+        processed_storage_bucket: result.processedStoragePath ? "processed-images" : null,
+        processed_storage_path: result.processedStoragePath,
         credits_remaining: credits.credits_remaining,
         low_credit_thresholds: credits.low_credit_thresholds,
         seo_metadata: result.seoMetadata
@@ -128,6 +130,8 @@ export const processImage = async (
       status: "completed",
       duplicate: false,
       processed_url: result.processedUrl,
+      processed_storage_bucket: result.processedStoragePath ? "processed-images" : null,
+      processed_storage_path: result.processedStoragePath,
       credits_remaining: deduction.credits_remaining,
       low_credit_thresholds: deduction.low_credit_thresholds,
       seo_metadata: result.seoMetadata

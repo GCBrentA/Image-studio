@@ -94,6 +94,10 @@ class Catalogue_Image_Studio_SaaSClient {
 			return new WP_Error('catalogue_image_studio_missing_processed_url', __('The image processing API did not return a processed image URL.', 'optivra'));
 		}
 
+		if (! empty($decoded['processed_url']) && is_string($decoded['processed_url'])) {
+			$decoded['processed_url'] = html_entity_decode($decoded['processed_url'], ENT_QUOTES, 'UTF-8');
+		}
+
 		return $decoded;
 	}
 

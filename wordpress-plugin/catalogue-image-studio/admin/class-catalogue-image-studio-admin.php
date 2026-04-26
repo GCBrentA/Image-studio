@@ -2221,7 +2221,7 @@ class Catalogue_Image_Studio_Admin {
 			}
 		}
 
-		$url = isset($job['processed_url']) ? trim((string) $job['processed_url']) : '';
+		$url = isset($job['processed_url']) ? html_entity_decode(trim((string) $job['processed_url']), ENT_QUOTES, 'UTF-8') : '';
 		if ('' !== $url && wp_http_validate_url($url)) {
 			return [
 				'preview' => esc_url_raw($url),

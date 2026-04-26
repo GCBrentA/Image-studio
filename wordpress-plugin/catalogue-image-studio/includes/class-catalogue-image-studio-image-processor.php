@@ -112,21 +112,25 @@ class Catalogue_Image_Studio_ImageProcessor {
 			$this->settings
 		);
 
+		$import_error = '';
 		if (is_wp_error($processed_attachment_id)) {
-			$error = new WP_Error(
-				'catalogue_image_studio_processed_image_unavailable',
-				sprintf(
-					/* translators: %s: error message */
-					__('Processed image could not be retrieved from Optivra. Reprocess this image. Details: %s', 'optivra'),
-					$processed_attachment_id->get_error_message()
-				)
+			$import_error = sprintf(
+				/* translators: %s: error message */
+				__('Processed image is ready in Optivra, but WordPress could not import it yet. You can still review it and approve will try again. Details: %s', 'optivra'),
+				$processed_attachment_id->get_error_message()
 			);
-			$this->mark_failed($job_id, $error);
-			return $error;
+			$this->logger->error(
+				'Processed image import deferred.',
+				[
+					'job_id'  => $job_id,
+					'message' => $processed_attachment_id->get_error_message(),
+				]
+			);
+			$processed_attachment_id = 0;
 		}
 
-		$image_meta = wp_get_attachment_metadata((int) $processed_attachment_id);
-		$mime_type  = (string) get_post_mime_type((int) $processed_attachment_id);
+		$image_meta = $processed_attachment_id ? wp_get_attachment_metadata((int) $processed_attachment_id) : [];
+		$mime_type  = $processed_attachment_id ? (string) get_post_mime_type((int) $processed_attachment_id) : 'image/webp';
 
 		$result = [
 			'status'                  => 'completed',
@@ -139,7 +143,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 			'processed_height'        => is_array($image_meta) && isset($image_meta['height']) ? (int) $image_meta['height'] : 0,
 			'processed_at'            => current_time('mysql', true),
 			'error_message'           => '',
-			'approval_error'          => '',
+			'approval_error'          => $import_error,
 			'seo_filename'            => $seo['filename'],
 			'seo_alt_text'            => $seo['alt_text'],
 			'seo_title'               => $seo['title'],
