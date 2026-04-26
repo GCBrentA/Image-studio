@@ -260,7 +260,7 @@ class Catalogue_Image_Studio_Plugin {
 			'default_scale_mode'      => 'auto',
 			'scale_mode'              => 'auto',
 			'scale_percent'           => 'auto',
-			'framing_padding'         => 8,
+			'framing_padding'         => 3,
 			'preserve_transparent_edges' => true,
 			'smart_scaling'           => true,
 			'smart_scaling_enabled'   => true,

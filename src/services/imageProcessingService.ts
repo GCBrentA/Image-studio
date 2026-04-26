@@ -47,7 +47,7 @@ export type SuggestedSeoMetadata = {
 
 const maxImageBytes = 15 * 1024 * 1024;
 const outputSize = 2000;
-const defaultScalePercent = 82;
+const defaultScalePercent = 94;
 const signedUrlExpirySeconds = env.storageSignedUrlExpiresSeconds;
 
 type DownloadedImage = {
@@ -245,11 +245,50 @@ const getNumber = (value: unknown, fallback: number, min: number, max: number): 
 const getString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim() ? value.trim() : fallback;
 
+const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
+  const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : "000000";
+
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16)
+  };
+};
+
+const clampPosition = (value: number, min: number, max: number): number =>
+  Math.min(Math.max(value, min), max);
+
+const getShadowPreset = (mode: string, strength: string): {
+  opacity: number;
+  blur: number;
+  offsetY: number;
+  spread: number;
+} => {
+  const presets = {
+    under: {
+      light: { opacity: 16, blur: 26, offsetY: 18, spread: 94 },
+      medium: { opacity: 26, blur: 34, offsetY: 24, spread: 104 },
+      strong: { opacity: 38, blur: 42, offsetY: 34, spread: 116 }
+    },
+    behind: {
+      light: { opacity: 22, blur: 34, offsetY: 22, spread: 102 },
+      medium: { opacity: 34, blur: 46, offsetY: 34, spread: 108 },
+      strong: { opacity: 48, blur: 58, offsetY: 46, spread: 114 }
+    }
+  } as const;
+  const presetMode = mode === "behind" ? "behind" : "under";
+  const presetStrength = ["light", "medium", "strong"].includes(strength) ? strength as "light" | "medium" | "strong" : "medium";
+
+  return presets[presetMode][presetStrength];
+};
+
 const buildShadow = async (
   width: number,
   height: number,
+  productBuffer: Buffer,
   productWidth: number,
   productHeight: number,
+  productLeft: number,
   productTop: number,
   settings?: unknown
 ): Promise<Buffer | null> => {
@@ -260,18 +299,66 @@ const buildShadow = async (
     return null;
   }
 
-  const opacity = getNumber(shadowSettings.opacity, mode === "behind" ? 18 : 23, 0, 100) / 100;
-  const blur = getNumber(shadowSettings.blur, mode === "behind" ? 38 : 22, 0, 80);
+  const customShadow = mode === "custom";
+  const effectiveMode = mode === "behind" ? "behind" : "under";
+  const strength = getString(shadowSettings.strength, "medium");
+  const preset = getShadowPreset(effectiveMode, strength);
+  const opacity = (customShadow ? getNumber(shadowSettings.opacity, preset.opacity, 0, 100) : preset.opacity) / 100;
+  const blur = customShadow ? getNumber(shadowSettings.blur, preset.blur, 0, 100) : preset.blur;
   const offsetX = getNumber(shadowSettings.offsetX, 0, -300, 300);
-  const offsetY = getNumber(shadowSettings.offsetY, mode === "behind" ? 28 : 0, -300, 300);
-  const spread = getNumber(shadowSettings.spread, 100, 25, 200) / 100;
+  const offsetY = customShadow ? getNumber(shadowSettings.offsetY, preset.offsetY, -300, 300) : preset.offsetY;
+  const spread = (customShadow ? getNumber(shadowSettings.spread, preset.spread, 25, 200) : preset.spread) / 100;
   const color = /^#[0-9a-f]{6}$/i.test(getString(shadowSettings.color, "#000000")) ? getString(shadowSettings.color, "#000000") : "#000000";
-  const shadowCy = mode === "behind"
-    ? productTop + productHeight * 0.54 + offsetY
-    : Math.min(height - 100, productTop + productHeight * 0.9 + offsetY);
+
+  if (effectiveMode === "behind") {
+    const shadowWidth = Math.max(1, Math.round(productWidth * spread));
+    const shadowHeight = Math.max(1, Math.round(productHeight * spread));
+    const alpha = await sharp(productBuffer)
+      .ensureAlpha()
+      .extractChannel("alpha")
+      .linear(opacity)
+      .toBuffer();
+    const shadowMask = await sharp({
+      create: {
+        width: productWidth,
+        height: productHeight,
+        channels: 3,
+        background: hexToRgb(color)
+      }
+    })
+      .joinChannel(alpha)
+      .resize(shadowWidth, shadowHeight, {
+        fit: "fill"
+      })
+      .blur(blur)
+      .png()
+      .toBuffer();
+    const shadowLeft = clampPosition(
+      Math.round(productLeft + offsetX - (shadowWidth - productWidth) / 2),
+      0,
+      Math.max(0, width - shadowWidth)
+    );
+    const shadowTop = clampPosition(
+      Math.round(productTop + offsetY - (shadowHeight - productHeight) / 2),
+      0,
+      Math.max(0, height - shadowHeight)
+    );
+    const transparentCanvas = Buffer.from(`
+      <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${width}" height="${height}" fill="rgba(0,0,0,0)" />
+      </svg>
+    `);
+
+    return sharp(transparentCanvas)
+      .composite([{ input: shadowMask, top: shadowTop, left: shadowLeft }])
+      .png()
+      .toBuffer();
+  }
+
+  const shadowCy = Math.min(height - 100, productTop + productHeight * 0.9 + offsetY);
   const shadowSvg = `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="${width / 2 + offsetX}" cy="${shadowCy}" rx="${Math.max(productWidth * 0.34 * spread, width * 0.12)}" ry="${Math.max(productHeight * (mode === "behind" ? 0.18 : 0.045) * spread, height * 0.025)}" fill="${color}" fill-opacity="${opacity}" />
+      <ellipse cx="${productLeft + productWidth / 2 + offsetX}" cy="${shadowCy}" rx="${Math.max(productWidth * 0.36 * spread, width * 0.1)}" ry="${Math.max(productHeight * 0.055 * spread, height * 0.025)}" fill="${color}" fill-opacity="${opacity}" />
     </svg>
   `;
 
@@ -383,14 +470,24 @@ export const processImageForProduct = async ({
   });
   const debugCutoutUploadedAt = new Date();
 
-  const targetProductSize = Math.round(outputSize * (normalizeScalePercent(scalePercent) / 100));
+  const framingMode = getString(framingSettings.mode, "auto");
   const paddingPercent = getNumber(framingSettings.padding, 8, 0, 30);
-  const margin = Math.round(outputSize * (paddingPercent / 100));
-  const edgeEnabled = edgeToEdge.enabled === true;
-  const edgeLeft = edgeEnabled && edgeToEdge.left === true;
-  const edgeRight = edgeEnabled && edgeToEdge.right === true;
-  const edgeTop = edgeEnabled && edgeToEdge.top === true;
-  const edgeBottom = edgeEnabled && edgeToEdge.bottom === true;
+  const autoPaddingPercent = framingMode === "auto" && !scalePercent ? Math.min(paddingPercent, 2) : paddingPercent;
+  const edgeLeftRequested = edgeToEdge.left === true;
+  const edgeRightRequested = edgeToEdge.right === true;
+  const edgeTopRequested = edgeToEdge.top === true;
+  const edgeBottomRequested = edgeToEdge.bottom === true;
+  const edgeEnabled = edgeToEdge.enabled === true || edgeLeftRequested || edgeRightRequested || edgeTopRequested || edgeBottomRequested;
+  const edgeLeft = edgeEnabled && edgeLeftRequested;
+  const edgeRight = edgeEnabled && edgeRightRequested;
+  const edgeTop = edgeEnabled && edgeTopRequested;
+  const edgeBottom = edgeEnabled && edgeBottomRequested;
+  const margin = edgeEnabled ? Math.round(outputSize * (Math.min(autoPaddingPercent, 1) / 100)) : Math.round(outputSize * (autoPaddingPercent / 100));
+  const horizontalLimit = outputSize - (edgeLeft ? 0 : margin) - (edgeRight ? 0 : margin);
+  const verticalLimit = outputSize - (edgeTop ? 0 : margin) - (edgeBottom ? 0 : margin);
+  const targetProductSize = Math.round(outputSize * (normalizeScalePercent(scalePercent) / 100));
+  const resizeWidth = Math.max(1, Math.min(targetProductSize, horizontalLimit));
+  const resizeHeight = Math.max(1, Math.min(targetProductSize, verticalLimit));
   const productBuffer = await sharp(cutout)
     .rotate()
     .trim({
@@ -402,8 +499,8 @@ export const processImageForProduct = async ({
       }
     })
     .resize({
-      width: Math.min(targetProductSize, outputSize - margin * 2),
-      height: Math.min(targetProductSize, outputSize - margin * 2),
+      width: edgeLeft && edgeRight ? horizontalLimit : resizeWidth,
+      height: edgeTop && edgeBottom ? verticalLimit : resizeHeight,
       fit: "inside",
       withoutEnlargement: true
     })
@@ -421,7 +518,7 @@ export const processImageForProduct = async ({
   if (edgeTop && !edgeBottom) top = 0;
   if (edgeBottom && !edgeTop) top = outputSize - productHeight;
 
-  const shadow = await buildShadow(outputSize, outputSize, productWidth, productHeight, top, shadowSettings);
+  const shadow = await buildShadow(outputSize, outputSize, productBuffer, productWidth, productHeight, left, top, shadowSettings);
 
   const backgroundBuffer = backgroundImageUrl
     ? await buildBackgroundFromImage(backgroundImageUrl)
@@ -433,7 +530,11 @@ export const processImageForProduct = async ({
   ];
   const lightingEnabled = lightingSettings.enabled === true;
   const brightness = lightingEnabled ? 1 + getNumber(lightingSettings.brightness, 0, -100, 100) / 200 : 1;
+  const contrast = lightingEnabled ? getNumber(lightingSettings.contrast, 0, -100, 100) : 0;
+  const contrastFactor = 1 + contrast / 100;
+  const contrastIntercept = -128 * (contrastFactor - 1);
   const saturation = lightingEnabled && lightingSettings.neutralizeTint === true ? 0.98 : 1;
+  const gamma = lightingEnabled && lightingSettings.shadowLift === true ? 1.08 : 1;
 
   const processedImage = await sharp(backgroundBuffer)
     .composite(composites)
@@ -441,6 +542,8 @@ export const processImageForProduct = async ({
       brightness,
       saturation
     })
+    .linear(contrastFactor, contrastIntercept)
+    .gamma(gamma)
     .webp({
       quality: 92,
       smartSubsample: true

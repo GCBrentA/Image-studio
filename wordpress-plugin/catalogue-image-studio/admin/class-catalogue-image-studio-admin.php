@@ -378,7 +378,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings['default_scale_mode']      = $this->sanitize_scale_mode($input['default_scale_mode'] ?? $settings['default_scale_mode']);
 		$settings['scale_mode']              = $settings['default_scale_mode'];
 		$settings['scale_percent']           = $this->map_scale_mode_to_percent($settings['default_scale_mode']);
-		$settings['framing_padding']         = $this->sanitize_int_range($input['framing_padding'] ?? $settings['framing_padding'], 0, 30, 8);
+		$settings['framing_padding']         = $this->sanitize_int_range($input['framing_padding'] ?? $settings['framing_padding'], 0, 30, 3);
 		$settings['preserve_transparent_edges'] = ! empty($input['preserve_transparent_edges']);
 		$settings['batch_size']              = isset($input['batch_size']) ? max(1, min(50, absint($input['batch_size']))) : (int) $defaults['batch_size'];
 		$settings['email_batch_complete']    = ! empty($input['email_batch_complete']);
@@ -613,12 +613,17 @@ class Catalogue_Image_Studio_Admin {
 				continue;
 			}
 
+			$left    = ! empty($override['left']);
+			$right   = ! empty($override['right']);
+			$top     = ! empty($override['top']);
+			$bottom  = ! empty($override['bottom']);
+
 			$overrides[absint($job_id)] = [
-				'enabled' => ! empty($override['enabled']),
-				'left'    => ! empty($override['left']),
-				'right'   => ! empty($override['right']),
-				'top'     => ! empty($override['top']),
-				'bottom'  => ! empty($override['bottom']),
+				'enabled' => ! empty($override['enabled']) || $left || $right || $top || $bottom,
+				'left'    => $left,
+				'right'   => $right,
+				'top'     => $top,
+				'bottom'  => $bottom,
 			];
 		}
 
@@ -2139,6 +2144,7 @@ class Catalogue_Image_Studio_Admin {
 		<details class="optivra-job-options">
 			<summary><?php echo esc_html__('Framing overrides', 'optivra'); ?></summary>
 			<label class="optivra-inline-check"><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][enabled]" value="1" <?php checked(! empty($job['edge_to_edge_enabled'])); ?> /> <?php echo esc_html__('Image to edge', 'optivra'); ?></label>
+			<small class="catalogue-image-studio-help"><?php echo esc_html__('Choosing any edge automatically enables the override for this image.', 'optivra'); ?></small>
 			<div class="optivra-edge-grid">
 				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][left]" value="1" <?php checked(! empty($job['edge_to_edge_left'])); ?> /> <?php echo esc_html__('Left edge', 'optivra'); ?></label>
 				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][right]" value="1" <?php checked(! empty($job['edge_to_edge_right'])); ?> /> <?php echo esc_html__('Right edge', 'optivra'); ?></label>
