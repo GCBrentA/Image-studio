@@ -8,7 +8,7 @@
  * Author URI:  https://www.optivra.app
  * License:     GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: optivra-image-studio
+ * Text Domain: optivra-image-studio-for-woocommerce
  * Requires at least: 6.3
  * Requires PHP: 8.0
  * WC requires at least: 8.0
@@ -67,7 +67,7 @@ function catalogue_image_studio_render_php_notice() {
 		esc_html(
 			sprintf(
 				/* translators: 1: current PHP version, 2: required PHP version */
-				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra-image-studio'),
+				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra-image-studio-for-woocommerce'),
 				PHP_VERSION,
 				CIS_MINIMUM_PHP_VERSION
 			)
@@ -82,7 +82,7 @@ function catalogue_image_studio_render_woocommerce_notice(): void {
 
 	printf(
 		'<div class="notice notice-warning"><p>%s</p></div>',
-		esc_html__('Optivra requires WooCommerce to scan, queue, process, and replace product images. Activate WooCommerce before using Optivra.', 'optivra-image-studio')
+		esc_html__('Optivra requires WooCommerce to scan, queue, process, and replace product images. Activate WooCommerce before using Optivra.', 'optivra-image-studio-for-woocommerce')
 	);
 }
 
@@ -103,12 +103,12 @@ function catalogue_image_studio_activate() {
 		esc_html(
 			sprintf(
 				/* translators: 1: current PHP version, 2: required PHP version */
-				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra-image-studio'),
+				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra-image-studio-for-woocommerce'),
 				PHP_VERSION,
 				CIS_MINIMUM_PHP_VERSION
 			)
 		),
-		esc_html__('Plugin activation failed', 'optivra-image-studio'),
+		esc_html__('Plugin activation failed', 'optivra-image-studio-for-woocommerce'),
 		['back_link' => true]
 	);
 }

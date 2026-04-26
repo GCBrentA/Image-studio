@@ -169,6 +169,7 @@ class Catalogue_Image_Studio_Plugin {
 			KEY attachment_id (attachment_id)
 		) {$charset_collate};";
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- dbDelta is required for the plugin's custom queue table.
 		dbDelta($sql);
 		self::ensure_job_table_columns($table);
 	}
@@ -176,7 +177,8 @@ class Catalogue_Image_Studio_Plugin {
 	private static function ensure_job_table_columns(string $table): void {
 		global $wpdb;
 
-		$columns = (array) $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Schema introspection for custom table migration.
+		$columns = (array) $wpdb->get_col($wpdb->prepare('SHOW COLUMNS FROM %i', $table), 0);
 		$columns = array_map('strval', $columns);
 
 		$required = [
@@ -193,7 +195,12 @@ class Catalogue_Image_Studio_Plugin {
 				continue;
 			}
 
-			$wpdb->query("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+			if (! isset($required[$column]) ) {
+				continue;
+			}
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Safe versioned migration for allowlisted custom table columns.
+			$wpdb->query($wpdb->prepare("ALTER TABLE %i ADD COLUMN {$column} {$definition}", $table));
 		}
 	}
 

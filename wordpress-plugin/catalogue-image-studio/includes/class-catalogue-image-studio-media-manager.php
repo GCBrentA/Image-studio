@@ -37,7 +37,7 @@ class Catalogue_Image_Studio_MediaManager {
 				'catalogue_image_studio_processed_download_failed',
 				sprintf(
 					/* translators: %s: download error */
-					__('Processed image could not be found or downloaded. Reprocess this image. Details: %s', 'optivra-image-studio'),
+					__('Processed image could not be found or downloaded. Reprocess this image. Details: %s', 'optivra-image-studio-for-woocommerce'),
 					$tmp->get_error_message()
 				)
 			);
@@ -60,13 +60,13 @@ class Catalogue_Image_Studio_MediaManager {
 		$attachment_id = media_handle_sideload($file_array, $product_id);
 
 		if (is_wp_error($attachment_id)) {
-			@unlink($tmp);
+			wp_delete_file($tmp);
 			$this->logger->error('Processed image media import failed.', ['message' => $attachment_id->get_error_message()]);
 			return new WP_Error(
 				'catalogue_image_studio_processed_import_failed',
 				sprintf(
 					/* translators: %s: import error */
-					__('Processed image could not be saved to the Media Library. Details: %s', 'optivra-image-studio'),
+					__('Processed image could not be saved to the Media Library. Details: %s', 'optivra-image-studio-for-woocommerce'),
 					$attachment_id->get_error_message()
 				)
 			);

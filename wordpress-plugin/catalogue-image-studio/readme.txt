@@ -1,8 +1,8 @@
 === Optivra Image Studio for WooCommerce ===
 Contributors: optivra
-Tags: woocommerce, product images, image seo, product image optimizer, background replacement, ai images, ecommerce, image optimisation
+Tags: woocommerce, product images, image seo, background replacement, ecommerce
 Requires at least: 6.3
-Tested up to: 6.9.1
+Tested up to: 6.9
 Requires PHP: 8.0
 Requires Plugins: woocommerce
 Stable tag: 1.0.0
