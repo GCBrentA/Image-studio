@@ -513,6 +513,30 @@ pre {
   text-align: center;
   font-weight: 800;
 }
+.docs-screenshot {
+  margin: 18px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+.docs-screenshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.docs-screenshot-compact {
+  max-width: 420px;
+}
+.docs-screenshot figcaption {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .seo-example p {
   margin: 8px 0;
 }
