@@ -9,6 +9,7 @@ type ProcessImageBody = {
   image_url?: unknown;
   background?: unknown;
   scale_percent?: unknown;
+  background_image_url?: unknown;
 };
 
 export const processImage = async (
@@ -66,7 +67,9 @@ export const processImage = async (
       userId: auth.userId,
       imageUrl: body.image_url,
       background: typeof body.background === "string" ? body.background : undefined,
-      scalePercent: typeof body.scale_percent === "number" ? body.scale_percent : undefined
+      scalePercent: typeof body.scale_percent === "number" ? body.scale_percent : undefined,
+      backgroundImageUrl:
+        typeof body.background_image_url === "string" ? body.background_image_url : undefined
     });
 
     await prisma.imageJob.update({

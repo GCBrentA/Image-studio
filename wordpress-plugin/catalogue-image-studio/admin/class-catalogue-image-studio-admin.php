@@ -83,6 +83,7 @@ class Catalogue_Image_Studio_Admin {
 			return;
 		}
 
+		wp_enqueue_media();
 		wp_enqueue_style(
 			'catalogue-image-studio-admin',
 			CIS_URL . 'assets/admin.css',
@@ -105,7 +106,44 @@ class Catalogue_Image_Studio_Admin {
 				}
 				catalogueImageStudioUpdateSelectedCount();
 			});
-			document.addEventListener('DOMContentLoaded', catalogueImageStudioUpdateSelectedCount);"
+			document.addEventListener('DOMContentLoaded', function() {
+				catalogueImageStudioUpdateSelectedCount();
+				var button = document.getElementById('catalogue-image-studio-pick-background');
+				if (!button || typeof wp === 'undefined' || !wp.media) {
+					return;
+				}
+				var attachmentField = document.getElementById('catalogue-image-studio-custom-background-id');
+				var preview = document.getElementById('catalogue-image-studio-custom-background-preview');
+				var frame;
+				button.addEventListener('click', function(event) {
+					event.preventDefault();
+					if (frame) {
+						frame.open();
+						return;
+					}
+					frame = wp.media({
+						title: 'Choose background image',
+						button: { text: 'Use background' },
+						multiple: false,
+						library: { type: 'image' }
+					});
+					frame.on('select', function() {
+						var selection = frame.state().get('selection').first();
+						if (!selection) {
+							return;
+						}
+						var attachment = selection.toJSON();
+						if (attachmentField) {
+							attachmentField.value = String(attachment.id || '');
+						}
+						if (preview && attachment.url) {
+							preview.src = attachment.url;
+							preview.hidden = false;
+						}
+					});
+					frame.open();
+				});
+			});"
 		);
 	}
 
@@ -212,6 +250,8 @@ class Catalogue_Image_Studio_Admin {
 		$settings['show_failed_job_alerts']  = ! empty($input['show_failed_job_alerts']);
 		$settings['debug_mode']              = ! empty($input['debug_mode']);
 		$settings['seo_brand_suffix']        = isset($input['seo_brand_suffix']) ? sanitize_text_field((string) $input['seo_brand_suffix']) : '';
+		$settings['background_source']       = $this->sanitize_background_source($input['background_source'] ?? $settings['background_source']);
+		$settings['custom_background_attachment_id'] = isset($input['custom_background_attachment_id']) ? absint($input['custom_background_attachment_id']) : (int) ($settings['custom_background_attachment_id'] ?? 0);
 		$settings['shadow_strength']         = $this->sanitize_shadow_strength($input['shadow_strength'] ?? $settings['shadow_strength']);
 		$settings['background_preset']       = $this->sanitize_background_preset($input['background_preset'] ?? $settings['background_preset']);
 		$settings['background']              = $settings['background_preset'];
@@ -229,6 +269,7 @@ class Catalogue_Image_Studio_Admin {
 					'scale_mode'        => $this->sanitize_scale_mode($input['category_scale_mode'] ?? 'auto'),
 					'background_preset' => $this->sanitize_background_preset($input['category_background_preset'] ?? 'optivra-default'),
 					'background'        => $this->sanitize_background_preset($input['category_background_preset'] ?? 'optivra-default'),
+					'background_source' => $this->sanitize_background_source($input['category_background_source'] ?? 'preset'),
 					'shadow_strength'   => $this->sanitize_shadow_strength($input['category_shadow_strength'] ?? 'medium'),
 				];
 			}
@@ -786,9 +827,11 @@ class Catalogue_Image_Studio_Admin {
 		$categories = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
 		$selected_category_id = isset($_REQUEST['category_preset_category']) ? absint($_REQUEST['category_preset_category']) : 0;
 		$selected_preset = $selected_category_id > 0 && ! empty($settings['category_presets'][$selected_category_id]) ? $settings['category_presets'][$selected_category_id] : null;
+		$custom_background_url = $this->get_custom_background_preview_url($settings);
 		?>
 		<div class="catalogue-image-studio-panel">
 			<h2><?php echo esc_html__('Settings', 'catalogue-image-studio'); ?></h2>
+			<p class="catalogue-image-studio-page-intro"><?php echo esc_html__('Configure how Optivra processes your product images.', 'catalogue-image-studio'); ?></p>
 			<form method="post" action="">
 				<?php settings_fields('catalogue_image_studio_settings_group'); ?>
 				<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
@@ -809,16 +852,39 @@ class Catalogue_Image_Studio_Admin {
 						<?php $this->render_toggle_field('smart_scaling_enabled', __('Smart scaling', 'catalogue-image-studio'), ! empty($settings['smart_scaling_enabled']), __('Keep products comfortably framed without clipping.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('shadow_enabled', __('Apply shadow', 'catalogue-image-studio'), ! empty($settings['shadow_enabled']), __('Add a soft grounding shadow to processed images.', 'catalogue-image-studio')); ?>
 						<?php $this->render_toggle_field('duplicate_detection', __('Duplicate detection', 'catalogue-image-studio'), ! empty($settings['duplicate_detection']), __('Reuse previous processed results when the source image has already been optimised.', 'catalogue-image-studio')); ?>
-						<label>
-							<span><?php echo esc_html__('Background preset', 'catalogue-image-studio'); ?></span>
-							<select name="background_preset"><?php foreach ($this->get_background_presets() as $preset_key => $preset_label) : ?><option value="<?php echo esc_attr($preset_key); ?>" <?php selected((string) ($settings['background_preset'] ?? 'optivra-default'), $preset_key); ?>><?php echo esc_html($preset_label); ?></option><?php endforeach; ?></select>
-							<small class="catalogue-image-studio-help"><?php echo esc_html__('Choose the default branded background style for processed images.', 'catalogue-image-studio'); ?></small>
-						</label>
-						<label>
-							<span><?php echo esc_html__('Default image framing', 'catalogue-image-studio'); ?></span>
-							<select name="scale_mode"><?php foreach ($this->get_scale_modes() as $mode_key => $mode_label) : ?><option value="<?php echo esc_attr($mode_key); ?>" <?php selected((string) ($settings['scale_mode'] ?? 'auto'), $mode_key); ?>><?php echo esc_html($mode_label); ?></option><?php endforeach; ?></select>
-							<small class="catalogue-image-studio-help"><?php echo esc_html__('Choose how tightly products are framed by default.', 'catalogue-image-studio'); ?></small>
-						</label>
+						<div class="catalogue-image-studio-control-grid">
+							<label>
+								<span><?php echo esc_html__('Background source', 'catalogue-image-studio'); ?></span>
+								<select name="background_source">
+									<option value="preset" <?php selected((string) ($settings['background_source'] ?? 'preset'), 'preset'); ?>><?php echo esc_html__('Optivra preset', 'catalogue-image-studio'); ?></option>
+									<option value="custom" <?php selected((string) ($settings['background_source'] ?? 'preset'), 'custom'); ?>><?php echo esc_html__('Custom uploaded background', 'catalogue-image-studio'); ?></option>
+								</select>
+								<small class="catalogue-image-studio-help"><?php echo esc_html__('Use an Optivra preset or your own uploaded background image.', 'catalogue-image-studio'); ?></small>
+							</label>
+							<label>
+								<span><?php echo esc_html__('Background preset', 'catalogue-image-studio'); ?></span>
+								<select name="background_preset"><?php foreach ($this->get_background_presets() as $preset_key => $preset_label) : ?><option value="<?php echo esc_attr($preset_key); ?>" <?php selected((string) ($settings['background_preset'] ?? 'optivra-default'), $preset_key); ?>><?php echo esc_html($preset_label); ?></option><?php endforeach; ?></select>
+								<small class="catalogue-image-studio-help"><?php echo esc_html__('Choose the default background style when using Optivra presets.', 'catalogue-image-studio'); ?></small>
+							</label>
+							<label>
+								<span><?php echo esc_html__('Default image framing', 'catalogue-image-studio'); ?></span>
+								<select name="scale_mode"><?php foreach ($this->get_scale_modes() as $mode_key => $mode_label) : ?><option value="<?php echo esc_attr($mode_key); ?>" <?php selected((string) ($settings['scale_mode'] ?? 'auto'), $mode_key); ?>><?php echo esc_html($mode_label); ?></option><?php endforeach; ?></select>
+								<small class="catalogue-image-studio-help"><?php echo esc_html__('Choose how tightly products are framed by default.', 'catalogue-image-studio'); ?></small>
+							</label>
+							<div class="catalogue-image-studio-background-picker">
+								<span><?php echo esc_html__('Custom background', 'catalogue-image-studio'); ?></span>
+								<input type="hidden" id="catalogue-image-studio-custom-background-id" name="custom_background_attachment_id" value="<?php echo esc_attr((string) ($settings['custom_background_attachment_id'] ?? 0)); ?>" />
+								<div class="catalogue-image-studio-actions">
+									<button type="button" class="button" id="catalogue-image-studio-pick-background"><?php echo esc_html__('Choose background', 'catalogue-image-studio'); ?></button>
+								</div>
+								<?php if ($custom_background_url) : ?>
+									<img id="catalogue-image-studio-custom-background-preview" class="catalogue-image-studio-background-preview" src="<?php echo esc_url($custom_background_url); ?>" alt="" />
+								<?php else : ?>
+									<img id="catalogue-image-studio-custom-background-preview" class="catalogue-image-studio-background-preview" src="" alt="" hidden />
+								<?php endif; ?>
+								<small class="catalogue-image-studio-help"><?php echo esc_html__('Upload or choose a background image from your Media Library for custom processing.', 'catalogue-image-studio'); ?></small>
+							</div>
+						</div>
 					</section>
 
 					<section class="catalogue-image-studio-settings-section">
@@ -836,6 +902,13 @@ class Catalogue_Image_Studio_Admin {
 						<label>
 							<span><?php echo esc_html__('Background preset', 'catalogue-image-studio'); ?></span>
 							<select name="category_background_preset"><?php foreach ($this->get_background_presets() as $preset_key => $preset_label) : ?><option value="<?php echo esc_attr($preset_key); ?>" <?php selected((string) ($selected_preset['background_preset'] ?? 'optivra-default'), $preset_key); ?>><?php echo esc_html($preset_label); ?></option><?php endforeach; ?></select>
+						</label>
+						<label>
+							<span><?php echo esc_html__('Background source', 'catalogue-image-studio'); ?></span>
+							<select name="category_background_source">
+								<option value="preset" <?php selected((string) ($selected_preset['background_source'] ?? 'preset'), 'preset'); ?>><?php echo esc_html__('Use preset', 'catalogue-image-studio'); ?></option>
+								<option value="custom" <?php selected((string) ($selected_preset['background_source'] ?? 'preset'), 'custom'); ?>><?php echo esc_html__('Use uploaded custom background', 'catalogue-image-studio'); ?></option>
+							</select>
 						</label>
 						<label>
 							<span><?php echo esc_html__('Shadow strength', 'catalogue-image-studio'); ?></span>
@@ -1232,47 +1305,47 @@ class Catalogue_Image_Studio_Admin {
 	private function render_connection_form(array $settings, $usage, bool $show_status_inline = true): void {
 		$connected = ! is_wp_error($usage);
 		?>
-		<form method="post" action="">
-			<?php settings_fields('catalogue_image_studio_settings_group'); ?>
-			<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
-			<label class="catalogue-image-studio-token-field" for="catalogue-image-studio-api-token">
-				<span><?php echo esc_html__('Site API Token', 'catalogue-image-studio'); ?></span>
-				<input
-					type="password"
-					id="catalogue-image-studio-api-token"
-					name="api_token"
-					class="regular-text"
-					value=""
-					placeholder="<?php echo esc_attr(! empty($settings['api_token']) ? __('Token saved - leave blank to keep it', 'catalogue-image-studio') : __('Paste your Site API Token', 'catalogue-image-studio')); ?>"
-					autocomplete="new-password"
-				/>
-				<?php if (! empty($settings['api_token'])) : ?>
-					<small class="catalogue-image-studio-help"><?php echo esc_html(sprintf(__('Saved token: %s', 'catalogue-image-studio'), $this->mask_token((string) $settings['api_token']))); ?></small>
+		<div class="catalogue-image-studio-connection-card">
+			<form method="post" action="" class="catalogue-image-studio-connection-form">
+				<?php settings_fields('catalogue_image_studio_settings_group'); ?>
+				<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
+				<label class="catalogue-image-studio-token-field" for="catalogue-image-studio-api-token">
+					<span><?php echo esc_html__('Site API Token', 'catalogue-image-studio'); ?></span>
+					<input
+						type="password"
+						id="catalogue-image-studio-api-token"
+						name="api_token"
+						class="regular-text"
+						value=""
+						placeholder="<?php echo esc_attr(! empty($settings['api_token']) ? __('Token saved - leave blank to keep it', 'catalogue-image-studio') : __('Paste your Site API Token', 'catalogue-image-studio')); ?>"
+						autocomplete="new-password"
+					/>
+					<?php if (! empty($settings['api_token'])) : ?>
+						<small class="catalogue-image-studio-help"><?php echo esc_html(sprintf(__('Saved token: %s', 'catalogue-image-studio'), $this->mask_token((string) $settings['api_token']))); ?></small>
+					<?php endif; ?>
+				</label>
+
+				<div class="catalogue-image-studio-link-row">
+					<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'catalogue-image-studio'); ?></a>
+					<a href="<?php echo esc_url(trailingslashit((string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com')) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'catalogue-image-studio'); ?></a>
+				</div>
+
+				<div class="catalogue-image-studio-actions">
+					<button type="submit" name="connect_store" value="1" class="button button-primary"><?php echo esc_html__('Connect', 'catalogue-image-studio'); ?></button>
+					<button type="submit" name="test_connection" value="1" class="button"><?php echo esc_html__('Test', 'catalogue-image-studio'); ?></button>
+					<?php if (! empty($settings['api_token'])) : ?>
+						<button type="submit" name="disconnect_store" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Disconnect', 'catalogue-image-studio'); ?></button>
+					<?php endif; ?>
+				</div>
+
+				<?php if (! $show_status_inline) : ?>
+					<?php $this->render_advanced_settings($settings); ?>
 				<?php endif; ?>
-			</label>
-
-			<div class="catalogue-image-studio-link-row">
-				<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'catalogue-image-studio'); ?></a>
-				<a href="<?php echo esc_url(trailingslashit((string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com')) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'catalogue-image-studio'); ?></a>
+			</form>
+			<div class="catalogue-image-studio-connection-status-panel">
+				<?php $this->render_connection_status($usage, $connected); ?>
 			</div>
-
-			<div class="catalogue-image-studio-actions">
-				<button type="submit" name="connect_store" value="1" class="button button-primary"><?php echo esc_html__('Connect Store', 'catalogue-image-studio'); ?></button>
-				<button type="submit" name="test_connection" value="1" class="button"><?php echo esc_html__('Test Connection', 'catalogue-image-studio'); ?></button>
-				<?php if (! empty($settings['api_token'])) : ?>
-					<button type="submit" name="disconnect_store" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Disconnect', 'catalogue-image-studio'); ?></button>
-				<?php endif; ?>
-			</div>
-
-			<?php if (! $show_status_inline) : ?>
-				<?php $this->render_advanced_settings($settings); ?>
-			<?php endif; ?>
-		</form>
-		<?php if ($show_status_inline) : ?>
-			<?php $this->render_connection_status($usage, $connected); ?>
-		<?php else : ?>
-			<?php $this->render_connection_status($usage, $connected); ?>
-		<?php endif; ?>
+		</div>
 		<?php
 	}
 
@@ -1358,6 +1431,11 @@ class Catalogue_Image_Studio_Admin {
 		return array_key_exists($preset, $this->get_background_presets()) ? $preset : 'optivra-default';
 	}
 
+	private function sanitize_background_source($source): string {
+		$source = sanitize_key((string) $source);
+		return in_array($source, ['preset', 'custom'], true) ? $source : 'preset';
+	}
+
 	private function sanitize_scale_mode($mode): string {
 		$mode = sanitize_key((string) $mode);
 		return array_key_exists($mode, $this->get_scale_modes()) ? $mode : 'auto';
@@ -1384,6 +1462,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings = $this->plugin->get_settings();
 		$background_preset = (string) ($settings['background_preset'] ?? 'optivra-default');
 		$scale_mode = (string) ($settings['scale_mode'] ?? 'auto');
+		$background_source = (string) ($settings['background_source'] ?? 'preset');
 
 		if ($job) {
 			$category_ids = wp_get_post_terms((int) $job['product_id'], 'product_cat', ['fields' => 'ids']);
@@ -1392,14 +1471,23 @@ class Catalogue_Image_Studio_Admin {
 					$preset = $settings['category_presets'][$category_id];
 					$background_preset = (string) ($preset['background_preset'] ?? $background_preset);
 					$scale_mode = (string) ($preset['scale_mode'] ?? $scale_mode);
+					$background_source = (string) ($preset['background_source'] ?? $background_source);
 					break;
 				}
 			}
 		}
 
-		$options = [
-			'background' => $this->resolve_background_value($background_preset),
-		];
+		$options = [];
+		if ('custom' === $background_source) {
+			$custom_background_url = wp_get_attachment_url(absint($settings['custom_background_attachment_id'] ?? 0));
+			if ($custom_background_url) {
+				$options['background_image_url'] = $custom_background_url;
+			}
+		}
+
+		if (empty($options['background_image_url'])) {
+			$options['background'] = $this->resolve_background_value($background_preset);
+		}
 
 		$scale_percent = $this->map_scale_mode_to_percent($scale_mode);
 		if ('auto' !== $scale_percent) {
@@ -1418,6 +1506,15 @@ class Catalogue_Image_Studio_Admin {
 		];
 
 		return $map[$preset] ?? '#f4f6f8';
+	}
+
+	private function get_custom_background_preview_url(array $settings): string {
+		$attachment_id = absint($settings['custom_background_attachment_id'] ?? 0);
+		if ($attachment_id <= 0) {
+			return '';
+		}
+
+		return (string) wp_get_attachment_image_url($attachment_id, 'medium');
 	}
 
 	private function is_low_credit_state(array $usage): bool {

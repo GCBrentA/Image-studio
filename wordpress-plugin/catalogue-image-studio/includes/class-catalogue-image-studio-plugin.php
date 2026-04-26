@@ -206,6 +206,8 @@ class Catalogue_Image_Studio_Plugin {
 			'process_featured_images' => true,
 			'process_gallery_images'  => true,
 			'duplicate_detection'     => true,
+			'background_source'       => 'preset',
+			'custom_background_attachment_id' => 0,
 			'background_preset'       => 'optivra-default',
 			'background'              => 'optivra-default',
 			'scale_mode'              => 'auto',

@@ -15,6 +15,7 @@ export type ProcessImageInput = {
   imageUrl: string;
   background?: string;
   scalePercent?: number;
+  backgroundImageUrl?: string;
 };
 
 export type ProcessedImageResult = {
@@ -261,12 +262,27 @@ const buildBrandedBackground = (background: string): Buffer => {
   return Buffer.from(backgroundSvg);
 };
 
+const buildBackgroundFromImage = async (backgroundImageUrl: string): Promise<Buffer> => {
+  const backgroundImage = await downloadImage(backgroundImageUrl);
+  await validateImage(backgroundImage.buffer);
+
+  return sharp(backgroundImage.buffer)
+    .rotate()
+    .resize(outputSize, outputSize, {
+      fit: "cover",
+      position: "centre"
+    })
+    .png()
+    .toBuffer();
+};
+
 export const processImageForProduct = async ({
   imageJobId,
   userId,
   imageUrl,
   background = "#ffffff",
-  scalePercent
+  scalePercent,
+  backgroundImageUrl
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
   const originalImage = await downloadImage(imageUrl);
   await validateImage(originalImage.buffer);
@@ -352,7 +368,11 @@ export const processImageForProduct = async ({
   const top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2), margin), outputSize - productHeight - margin);
   const shadow = await buildShadow(outputSize, outputSize, productWidth, productHeight, top);
 
-  const processedImage = await sharp(buildBrandedBackground(background))
+  const backgroundBuffer = backgroundImageUrl
+    ? await buildBackgroundFromImage(backgroundImageUrl)
+    : buildBrandedBackground(background);
+
+  const processedImage = await sharp(backgroundBuffer)
     .composite([
       {
         input: shadow,
