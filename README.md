@@ -155,6 +155,7 @@ STRIPE_PRICE_AGENCY=
 STRIPE_SUCCESS_URL=
 STRIPE_CANCEL_URL=
 APP_BASE_URL=
+BILLING_CURRENCY=usd
 STRIPE_CREDIT_PACK_100_PRICE_ID=
 STRIPE_CREDIT_PACK_300_PRICE_ID=
 STRIPE_CREDIT_PACK_1000_PRICE_ID=
@@ -335,7 +336,7 @@ Response:
 }
 ```
 
-Free trials start with 20 credits. Monthly plan resets add one credit ledger entry for the plan amount: Starter 80, Growth 600, Pro 1500, and Agency 5000. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
+Free trials start with 20 credits. Monthly plan resets add one credit ledger entry for the plan amount: Starter 20, Growth 100, Pro 500, and Agency 1500. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
 
 ## Image Processing
 

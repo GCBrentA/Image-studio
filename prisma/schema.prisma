@@ -39,18 +39,30 @@ enum ImageJobStatus {
 }
 
 model User {
-  id                 String           @id @default(cuid())
-  email              String           @unique
-  password_hash      String
-  stripe_customer_id String?          @unique
-  billing_email      String?
-  created_at         DateTime         @default(now())
-  updated_at         DateTime         @updatedAt
-  sites              ConnectedSite[]
-  subscriptions      Subscription[]
-  credit_ledger      CreditLedger[]
-  image_jobs         ImageJob[]
-  processed_images   ProcessedImage[]
+  id                     String              @id @default(cuid())
+  email                  String              @unique
+  password_hash          String
+  stripe_customer_id     String?             @unique
+  stripe_subscription_id String?             @unique
+  stripe_price_id        String?
+  stripe_product_id      String?
+  billing_plan           SubscriptionPlan?
+  billing_status         SubscriptionStatus?
+  billing_email          String?
+  current_period_start   DateTime?
+  current_period_end     DateTime?
+  cancel_at_period_end   Boolean             @default(false)
+  credits_included       Int                 @default(0)
+  credits_remaining      Int                 @default(0)
+  credits_used           Int                 @default(0)
+  credits_reset_at       DateTime?
+  created_at             DateTime            @default(now())
+  updated_at             DateTime            @updatedAt
+  sites                  ConnectedSite[]
+  subscriptions          Subscription[]
+  credit_ledger          CreditLedger[]
+  image_jobs             ImageJob[]
+  processed_images       ProcessedImage[]
 
   @@map("optivra_users")
 }
@@ -79,7 +91,11 @@ model Subscription {
   current_period_end     DateTime
   stripe_subscription_id String?            @unique
   stripe_price_id        String?
+  stripe_product_id      String?
   cancel_at_period_end   Boolean            @default(false)
+  credits_included       Int                @default(0)
+  credits_remaining      Int                @default(0)
+  credits_used           Int                @default(0)
   billing_email          String?
   credits_reset_at       DateTime?
   created_at             DateTime           @default(now())
@@ -92,26 +108,43 @@ model Subscription {
 }
 
 model StripeEvent {
-  id           String    @id
-  type         String
-  processed_at DateTime?
-  created_at   DateTime  @default(now())
+  id              String    @id @default(cuid())
+  stripe_event_id String    @unique
+  event_type      String
+  type            String?
+  processed_at    DateTime?
+  raw_event       Json?
+  account_id      String?
+  status          String    @default("received")
+  error_message   String?
+  created_at      DateTime  @default(now())
 
-  @@index([type])
+  @@index([event_type])
+  @@index([account_id])
+  @@index([status])
   @@map("stripe_events")
 }
 
 model CreditLedger {
   id              String             @id @default(cuid())
   user_id         String
+  account_id      String?
   change_amount   Int
+  amount          Int?
+  balance_after   Int?
   reason          CreditLedgerReason
+  source          String?
+  description     String?
+  stripe_event_id String?
   idempotency_key String?            @unique
   created_at      DateTime           @default(now())
   user            User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
+  @@index([account_id])
   @@index([reason])
+  @@index([source])
+  @@index([stripe_event_id])
   @@map("credit_ledger")
 }
 

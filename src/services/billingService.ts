@@ -36,6 +36,7 @@ type StripeSubscriptionLike = {
       current_period_end?: number;
       price: {
         id: string;
+        product?: string | { id: string } | null;
       };
     }>;
   };
@@ -294,12 +295,23 @@ const findUserByCustomerId = async (customerId: string) =>
     }
   });
 
+const getProductIdFromPrice = (price: StripeSubscriptionLike["items"]["data"][number]["price"] | undefined): string | null => {
+  const product = price?.product;
+
+  if (!product) {
+    return null;
+  }
+
+  return typeof product === "string" ? product : product.id;
+};
+
 const upsertSubscriptionFromStripe = async (
   subscription: StripeSubscriptionLike,
   fallbackUserId?: string,
   billingEmail?: string | null
 ): Promise<void> => {
   const priceId = subscription.items.data[0]?.price.id ?? "";
+  const stripeProductId = getProductIdFromPrice(subscription.items.data[0]?.price);
   const plan = getPlanByPriceId(priceId);
 
   if (!plan) {
@@ -342,7 +354,9 @@ const upsertSubscriptionFromStripe = async (
       current_period_start: currentPeriodStart,
       current_period_end: currentPeriodEnd,
       stripe_price_id: priceId,
+      stripe_product_id: stripeProductId,
       cancel_at_period_end: subscription.cancel_at_period_end,
+      credits_included: plan.credits,
       billing_email: billingEmail ?? undefined,
       credits_reset_at: currentPeriodEnd
     },
@@ -354,8 +368,30 @@ const upsertSubscriptionFromStripe = async (
       current_period_end: currentPeriodEnd,
       stripe_subscription_id: subscription.id,
       stripe_price_id: priceId,
+      stripe_product_id: stripeProductId,
       cancel_at_period_end: subscription.cancel_at_period_end,
+      credits_included: plan.credits,
       billing_email: billingEmail ?? undefined,
+      credits_reset_at: currentPeriodEnd
+    }
+  });
+
+  await prisma.user.update({
+    where: {
+      id: userId
+    },
+    data: {
+      stripe_customer_id: customerId ?? undefined,
+      stripe_subscription_id: subscription.id,
+      stripe_price_id: priceId,
+      stripe_product_id: stripeProductId,
+      billing_plan: plan.plan,
+      billing_status: stripeStatusToSubscriptionStatus(subscription.status),
+      billing_email: billingEmail ?? undefined,
+      current_period_start: currentPeriodStart,
+      current_period_end: currentPeriodEnd,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      credits_included: plan.credits,
       credits_reset_at: currentPeriodEnd
     }
   });
@@ -408,6 +444,16 @@ const handleSubscriptionDeleted = async (subscription: StripeSubscriptionLike): 
       cancel_at_period_end: false
     }
   });
+
+  await prisma.user.updateMany({
+    where: {
+      stripe_subscription_id: subscription.id
+    },
+    data: {
+      billing_status: SubscriptionStatus.canceled,
+      cancel_at_period_end: false
+    }
+  });
 };
 
 const getInvoiceSubscriptionId = (invoice: StripeInvoiceLike): string | null => {
@@ -447,7 +493,7 @@ const handleInvoicePaid = async (invoice: StripeInvoiceLike): Promise<void> => {
     return;
   }
 
-  await resetMonthlyCredits(localSubscription.user_id, localSubscription.plan, {
+  const credits = await resetMonthlyCredits(localSubscription.user_id, localSubscription.plan, {
     idempotencyKey: `stripe-invoice:${invoice.id}:monthly-reset`
   });
 
@@ -456,7 +502,10 @@ const handleInvoicePaid = async (invoice: StripeInvoiceLike): Promise<void> => {
       stripe_subscription_id: subscription.id
     },
     data: {
-      credits_reset_at: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : undefined
+      credits_reset_at: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : undefined,
+      credits_included: credits.credits_total,
+      credits_remaining: credits.credits_remaining,
+      credits_used: Math.max(credits.credits_total - credits.credits_remaining, 0)
     }
   });
 };
@@ -491,14 +540,31 @@ const handleInvoicePaymentFailed = async (invoice: StripeInvoiceLike): Promise<v
       status: SubscriptionStatus.past_due
     }
   });
+
+  await prisma.user.updateMany({
+    where: {
+      stripe_subscription_id: subscriptionId
+    },
+    data: {
+      billing_status: SubscriptionStatus.past_due
+    }
+  });
 };
 
 export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"processed" | "duplicate" | "ignored"> => {
   try {
     await prisma.stripeEvent.create({
       data: {
-        id: event.id,
-        type: event.type
+        stripe_event_id: event.id,
+        event_type: event.type,
+        type: event.type,
+        raw_event: event as Prisma.InputJsonValue,
+        account_id: event.data.object && typeof event.data.object === "object" && "metadata" in event.data.object
+          ? ((event.data.object as { metadata?: Record<string, string> | null }).metadata?.account_id ??
+            (event.data.object as { metadata?: Record<string, string> | null }).metadata?.user_id ??
+            (event.data.object as { metadata?: Record<string, string> | null }).metadata?.userId)
+          : undefined,
+        status: "processing"
       }
     });
   } catch (error) {
@@ -511,45 +577,60 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
 
   let result: "processed" | "ignored";
 
-  switch (event.type) {
-    case "checkout.session.completed":
-      await handleCheckoutSessionCompleted(event.data.object as StripeCheckoutSessionLike);
-      result = "processed";
-      break;
-    case "customer.subscription.created":
-    case "customer.subscription.updated":
-      await upsertSubscriptionFromStripe(event.data.object as StripeSubscriptionLike);
-      result = "processed";
-      break;
-    case "customer.subscription.deleted":
-      await handleSubscriptionDeleted(event.data.object as StripeSubscriptionLike);
-      result = "processed";
-      break;
-    case "invoice.paid":
-    case "invoice.payment_succeeded":
-      await handleInvoicePaid(event.data.object as StripeInvoiceLike);
-      result = "processed";
-      break;
-    case "invoice.payment_failed":
-      await handleInvoicePaymentFailed(event.data.object as StripeInvoiceLike);
-      result = "processed";
-      break;
-    case "customer.updated":
-      await handleCustomerUpdated(event.data.object as StripeCustomerLike);
-      result = "processed";
-      break;
-    default:
-      result = "ignored";
-  }
-
-  await prisma.stripeEvent.update({
-    where: {
-      id: event.id
-    },
-    data: {
-      processed_at: new Date()
+  try {
+    switch (event.type) {
+      case "checkout.session.completed":
+        await handleCheckoutSessionCompleted(event.data.object as StripeCheckoutSessionLike);
+        result = "processed";
+        break;
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+        await upsertSubscriptionFromStripe(event.data.object as StripeSubscriptionLike);
+        result = "processed";
+        break;
+      case "customer.subscription.deleted":
+        await handleSubscriptionDeleted(event.data.object as StripeSubscriptionLike);
+        result = "processed";
+        break;
+      case "invoice.paid":
+      case "invoice.payment_succeeded":
+        await handleInvoicePaid(event.data.object as StripeInvoiceLike);
+        result = "processed";
+        break;
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(event.data.object as StripeInvoiceLike);
+        result = "processed";
+        break;
+      case "customer.updated":
+        await handleCustomerUpdated(event.data.object as StripeCustomerLike);
+        result = "processed";
+        break;
+      default:
+        result = "ignored";
     }
-  });
+
+    await prisma.stripeEvent.update({
+      where: {
+        stripe_event_id: event.id
+      },
+      data: {
+        processed_at: new Date(),
+        status: result
+      }
+    });
+  } catch (error) {
+    await prisma.stripeEvent.update({
+      where: {
+        stripe_event_id: event.id
+      },
+      data: {
+        status: "failed",
+        error_message: error instanceof Error ? error.message : "Unknown webhook processing error"
+      }
+    });
+
+    throw error;
+  }
 
   return result;
 };

@@ -42,7 +42,14 @@ export const registerUser = async (email: string, password: string): Promise<Aut
     const createdUser = await transaction.user.create({
       data: {
         email: normalizedEmail,
-        password_hash: hashPassword(password)
+        password_hash: hashPassword(password),
+        billing_plan: SubscriptionPlan.starter,
+        billing_status: SubscriptionStatus.trialing,
+        current_period_end: trialEndsAt,
+        credits_included: FREE_TRIAL_CREDITS,
+        credits_remaining: FREE_TRIAL_CREDITS,
+        credits_used: 0,
+        credits_reset_at: trialEndsAt
       },
       select: {
         id: true,
@@ -55,15 +62,24 @@ export const registerUser = async (email: string, password: string): Promise<Aut
         user_id: createdUser.id,
         plan: SubscriptionPlan.starter,
         status: SubscriptionStatus.trialing,
-        current_period_end: trialEndsAt
+        current_period_end: trialEndsAt,
+        credits_included: FREE_TRIAL_CREDITS,
+        credits_remaining: FREE_TRIAL_CREDITS,
+        credits_used: 0,
+        credits_reset_at: trialEndsAt
       }
     });
 
     await transaction.creditLedger.create({
       data: {
         user_id: createdUser.id,
+        account_id: createdUser.id,
         change_amount: FREE_TRIAL_CREDITS,
+        amount: FREE_TRIAL_CREDITS,
+        balance_after: FREE_TRIAL_CREDITS,
         reason: CreditLedgerReason.trial,
+        source: CreditLedgerReason.trial,
+        description: "Free trial credits",
         idempotency_key: `trial:${createdUser.id}`
       }
     });

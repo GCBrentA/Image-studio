@@ -8,28 +8,32 @@ export const subscriptionPlans = {
     name: "Starter",
     monthly_price_usd: 19,
     credits: env.planCreditLimits.starter,
-    priceId: env.stripePriceIds.starter
+    priceId: env.stripePriceIds.starter,
+    priceEnvVar: "STRIPE_PRICE_STARTER"
   },
   growth: {
     plan: SubscriptionPlan.growth,
     name: "Growth",
     monthly_price_usd: 69,
     credits: env.planCreditLimits.growth,
-    priceId: env.stripePriceIds.growth
+    priceId: env.stripePriceIds.growth,
+    priceEnvVar: "STRIPE_PRICE_GROWTH"
   },
   pro: {
     plan: SubscriptionPlan.pro,
     name: "Pro",
     monthly_price_usd: 159,
     credits: env.planCreditLimits.pro,
-    priceId: env.stripePriceIds.pro
+    priceId: env.stripePriceIds.pro,
+    priceEnvVar: "STRIPE_PRICE_PRO"
   },
   agency: {
     plan: SubscriptionPlan.agency,
     name: "Agency",
     monthly_price_usd: 429,
     credits: env.planCreditLimits.agency,
-    priceId: env.stripePriceIds.agency
+    priceId: env.stripePriceIds.agency,
+    priceEnvVar: "STRIPE_PRICE_AGENCY"
   }
 } as const;
 

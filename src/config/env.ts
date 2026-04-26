@@ -20,7 +20,8 @@ const runtimeEnvVars = [
   "STRIPE_PRICE_AGENCY",
   "STRIPE_SUCCESS_URL",
   "STRIPE_CANCEL_URL",
-  "APP_BASE_URL"
+  "APP_BASE_URL",
+  "BILLING_CURRENCY"
 ] as const;
 
 const missingEnvVars = runtimeEnvVars.filter((key) => !process.env[key]);
@@ -55,6 +56,7 @@ export const env = {
   },
   stripeSuccessUrl: process.env.STRIPE_SUCCESS_URL ?? "",
   stripeCancelUrl: process.env.STRIPE_CANCEL_URL ?? "",
+  billingCurrency: (process.env.BILLING_CURRENCY ?? "usd").toLowerCase(),
   openAiApiKey: process.env.OPENAI_API_KEY ?? "",
   appUrl: process.env.APP_BASE_URL ?? process.env.APP_URL ?? "",
   apiBaseUrl: process.env.API_BASE_URL ?? "",
@@ -63,10 +65,10 @@ export const env = {
   storageSignedUrlExpiresSeconds: Number(process.env.STORAGE_SIGNED_URL_EXPIRES_SECONDS ?? 60 * 60 * 24 * 7),
   imageStorageRetentionDays: Number(process.env.IMAGE_STORAGE_RETENTION_DAYS ?? 30),
   planCreditLimits: {
-    starter: Number(process.env.STARTER_MONTHLY_CREDITS ?? 80),
-    growth: Number(process.env.GROWTH_MONTHLY_CREDITS ?? 600),
-    pro: Number(process.env.PRO_MONTHLY_CREDITS ?? 1500),
-    agency: Number(process.env.AGENCY_MONTHLY_CREDITS ?? 5000)
+    starter: Number(process.env.STARTER_MONTHLY_CREDITS ?? 20),
+    growth: Number(process.env.GROWTH_MONTHLY_CREDITS ?? 100),
+    pro: Number(process.env.PRO_MONTHLY_CREDITS ?? 500),
+    agency: Number(process.env.AGENCY_MONTHLY_CREDITS ?? 1500)
   },
   publicBaseUrl:
     process.env.APP_BASE_URL ??

@@ -135,6 +135,23 @@ const toCreditResponse = (
   error_if_any: error
 });
 
+const syncUserCreditMirror = async (
+  userId: string,
+  totals: CreditTotals,
+  client: Prisma.TransactionClient | typeof prisma
+): Promise<void> => {
+  await client.user.update({
+    where: {
+      id: userId
+    },
+    data: {
+      credits_included: totals.credits_total,
+      credits_remaining: totals.credits_remaining,
+      credits_used: Math.max(totals.credits_total - totals.credits_remaining, 0)
+    }
+  });
+};
+
 export const getLowCreditThresholds = (
   creditsRemaining: number,
   creditsTotal: number
@@ -175,16 +192,28 @@ export const addCredits = async (
 
   return runSerializableTransaction(
     async (transaction) => {
-      await transaction.creditLedger.create({
+      const ledgerEntry = await transaction.creditLedger.create({
         data: {
           user_id: userId,
+          account_id: userId,
           change_amount: amount,
+          amount,
           reason,
+          source: reason,
           idempotency_key: options.idempotencyKey
         }
       });
 
       const totals = await getCreditTotals(userId, transaction);
+      await transaction.creditLedger.update({
+        where: {
+          id: ledgerEntry.id
+        },
+        data: {
+          balance_after: totals.credits_remaining
+        }
+      });
+      await syncUserCreditMirror(userId, totals, transaction);
 
       return toCreditResponse(totals);
     }
@@ -252,11 +281,14 @@ export const deductCredit = async (
           return toCreditResponse(totalsBeforeDeduction, noCreditsError);
         }
 
-        await transaction.creditLedger.create({
+        const ledgerEntry = await transaction.creditLedger.create({
           data: {
             user_id: userId,
+            account_id: userId,
             change_amount: -1,
+            amount: -1,
             reason: CreditLedgerReason.usage,
+            source: CreditLedgerReason.usage,
             idempotency_key: idempotencyKey
           }
         });
@@ -273,6 +305,15 @@ export const deductCredit = async (
         }
 
         const totals = await getCreditTotals(userId, transaction);
+        await transaction.creditLedger.update({
+          where: {
+            id: ledgerEntry.id
+          },
+          data: {
+            balance_after: totals.credits_remaining
+          }
+        });
+        await syncUserCreditMirror(userId, totals, transaction);
 
         return toCreditResponse(totals);
       }
@@ -300,16 +341,28 @@ export const resetMonthlyCredits = async (
   try {
     return await runSerializableTransaction(
       async (transaction) => {
-        await transaction.creditLedger.create({
+        const ledgerEntry = await transaction.creditLedger.create({
           data: {
             user_id: userId,
+            account_id: userId,
             change_amount: creditsForPlan,
+            amount: creditsForPlan,
             reason: CreditLedgerReason.reset,
+            source: CreditLedgerReason.reset,
             idempotency_key: idempotencyKey
           }
         });
 
         const totals = await getCreditTotals(userId, transaction);
+        await transaction.creditLedger.update({
+          where: {
+            id: ledgerEntry.id
+          },
+          data: {
+            balance_after: totals.credits_remaining
+          }
+        });
+        await syncUserCreditMirror(userId, totals, transaction);
 
         return toCreditResponse(totals);
       }
