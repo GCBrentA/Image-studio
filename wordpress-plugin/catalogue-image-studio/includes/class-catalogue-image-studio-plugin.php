@@ -93,17 +93,15 @@ class Catalogue_Image_Studio_Plugin {
 	 */
 	public static function activate(): void {
 		self::create_tables();
-
-		$plugin   = self::instance();
-		$settings = get_option($plugin->get_option_name(), []);
+		$settings = get_option('catalogue_image_studio_settings', []);
 
 		if (! is_array($settings)) {
 			$settings = [];
 		}
 
 		update_option(
-			$plugin->get_option_name(),
-			wp_parse_args($settings, $plugin->get_default_settings()),
+			'catalogue_image_studio_settings',
+			wp_parse_args($settings, self::default_settings()),
 			false
 		);
 	}
@@ -190,6 +188,15 @@ class Catalogue_Image_Studio_Plugin {
 	 * @return array<string, mixed>
 	 */
 	public function get_default_settings(): array {
+		return self::default_settings();
+	}
+
+	/**
+	 * Get plugin defaults without constructing the runtime singleton.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function default_settings(): array {
 		return [
 			'enabled'                 => true,
 			'api_base_url'            => 'https://image-studio.onrender.com',
