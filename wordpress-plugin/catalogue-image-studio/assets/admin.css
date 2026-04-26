@@ -589,6 +589,26 @@
 	color: var(--cis-danger);
 }
 
+.catalogue-image-studio-admin .catalogue-image-studio-after-pending {
+	display: grid;
+	gap: 6px;
+	max-width: 170px;
+	padding: 10px;
+	border: 1px solid #d0d5dd;
+	border-radius: 10px;
+	background: #f9fafb;
+	color: var(--cis-muted);
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-after-pending span {
+	font-weight: 700;
+	color: var(--cis-ink);
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-after-pending small {
+	line-height: 1.4;
+}
+
 .catalogue-image-studio-admin .catalogue-image-studio-missing-after span {
 	font-weight: 700;
 	line-height: 1.3;

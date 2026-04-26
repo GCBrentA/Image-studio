@@ -1089,7 +1089,7 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	private function render_review_tab(): void {
-		$jobs = $this->plugin->jobs()->query(['status' => ['completed', 'approved', 'rejected', 'reverted']], 100, 0);
+		$jobs = $this->plugin->jobs()->query(['status' => ['completed', 'approved', 'rejected']], 100, 0);
 		?>
 		<div class="catalogue-image-studio-panel">
 			<h2><?php echo esc_html__('Review & Approve', 'optivra'); ?></h2>
@@ -2256,6 +2256,16 @@ class Catalogue_Image_Studio_Admin {
 	 * @param array<string,mixed>                             $job Job.
 	 */
 	private function render_after_thumbnail(array $links, array $job): void {
+		$status = (string) ($job['status'] ?? '');
+
+		if (in_array($status, ['unprocessed', 'queued', 'processing'], true)) {
+			echo '<div class="catalogue-image-studio-after-pending">';
+			echo '<span>' . esc_html__('Not processed yet', 'optivra') . '</span>';
+			echo '<small>' . esc_html__('Process this queued image to create an after preview.', 'optivra') . '</small>';
+			echo '</div>';
+			return;
+		}
+
 		if ('' === $links['preview'] || '' === $links['full']) {
 			echo '<div class="catalogue-image-studio-missing-after">';
 			echo '<span>' . esc_html__('Processed image file missing', 'optivra') . '</span>';
