@@ -56,6 +56,17 @@ app.use(logger);
 app.use("/assets", express.static(path.resolve(process.cwd(), "public", "site", "assets")));
 app.use("/processed-images", express.static(path.resolve(process.cwd(), "storage", "processed-images")));
 
+app.get("/account/dashboard", (request, response, next) => {
+  const wantsHtml = request.accepts(["html", "json"]) === "html";
+
+  if (wantsHtml && !request.headers.authorization) {
+    response.redirect(302, "/dashboard");
+    return;
+  }
+
+  next();
+});
+
 app.use(routes);
 app.use("/api", routes);
 

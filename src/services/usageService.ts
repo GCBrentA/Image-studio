@@ -51,7 +51,7 @@ export const getUsageForUser = async (userId: string): Promise<UsageResponse> =>
     next_reset_at: currentPeriodEnd,
     current_period_end: currentPeriodEnd,
     account_urls: {
-      account: `${accountBaseUrl}/account/dashboard`,
+      account: `${accountBaseUrl}/dashboard`,
       billing: `${accountBaseUrl}/account/billing`,
       credits: `${accountBaseUrl}/account/billing#buy-credits`
     }

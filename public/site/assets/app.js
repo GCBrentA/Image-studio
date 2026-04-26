@@ -14,7 +14,19 @@ function setToken(value) {
 }
 
 function routeTo(path) {
-  const normalized = path === "" ? "/" : path;
+  let normalized = path === "" ? "/" : path;
+  if (normalized === "/account") {
+    normalized = "/dashboard";
+    history.replaceState({}, "", normalized);
+  }
+  if (normalized === "/account/sites") {
+    normalized = "/dashboard";
+    history.replaceState({}, "", normalized);
+  }
+  if (normalized === "/account/credits") {
+    normalized = "/account/billing";
+    history.replaceState({}, "", "/account/billing#buy-credits");
+  }
   const page = pages.find((node) => node.dataset.page === normalized) || pages[0];
   pages.forEach((node) => node.classList.toggle("active", node === page));
   navLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === normalized));

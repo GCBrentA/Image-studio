@@ -23,6 +23,18 @@ const webPaths = new Set([
 
 export const webRoutes = Router();
 
+webRoutes.get("/account", (_request, response) => {
+  response.redirect(302, "/dashboard");
+});
+
+webRoutes.get("/account/sites", (_request, response) => {
+  response.redirect(302, "/dashboard");
+});
+
+webRoutes.get("/account/credits", (_request, response) => {
+  response.redirect(302, "/account/billing#buy-credits");
+});
+
 webRoutes.get([...webPaths], (_request, response) => {
   response.sendFile(path.resolve(process.cwd(), "public", "site", "index.html"));
 });

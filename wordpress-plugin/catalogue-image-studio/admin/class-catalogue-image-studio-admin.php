@@ -1151,7 +1151,7 @@ class Catalogue_Image_Studio_Admin {
 								<?php if (! empty($settings['api_token'])) : ?><button type="submit" name="disconnect_store" value="1" class="button optivra-danger-button"><?php echo esc_html__('Disconnect', 'optivra'); ?></button><?php endif; ?>
 							</div>
 							<div class="optivra-link-row">
-								<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get API token', 'optivra'); ?></a>
+								<a href="<?php echo esc_url($this->get_sites_url(is_array($usage) ? $usage : [], $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get API token', 'optivra'); ?></a>
 								<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'optivra'); ?></a>
 							</div>
 						</div>
@@ -1638,7 +1638,7 @@ class Catalogue_Image_Studio_Admin {
 				</label>
 
 				<div class="catalogue-image-studio-link-row">
-					<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'optivra'); ?></a>
+					<a href="<?php echo esc_url($this->get_sites_url(is_array($usage) ? $usage : [], $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'optivra'); ?></a>
 					<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'optivra'); ?></a>
 				</div>
 
@@ -2050,17 +2050,46 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function get_app_base_url($usage, array $settings = []): string {
 		if (is_array($usage) && ! empty($usage['app_url']) && is_string($usage['app_url'])) {
-			return $usage['app_url'];
+			return untrailingslashit($usage['app_url']);
 		}
 
 		if (is_array($usage) && ! empty($usage['account_urls']['account']) && is_string($usage['account_urls']['account'])) {
 			$path = wp_parse_url($usage['account_urls']['account'], PHP_URL_PATH);
 			if (is_string($path) && false !== strpos($path, '/account')) {
-				return (string) str_replace($path, '', $usage['account_urls']['account']);
+				return untrailingslashit((string) str_replace($path, '', $usage['account_urls']['account']));
 			}
 		}
 
-		return (string) ($settings['api_base_url'] ?? 'https://www.optivra.app');
+		return untrailingslashit((string) ($settings['api_base_url'] ?? 'https://www.optivra.app'));
+	}
+
+	private function normalize_account_url(string $url, string $fallback_path): string {
+		$url = trim($url);
+		if ('' === $url) {
+			return '';
+		}
+
+		$path = (string) wp_parse_url($url, PHP_URL_PATH);
+		$query = (string) wp_parse_url($url, PHP_URL_QUERY);
+		$base = untrailingslashit((string) str_replace($path, '', $url));
+
+		if ('/account' === untrailingslashit($path)) {
+			return trailingslashit($base) . ltrim($fallback_path, '/');
+		}
+
+		if ('/account/dashboard' === untrailingslashit($path) || '/account/sites' === untrailingslashit($path)) {
+			return trailingslashit($base) . 'dashboard';
+		}
+
+		if ('/account/credits' === untrailingslashit($path)) {
+			return trailingslashit($base) . 'account/billing#buy-credits';
+		}
+
+		if ('' !== $query && false === strpos($url, '?')) {
+			return $url;
+		}
+
+		return $url;
 	}
 
 	/**
@@ -2068,7 +2097,7 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function get_upgrade_url($usage, array $settings = []): string {
 		if (is_array($usage) && ! empty($usage['account_urls']['billing']) && is_string($usage['account_urls']['billing'])) {
-			return $usage['account_urls']['billing'];
+			return $this->normalize_account_url($usage['account_urls']['billing'], 'account/billing');
 		}
 
 		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/billing';
@@ -2079,7 +2108,7 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function get_buy_credits_url($usage, array $settings = []): string {
 		if (is_array($usage) && ! empty($usage['account_urls']['credits']) && is_string($usage['account_urls']['credits'])) {
-			return $usage['account_urls']['credits'];
+			return $this->normalize_account_url($usage['account_urls']['credits'], 'account/billing#buy-credits');
 		}
 
 		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/billing#buy-credits';
@@ -2090,10 +2119,14 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function get_account_url($usage, array $settings = []): string {
 		if (is_array($usage) && ! empty($usage['account_urls']['account']) && is_string($usage['account_urls']['account'])) {
-			return $usage['account_urls']['account'];
+			return $this->normalize_account_url($usage['account_urls']['account'], 'dashboard');
 		}
 
-		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/dashboard';
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'dashboard';
+	}
+
+	private function get_sites_url($usage, array $settings = []): string {
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'dashboard';
 	}
 
 	/**
