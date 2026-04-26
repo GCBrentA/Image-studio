@@ -5,6 +5,12 @@ import { validateBillingAtStartup } from "./services/stripeService";
 
 const server = app.listen(env.port, () => {
   console.info(`Image Studio listening on port ${env.port}`);
+  console.info("Runtime URL configuration", {
+    appBaseUrl: env.appUrl || "missing",
+    stripeSuccessUrlConfigured: Boolean(env.stripeSuccessUrl),
+    stripeCancelUrlConfigured: Boolean(env.stripeCancelUrl),
+    webhookRouteMounted: "/api/stripe/webhook"
+  });
   validateBillingAtStartup();
 });
 

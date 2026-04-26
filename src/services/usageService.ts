@@ -19,7 +19,7 @@ export type UsageResponse = {
 };
 
 const getAccountBaseUrl = (): string =>
-  (env.appUrl || env.apiBaseUrl || "https://image-studio.onrender.com").replace(/\/+$/, "");
+  (env.appUrl || env.apiBaseUrl || "https://www.optivra.app").replace(/\/+$/, "");
 
 export const getUsageForUser = async (userId: string): Promise<UsageResponse> => {
   const [credits, subscription] = await Promise.all([
@@ -51,9 +51,9 @@ export const getUsageForUser = async (userId: string): Promise<UsageResponse> =>
     next_reset_at: currentPeriodEnd,
     current_period_end: currentPeriodEnd,
     account_urls: {
-      account: `${accountBaseUrl}/account`,
+      account: `${accountBaseUrl}/account/dashboard`,
       billing: `${accountBaseUrl}/account/billing`,
-      credits: `${accountBaseUrl}/account/credits`
+      credits: `${accountBaseUrl}/account/billing#buy-credits`
     }
   };
 };

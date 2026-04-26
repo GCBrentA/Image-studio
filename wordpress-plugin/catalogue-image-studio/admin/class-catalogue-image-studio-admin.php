@@ -2055,7 +2055,7 @@ class Catalogue_Image_Studio_Admin {
 			}
 		}
 
-		return (string) ($settings['api_base_url'] ?? 'https://image-studio-hzqk.onrender.com');
+		return (string) ($settings['api_base_url'] ?? 'https://www.optivra.app');
 	}
 
 	/**
@@ -2077,7 +2077,7 @@ class Catalogue_Image_Studio_Admin {
 			return $usage['account_urls']['credits'];
 		}
 
-		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/credits';
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/billing#buy-credits';
 	}
 
 	/**
@@ -2088,7 +2088,7 @@ class Catalogue_Image_Studio_Admin {
 			return $usage['account_urls']['account'];
 		}
 
-		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account';
+		return trailingslashit($this->get_app_base_url($usage, $settings)) . 'account/dashboard';
 	}
 
 	/**

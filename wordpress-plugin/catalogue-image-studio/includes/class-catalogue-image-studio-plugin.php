@@ -243,7 +243,7 @@ class Catalogue_Image_Studio_Plugin {
 	public static function default_settings(): array {
 		return [
 			'enabled'                 => true,
-			'api_base_url'            => 'https://image-studio-hzqk.onrender.com',
+			'api_base_url'            => 'https://www.optivra.app',
 			'api_base_url_override'   => '',
 			'api_token'               => '',
 			'require_approval'        => true,
@@ -327,7 +327,7 @@ class Catalogue_Image_Studio_Plugin {
 		$settings['api_base_url_override'] = isset($settings['api_base_url_override']) ? (string) $settings['api_base_url_override'] : '';
 		$settings['api_base_url']          = '' !== $settings['api_base_url_override']
 			? $settings['api_base_url_override']
-			: (string) ($settings['api_base_url'] ?? $this->get_default_settings()['api_base_url']);
+			: (string) $this->get_default_settings()['api_base_url'];
 
 		$settings['require_approval']      = array_key_exists('require_approval', $settings) ? (bool) $settings['require_approval'] : (bool) ($settings['approval_required'] ?? true);
 		$settings['approval_required']     = $settings['require_approval'];

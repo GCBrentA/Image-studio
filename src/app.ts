@@ -27,7 +27,28 @@ app.use(helmet({
     }
   }
 }));
-app.use(cors());
+
+const allowedOrigins = new Set([
+  "https://www.optivra.app",
+  "https://optivra.app",
+  "https://azraelsarmoury.com",
+  "https://www.azraelsarmoury.com",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173"
+]);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error("Not allowed by CORS"));
+  }
+}));
 app.use("/billing/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
 app.use(express.json());

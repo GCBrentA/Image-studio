@@ -94,10 +94,11 @@ type CreditCheckoutSessionInput = {
 };
 
 const appUrl = (): string => env.appUrl || env.apiBaseUrl || `http://localhost:${env.port}`;
-const successUrl = (): string => env.stripeSuccessUrl || `${appUrl().replace(/\/$/, "")}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
-const cancelUrl = (): string => env.stripeCancelUrl || `${appUrl().replace(/\/$/, "")}/billing/cancel`;
-const creditSuccessUrl = (): string => `${appUrl().replace(/\/$/, "")}/billing/credits/success?session_id={CHECKOUT_SESSION_ID}`;
-const creditCancelUrl = (): string => `${appUrl().replace(/\/$/, "")}/billing/credits/cancel`;
+const appBaseUrl = (): string => appUrl().replace(/\/$/, "");
+const successUrl = (): string => `${appBaseUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+const cancelUrl = (): string => `${appBaseUrl()}/billing/cancel`;
+const creditSuccessUrl = (): string => `${appBaseUrl()}/billing/credits/success?session_id={CHECKOUT_SESSION_ID}`;
+const creditCancelUrl = (): string => `${appBaseUrl()}/account/billing`;
 
 const isKnownPrismaError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
   error instanceof Prisma.PrismaClientKnownRequestError;
@@ -290,10 +291,9 @@ export const createCustomerPortalSession = async (userId: string): Promise<Porta
     throw new HttpError(404, "No Stripe customer exists for this account yet");
   }
 
-  const baseUrl = appUrl().replace(/\/$/, "");
   const session = await getStripe().billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${baseUrl}/account/billing`
+    return_url: `${appBaseUrl()}/account/billing`
   });
 
   return {

@@ -45,6 +45,7 @@ wordpress-plugin/
    JWT_SECRET=replace-with-a-long-random-secret
    API_TOKEN_SALT=replace-with-a-long-random-secret
    APP_URL=http://localhost:3000
+   APP_BASE_URL=http://localhost:3000
    API_BASE_URL=http://localhost:3000
    ```
 
@@ -157,9 +158,9 @@ STRIPE_PRICE_STARTER=
 STRIPE_PRICE_GROWTH=
 STRIPE_PRICE_PRO=
 STRIPE_PRICE_AGENCY=
-STRIPE_SUCCESS_URL=
-STRIPE_CANCEL_URL=
-APP_BASE_URL=
+STRIPE_SUCCESS_URL=https://www.optivra.app/billing/success?session_id={CHECKOUT_SESSION_ID}
+STRIPE_CANCEL_URL=https://www.optivra.app/billing/cancel
+APP_BASE_URL=https://www.optivra.app
 BILLING_CURRENCY=usd
 STRIPE_CREDIT_PACK_100_PRICE_ID=
 STRIPE_CREDIT_PACK_300_PRICE_ID=
@@ -175,10 +176,17 @@ Copy the resulting one-time Stripe Price IDs into Render as `STRIPE_CREDIT_PRICE
 Configure the Stripe webhook URL as:
 
 ```text
-https://your-render-service.onrender.com/api/stripe/webhook
+https://www.optivra.app/api/stripe/webhook
 ```
 
 Subscribe the webhook endpoint to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`, and `customer.updated`.
+
+Checkout and portal redirects are generated from `APP_BASE_URL` at runtime:
+
+- Subscription success: `https://www.optivra.app/billing/success?session_id={CHECKOUT_SESSION_ID}`
+- Subscription cancel: `https://www.optivra.app/billing/cancel`
+- Credit purchase success: `https://www.optivra.app/billing/credits/success?session_id={CHECKOUT_SESSION_ID}`
+- Credit purchase cancel and Customer Portal return: `https://www.optivra.app/account/billing`
 
 ## Database Migrations
 
