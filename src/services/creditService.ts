@@ -5,12 +5,13 @@ import {
   SubscriptionPlan
 } from "@prisma/client";
 import { prisma } from "../utils/prisma";
+import { env } from "../config/env";
 
 export const PLAN_CREDIT_LIMITS: Record<SubscriptionPlan, number> = {
-  starter: 80,
-  growth: 600,
-  pro: 1500,
-  agency: 5000
+  starter: env.planCreditLimits.starter,
+  growth: env.planCreditLimits.growth,
+  pro: env.planCreditLimits.pro,
+  agency: env.planCreditLimits.agency
 };
 
 export const FREE_TRIAL_CREDITS = 20;

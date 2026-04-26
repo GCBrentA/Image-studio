@@ -19,6 +19,9 @@ function routeTo(path) {
   if (normalized === "/dashboard") {
     loadDashboard();
   }
+  if (normalized === "/account/billing" || normalized === "/billing/success") {
+    loadBilling();
+  }
 }
 
 function pageTitle(path) {
@@ -29,6 +32,9 @@ function pageTitle(path) {
     "/pricing": "Pricing | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
+    "/account/billing": "Billing | Optivra",
+    "/billing/success": "Billing Success | Optivra",
+    "/billing/cancel": "Billing Cancelled | Optivra",
     "/docs": "Docs | Optivra",
     "/support": "Support | Optivra",
     "/terms": "Terms | Optivra",
@@ -110,6 +116,46 @@ async function loadDashboard() {
   }
 }
 
+async function loadBilling() {
+  if (!token()) {
+    setText("billing-plan", "Login required");
+    return;
+  }
+
+  try {
+    const data = await api("/account/dashboard");
+    const billing = data.billing || {};
+    const usage = data.usage || {};
+    const remaining = Number(billing.credits_remaining ?? usage.credits_remaining ?? 0);
+    const total = Number(billing.credits_total ?? usage.credits_total ?? 0);
+    setText("billing-plan", billing.plan || usage.plan || "-");
+    setText("billing-status", billing.cancel_at_period_end ? `${billing.status} · cancels at period end` : (billing.status || usage.subscription_status || "-"));
+    setText("billing-credits", `${remaining} / ${total}`);
+    setText("billing-used", String(Number(billing.credits_used ?? Math.max(total - remaining, 0))));
+    setText("billing-reset", formatDate(billing.credits_reset_at || billing.current_period_end || usage.next_reset_at));
+    const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((remaining / total) * 100))) : 0;
+    const meter = document.getElementById("billing-meter");
+    if (meter) meter.style.width = `${pct}%`;
+    document.querySelectorAll("#portal-button, #portal-button-secondary").forEach((button) => {
+      button.disabled = !billing.stripe_customer_id;
+      button.textContent = billing.stripe_customer_id ? "Manage Billing" : "Billing not active yet";
+    });
+  } catch (error) {
+    setText("billing-plan", error.message);
+  }
+}
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = value;
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+}
+
 function renderList(id, items, renderer) {
   const node = document.getElementById(id);
   if (!node) return;
@@ -161,7 +207,7 @@ async function checkout(payload) {
     routeTo("/login");
     return;
   }
-  const body = await api("/billing/checkout-session", {
+  const body = await api("/api/billing/create-checkout-session", {
     method: "POST",
     body: JSON.stringify(payload)
   });
@@ -174,7 +220,7 @@ async function openPortal() {
     routeTo("/login");
     return;
   }
-  const body = await api("/billing/portal", { method: "POST", body: "{}" });
+  const body = await api("/api/billing/create-portal-session", { method: "POST", body: "{}" });
   location.href = body.url;
 }
 document.getElementById("portal-button")?.addEventListener("click", openPortal);

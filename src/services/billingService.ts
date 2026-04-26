@@ -8,7 +8,7 @@ import {
   getPlanByKey,
   getPlanByPriceId
 } from "./billingCatalog";
-import { getStripe } from "./stripeService";
+import { ensureBillingReady, getStripe } from "./stripeService";
 import type { StripeWebhookEvent } from "./stripeService";
 
 type StripeCustomerRef = string | { id: string } | null;
@@ -29,6 +29,8 @@ type StripeSubscriptionLike = {
   metadata: Record<string, string>;
   status: StripeSubscriptionStatus;
   cancel_at_period_end: boolean;
+  current_period_start?: number;
+  current_period_end?: number;
   items: {
     data: Array<{
       current_period_end?: number;
@@ -44,6 +46,15 @@ type StripeCheckoutSessionLike = {
   mode: "payment" | "setup" | "subscription" | null;
   customer: StripeCustomerRef;
   subscription?: string | { id: string } | null;
+  metadata?: Record<string, string> | null;
+  customer_details?: {
+    email?: string | null;
+  } | null;
+};
+
+type StripeCustomerLike = {
+  id: string;
+  email?: string | null;
   metadata?: Record<string, string> | null;
 };
 
@@ -74,6 +85,8 @@ type PortalSessionResult = {
 };
 
 const appUrl = (): string => env.appUrl || env.apiBaseUrl || `http://localhost:${env.port}`;
+const successUrl = (): string => env.stripeSuccessUrl || `${appUrl().replace(/\/$/, "")}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+const cancelUrl = (): string => env.stripeCancelUrl || `${appUrl().replace(/\/$/, "")}/billing/cancel`;
 
 const isKnownPrismaError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
   error instanceof Prisma.PrismaClientKnownRequestError;
@@ -136,12 +149,36 @@ const getCustomerId = async (userId: string): Promise<string> => {
   return customer.id;
 };
 
+const findExistingCustomerId = async (userId: string): Promise<string | null> => {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId
+    },
+    select: {
+      stripe_customer_id: true
+    }
+  });
+
+  return user?.stripe_customer_id ?? null;
+};
+
 export const createCheckoutSession = async (
   userId: string,
   input: CheckoutSessionInput
 ): Promise<CheckoutSessionResult> => {
+  await ensureBillingReady();
   const customerId = await getCustomerId(userId);
-  const baseUrl = appUrl().replace(/\/$/, "");
+  const site = await prisma.connectedSite.findFirst({
+    where: {
+      user_id: userId
+    },
+    orderBy: {
+      created_at: "asc"
+    },
+    select: {
+      domain: true
+    }
+  });
 
   if (input.type === "subscription") {
     const plan = getPlanByKey(input.plan ?? "");
@@ -154,18 +191,24 @@ export const createCheckoutSession = async (
           quantity: 1
         }
       ],
-      success_url: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/billing/cancel`,
+      success_url: successUrl(),
+      cancel_url: cancelUrl(),
       allow_promotion_codes: true,
       metadata: {
+        account_id: userId,
+        user_id: userId,
         userId,
         checkoutType: "subscription",
-        plan: plan.plan
+        plan: plan.plan,
+        ...(site?.domain ? { store_domain: site.domain } : {})
       },
       subscription_data: {
         metadata: {
+          account_id: userId,
+          user_id: userId,
           userId,
-          plan: plan.plan
+          plan: plan.plan,
+          ...(site?.domain ? { store_domain: site.domain } : {})
         }
       }
     });
@@ -191,8 +234,8 @@ export const createCheckoutSession = async (
           quantity: 1
         }
       ],
-      success_url: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/billing/cancel`,
+      success_url: successUrl(),
+      cancel_url: cancelUrl(),
       metadata: {
         userId,
         checkoutType: "credit_pack",
@@ -215,7 +258,13 @@ export const createCheckoutSession = async (
 };
 
 export const createCustomerPortalSession = async (userId: string): Promise<PortalSessionResult> => {
-  const customerId = await getCustomerId(userId);
+  await ensureBillingReady();
+  const customerId = await findExistingCustomerId(userId);
+
+  if (!customerId) {
+    throw new HttpError(404, "No Stripe customer exists for this account yet");
+  }
+
   const baseUrl = appUrl().replace(/\/$/, "");
   const session = await getStripe().billingPortal.sessions.create({
     customer: customerId,
@@ -247,7 +296,8 @@ const findUserByCustomerId = async (customerId: string) =>
 
 const upsertSubscriptionFromStripe = async (
   subscription: StripeSubscriptionLike,
-  fallbackUserId?: string
+  fallbackUserId?: string,
+  billingEmail?: string | null
 ): Promise<void> => {
   const priceId = subscription.items.data[0]?.price.id ?? "";
   const plan = getPlanByPriceId(priceId);
@@ -276,7 +326,9 @@ const upsertSubscriptionFromStripe = async (
     });
   }
 
-  const currentPeriodEndSeconds = subscription.items.data[0]?.current_period_end;
+  const currentPeriodStartSeconds = subscription.current_period_start;
+  const currentPeriodEndSeconds = subscription.current_period_end ?? subscription.items.data[0]?.current_period_end;
+  const currentPeriodStart = currentPeriodStartSeconds ? new Date(currentPeriodStartSeconds * 1000) : null;
   const currentPeriodEnd = new Date((currentPeriodEndSeconds ?? Math.floor(Date.now() / 1000)) * 1000);
 
   await prisma.subscription.upsert({
@@ -287,25 +339,32 @@ const upsertSubscriptionFromStripe = async (
       user_id: userId,
       plan: plan.plan,
       status: stripeStatusToSubscriptionStatus(subscription.status),
+      current_period_start: currentPeriodStart,
       current_period_end: currentPeriodEnd,
       stripe_price_id: priceId,
-      cancel_at_period_end: subscription.cancel_at_period_end
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      billing_email: billingEmail ?? undefined,
+      credits_reset_at: currentPeriodEnd
     },
     create: {
       user_id: userId,
       plan: plan.plan,
       status: stripeStatusToSubscriptionStatus(subscription.status),
+      current_period_start: currentPeriodStart,
       current_period_end: currentPeriodEnd,
       stripe_subscription_id: subscription.id,
       stripe_price_id: priceId,
-      cancel_at_period_end: subscription.cancel_at_period_end
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      billing_email: billingEmail ?? undefined,
+      credits_reset_at: currentPeriodEnd
     }
   });
 };
 
 const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike): Promise<void> => {
   const customerId = getCustomerIdFromStripeObject(session.customer);
-  const userId = session.metadata?.userId;
+  const userId = session.metadata?.userId ?? session.metadata?.user_id ?? session.metadata?.account_id;
+  const billingEmail = session.customer_details?.email ?? null;
 
   if (customerId && userId) {
     await prisma.user.update({
@@ -313,7 +372,8 @@ const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike
         id: userId
       },
       data: {
-        stripe_customer_id: customerId
+        stripe_customer_id: customerId,
+        billing_email: billingEmail ?? undefined
       }
     });
   }
@@ -322,7 +382,7 @@ const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike
     const subscriptionId =
       typeof session.subscription === "string" ? session.subscription : session.subscription.id;
     const subscription = await getStripe().subscriptions.retrieve(subscriptionId) as unknown as StripeSubscriptionLike;
-    await upsertSubscriptionFromStripe(subscription, userId);
+    await upsertSubscriptionFromStripe(subscription, userId, billingEmail);
     return;
   }
 
@@ -390,6 +450,30 @@ const handleInvoicePaid = async (invoice: StripeInvoiceLike): Promise<void> => {
   await resetMonthlyCredits(localSubscription.user_id, localSubscription.plan, {
     idempotencyKey: `stripe-invoice:${invoice.id}:monthly-reset`
   });
+
+  await prisma.subscription.update({
+    where: {
+      stripe_subscription_id: subscription.id
+    },
+    data: {
+      credits_reset_at: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : undefined
+    }
+  });
+};
+
+const handleCustomerUpdated = async (customer: StripeCustomerLike): Promise<void> => {
+  if (!customer.id) {
+    return;
+  }
+
+  await prisma.user.updateMany({
+    where: {
+      stripe_customer_id: customer.id
+    },
+    data: {
+      billing_email: customer.email ?? undefined
+    }
+  });
 };
 
 const handleInvoicePaymentFailed = async (invoice: StripeInvoiceLike): Promise<void> => {
@@ -419,18 +503,7 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
     });
   } catch (error) {
     if (isKnownPrismaError(error) && error.code === "P2002") {
-      const existingEvent = await prisma.stripeEvent.findUnique({
-        where: {
-          id: event.id
-        },
-        select: {
-          processed_at: true
-        }
-      });
-
-      if (existingEvent?.processed_at) {
-        return "duplicate";
-      }
+      return "duplicate";
     } else {
       throw error;
     }
@@ -443,6 +516,7 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
       await handleCheckoutSessionCompleted(event.data.object as StripeCheckoutSessionLike);
       result = "processed";
       break;
+    case "customer.subscription.created":
     case "customer.subscription.updated":
       await upsertSubscriptionFromStripe(event.data.object as StripeSubscriptionLike);
       result = "processed";
@@ -452,11 +526,16 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
       result = "processed";
       break;
     case "invoice.paid":
+    case "invoice.payment_succeeded":
       await handleInvoicePaid(event.data.object as StripeInvoiceLike);
       result = "processed";
       break;
     case "invoice.payment_failed":
       await handleInvoicePaymentFailed(event.data.object as StripeInvoiceLike);
+      result = "processed";
+      break;
+    case "customer.updated":
+      await handleCustomerUpdated(event.data.object as StripeCustomerLike);
       result = "processed";
       break;
     default:

@@ -1398,6 +1398,10 @@ class Catalogue_Image_Studio_Admin {
 			);
 			?>
 		</p>
+		<div class="catalogue-image-studio-cta-buttons">
+			<a class="button button-primary" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Upgrade plan', 'catalogue-image-studio'); ?></a>
+			<a class="button" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage billing', 'catalogue-image-studio'); ?></a>
+		</div>
 		<?php
 	}
 

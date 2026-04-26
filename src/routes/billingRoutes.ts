@@ -9,6 +9,14 @@ billingRoutes.post("/checkout-session", requireDatabase, jwtAuth, (request, resp
   createCheckout(request, response).catch(next);
 });
 
+billingRoutes.post("/create-checkout-session", requireDatabase, jwtAuth, (request, response, next) => {
+  createCheckout(request, response).catch(next);
+});
+
 billingRoutes.post("/portal", requireDatabase, jwtAuth, (request, response, next) => {
+  createPortal(request, response).catch(next);
+});
+
+billingRoutes.post("/create-portal-session", requireDatabase, jwtAuth, (request, response, next) => {
   createPortal(request, response).catch(next);
 });

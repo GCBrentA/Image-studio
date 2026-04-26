@@ -146,11 +146,15 @@ Set the matching Render environment variables:
 
 ```env
 STRIPE_SECRET_KEY=
+STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=
-STRIPE_STARTER_PRICE_ID=
-STRIPE_GROWTH_PRICE_ID=
-STRIPE_PRO_PRICE_ID=
-STRIPE_AGENCY_PRICE_ID=
+STRIPE_PRICE_STARTER=
+STRIPE_PRICE_GROWTH=
+STRIPE_PRICE_PRO=
+STRIPE_PRICE_AGENCY=
+STRIPE_SUCCESS_URL=
+STRIPE_CANCEL_URL=
+APP_BASE_URL=
 STRIPE_CREDIT_PACK_100_PRICE_ID=
 STRIPE_CREDIT_PACK_300_PRICE_ID=
 STRIPE_CREDIT_PACK_1000_PRICE_ID=
@@ -159,10 +163,10 @@ STRIPE_CREDIT_PACK_1000_PRICE_ID=
 Configure the Stripe webhook URL as:
 
 ```text
-https://your-render-service.onrender.com/billing/webhook
+https://your-render-service.onrender.com/api/stripe/webhook
 ```
 
-Subscribe the webhook endpoint to `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`.
+Subscribe the webhook endpoint to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`, and `customer.updated`.
 
 ## Database Migrations
 
@@ -203,7 +207,7 @@ npm run prisma:generate
 
 The Express app serves the Optivra website from `public/site` at `/`, `/plugins`, `/catalogue-image-studio`, `/pricing`, `/login`, `/dashboard`, `/docs`, `/support`, `/terms`, `/privacy`, and `/refund-policy`.
 
-The dashboard uses account JWT authentication and calls `/account/dashboard`, `/sites/connect`, `/billing/checkout-session`, and `/billing/portal` for real account, site, credit, and billing data.
+The dashboard uses account JWT authentication and calls `/account/dashboard`, `/sites/connect`, `/api/billing/create-checkout-session`, and `/api/billing/create-portal-session` for real account, site, credit, and billing data.
 
 ## Account and Site Connection
 
@@ -249,14 +253,13 @@ The response includes `api_token`. Store that value in the WooCommerce plugin se
 Create a subscription checkout session with an account JWT:
 
 ```http
-POST /billing/checkout-session
+POST /api/billing/create-checkout-session
 Authorization: Bearer account-jwt
 Content-Type: application/json
 ```
 
 ```json
 {
-  "type": "subscription",
   "plan": "starter"
 }
 ```
@@ -286,7 +289,7 @@ Both checkout calls return:
 Open the Stripe customer portal:
 
 ```http
-POST /billing/portal
+POST /api/billing/create-portal-session
 Authorization: Bearer account-jwt
 ```
 

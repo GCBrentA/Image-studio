@@ -140,7 +140,7 @@
               <h1>Your Optivra workspace</h1>
             </div>
             <div class="dashboard-actions">
-              <button class="button ghost" id="portal-button">Billing portal</button>
+              <a class="button ghost" href="/account/billing" data-link>Billing</a>
               <button class="button primary" data-plan="growth">Upgrade plan</button>
               <button class="button ghost" data-pack="credits_300">Buy credits</button>
             </div>
@@ -153,6 +153,54 @@
             <section class="dash-panel wide"><h2>Usage history</h2><div id="dash-history"></div></section>
             <section class="dash-panel wide"><h2>Invoices and billing</h2><p>Open the Stripe billing portal to update payment method, view invoices, or cancel.</p><button class="button primary" id="portal-button-secondary">Open billing portal</button></section>
           </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/account/billing">
+        <div class="dashboard-shell">
+          <div class="dashboard-head">
+            <div>
+              <p class="eyebrow">Billing</p>
+              <h1>Plan, credits and invoices</h1>
+            </div>
+            <div class="dashboard-actions">
+              <button class="button ghost" id="portal-button">Manage Billing</button>
+            </div>
+          </div>
+          <div class="dashboard-grid">
+            <section class="dash-panel"><h2>Current plan</h2><div id="billing-plan">Login required</div></section>
+            <section class="dash-panel"><h2>Status</h2><div id="billing-status">-</div></section>
+            <section class="dash-panel"><h2>Credits</h2><div id="billing-credits">-</div><div class="meter"><div id="billing-meter"></div></div></section>
+            <section class="dash-panel"><h2>Credits used</h2><div id="billing-used">-</div></section>
+            <section class="dash-panel"><h2>Reset date</h2><div id="billing-reset">-</div></section>
+            <section class="dash-panel wide">
+              <h2>Upgrade plan</h2>
+              <div class="pricing-grid compact-pricing">
+                <article class="price-card"><h2>Starter</h2><strong>$19/mo</strong><p>80 credits monthly.</p><button data-plan="starter">Upgrade</button></article>
+                <article class="price-card"><h2>Growth</h2><strong>$69/mo</strong><p>600 credits monthly.</p><button data-plan="growth">Upgrade</button></article>
+                <article class="price-card"><h2>Pro</h2><strong>$159/mo</strong><p>1,500 credits monthly.</p><button data-plan="pro">Upgrade</button></article>
+                <article class="price-card"><h2>Agency</h2><strong>$429/mo</strong><p>5,000 credits monthly.</p><button data-plan="agency">Upgrade</button></article>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/billing/success">
+        <div class="page-band prose">
+          <p class="eyebrow">Billing</p>
+          <h1>Checkout complete</h1>
+          <p>Your subscription is being synced. If your plan or credits do not update immediately, the Stripe webhook may still be arriving.</p>
+          <a class="button primary" href="/account/billing" data-link>Back to Billing</a>
+        </div>
+      </section>
+
+      <section class="page" data-page="/billing/cancel">
+        <div class="page-band prose">
+          <p class="eyebrow">Billing</p>
+          <h1>Checkout cancelled</h1>
+          <p>No changes were made to your subscription.</p>
+          <a class="button primary" href="/account/billing" data-link>Back to Billing</a>
         </div>
       </section>
 

@@ -29,12 +29,14 @@ app.use(helmet({
 }));
 app.use(cors());
 app.use("/billing/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
+app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
 app.use(express.json());
 app.use(logger);
 app.use("/assets", express.static(path.resolve(process.cwd(), "public", "site", "assets")));
 app.use("/processed-images", express.static(path.resolve(process.cwd(), "storage", "processed-images")));
 
 app.use(routes);
+app.use("/api", routes);
 
 app.use(webRoutes);
 
