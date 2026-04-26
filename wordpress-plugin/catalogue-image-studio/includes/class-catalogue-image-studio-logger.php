@@ -46,7 +46,7 @@ class Catalogue_Image_Studio_Logger {
 				$level,
 				$message,
 				[
-					'source'  => 'catalogue-image-studio',
+					'source'  => 'optivra',
 					'context' => $context,
 				]
 			);

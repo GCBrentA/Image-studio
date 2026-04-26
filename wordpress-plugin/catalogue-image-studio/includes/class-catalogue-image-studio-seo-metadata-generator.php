@@ -26,7 +26,7 @@ class Catalogue_Image_Studio_SEO_Metadata_Generator {
 		$title   = $product ? trim((string) $product->get_name()) : trim((string) get_the_title($product_id));
 
 		if ('' === $title) {
-			$title = __('Product', 'catalogue-image-studio');
+			$title = __('Product', 'optivra');
 		}
 
 		$categories = $this->get_terms($product_id, 'product_cat');
@@ -38,7 +38,7 @@ class Catalogue_Image_Studio_SEO_Metadata_Generator {
 		$store      = trim((string) get_bloginfo('name'));
 
 		$category_phrase = $this->build_category_phrase($categories, $tags, $attributes);
-		$product_type    = '' !== $category_phrase ? $category_phrase : __('product accessory', 'catalogue-image-studio');
+		$product_type    = '' !== $category_phrase ? $category_phrase : __('product accessory', 'optivra');
 		$modifier        = $this->first_useful([$brand, $attributes['colour'] ?? '', $attributes['color'] ?? '', $attributes['material'] ?? '', $attributes['type'] ?? '']);
 
 		$filename_terms = array_filter([
@@ -56,7 +56,7 @@ class Catalogue_Image_Studio_SEO_Metadata_Generator {
 		$alt = $this->trim_sentence(
 			sprintf(
 				/* translators: 1: product name, 2: product/category phrase */
-				__('%1$s, shown as %2$s.', 'catalogue-image-studio'),
+				__('%1$s, shown as %2$s.', 'optivra'),
 				$title,
 				'' !== implode(' ', $alt_parts) ? strtolower($this->natural_join([$modifier, $product_type])) : strtolower($product_type)
 			),
@@ -71,7 +71,7 @@ class Catalogue_Image_Studio_SEO_Metadata_Generator {
 		$caption = $this->trim_sentence(
 			sprintf(
 				/* translators: 1: product name, 2: product/category phrase */
-				__('%1$s for %2$s.', 'catalogue-image-studio'),
+				__('%1$s for %2$s.', 'optivra'),
 				$title,
 				strtolower($product_type)
 			),
@@ -81,16 +81,16 @@ class Catalogue_Image_Studio_SEO_Metadata_Generator {
 		$description_bits = array_filter([
 			sprintf(
 				/* translators: 1: product name, 2: product/category phrase */
-				__('Optimised product image for %1$s, a %2$s', 'catalogue-image-studio'),
+				__('Optimised product image for %1$s, a %2$s', 'optivra'),
 				$title,
 				strtolower($product_type)
 			),
-			'' !== $store ? sprintf(__('available from %s', 'catalogue-image-studio'), $store) : '',
+			'' !== $store ? sprintf(__('available from %s', 'optivra'), $store) : '',
 		]);
 		$description = rtrim(implode(' ', $description_bits), '.') . '.';
 
 		if ('' !== $sku) {
-			$description .= ' ' . sprintf(__('SKU: %s.', 'catalogue-image-studio'), $sku);
+			$description .= ' ' . sprintf(__('SKU: %s.', 'optivra'), $sku);
 		}
 
 		return [

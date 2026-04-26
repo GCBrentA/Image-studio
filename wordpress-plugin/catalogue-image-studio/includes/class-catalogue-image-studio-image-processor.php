@@ -60,13 +60,13 @@ class Catalogue_Image_Studio_ImageProcessor {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra'));
 		}
 
 		$image_url = wp_get_attachment_url((int) ($job['attachment_id'] ?? 0));
 
 		if (! $image_url) {
-			$error = new WP_Error('catalogue_image_studio_missing_source_url', __('The source image URL could not be resolved.', 'catalogue-image-studio'));
+			$error = new WP_Error('catalogue_image_studio_missing_source_url', __('The source image URL could not be resolved.', 'optivra'));
 			$this->mark_failed($job_id, $error);
 			return $error;
 		}
@@ -88,7 +88,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 
 		$processed_url = $this->get_processed_url($processed);
 		if ('' === $processed_url) {
-			$error = new WP_Error('catalogue_image_studio_missing_processed_url', __('The processing API did not return a usable processed image URL.', 'catalogue-image-studio'));
+			$error = new WP_Error('catalogue_image_studio_missing_processed_url', __('The processing API did not return a usable processed image URL.', 'optivra'));
 			$this->mark_failed($job_id, $error);
 			return $error;
 		}
@@ -117,7 +117,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 				'catalogue_image_studio_processed_image_unavailable',
 				sprintf(
 					/* translators: %s: error message */
-					__('Processed image could not be retrieved from Optivra. Reprocess this image. Details: %s', 'catalogue-image-studio'),
+					__('Processed image could not be retrieved from Optivra. Reprocess this image. Details: %s', 'optivra'),
 					$processed_attachment_id->get_error_message()
 				)
 			);

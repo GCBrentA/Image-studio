@@ -40,7 +40,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra'));
 		}
 
 		$processed_attachment_id = (int) ($job['processed_attachment_id'] ?? 0);
@@ -51,7 +51,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 
 		if (! $processed_attachment_id) {
 			if (empty($job['processed_url']) || ! wp_http_validate_url((string) $job['processed_url'])) {
-				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image missing. Reprocess before approving.', 'catalogue-image-studio'));
+				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image missing. Reprocess before approving.', 'optivra'));
 				$this->mark_approval_error((int) $job_id, $error);
 				return $error;
 			}
@@ -65,7 +65,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 			);
 
 			if (is_wp_error($processed_attachment_id)) {
-				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image could not be found. Reprocess this image.', 'catalogue-image-studio'));
+				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image could not be found. Reprocess this image.', 'optivra'));
 				$this->mark_approval_error((int) $job_id, $error);
 				return $error;
 			}
@@ -111,7 +111,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra'));
 		}
 
 		$this->jobs->update(
@@ -134,13 +134,13 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra'));
 		}
 
 		$original_attachment_id = (int) ($job['original_attachment_id'] ?? 0);
 
 		if (! $original_attachment_id) {
-			return new WP_Error('catalogue_image_studio_missing_original_image', __('The original image is missing and cannot be restored.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_original_image', __('The original image is missing and cannot be restored.', 'optivra'));
 		}
 
 		$this->replace_product_image($job, $original_attachment_id);

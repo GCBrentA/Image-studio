@@ -311,6 +311,24 @@
 	color: var(--cis-muted);
 }
 
+.catalogue-image-studio-admin .catalogue-image-studio-disclosure {
+	display: grid;
+	gap: 8px;
+	max-width: 820px;
+	margin: 18px 0;
+	padding: 16px;
+	border: 1px solid #bfdbfe;
+	border-radius: 12px;
+	background: #eff6ff;
+	color: #1e3a8a;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-disclosure p {
+	margin: 0;
+	color: #1e40af;
+	line-height: 1.5;
+}
+
 .catalogue-image-studio-admin .catalogue-image-studio-step,
 .catalogue-image-studio-admin .catalogue-image-studio-workflow-step span {
 	display: inline-grid;

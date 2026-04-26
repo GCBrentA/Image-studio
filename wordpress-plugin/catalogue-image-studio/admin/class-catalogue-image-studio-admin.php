@@ -64,10 +64,10 @@ class Catalogue_Image_Studio_Admin {
 
 		$this->page_hook = add_submenu_page(
 			'woocommerce',
-			__('Catalogue Image Studio', 'catalogue-image-studio'),
-			__('Catalogue Image Studio', 'catalogue-image-studio'),
+			__('Catalogue Image Studio', 'optivra'),
+			__('Catalogue Image Studio', 'optivra'),
 			'manage_woocommerce',
-			'catalogue-image-studio',
+			'optivra',
 			[$this, 'render_page']
 		);
 	}
@@ -229,7 +229,7 @@ class Catalogue_Image_Studio_Admin {
 		if (isset($_POST['disconnect_store'])) {
 			$settings['api_token'] = '';
 			update_option($this->plugin->get_option_name(), $settings, false);
-			$this->queue_notice(__('Store disconnected.', 'catalogue-image-studio'), 'success');
+			$this->queue_notice(__('Store disconnected.', 'optivra'), 'success');
 			$this->redirect_after_settings_post();
 			return;
 		}
@@ -256,7 +256,7 @@ class Catalogue_Image_Studio_Admin {
 		$saved = update_option($this->plugin->get_option_name(), $settings, false);
 		if (! $saved && get_option($this->plugin->get_option_name()) !== $settings) {
 			$this->plugin->logger()->error('Catalogue Image Studio settings save failed.', ['option' => $this->plugin->get_option_name()]);
-			$this->queue_notice(__('Settings could not be saved. Please try again.', 'catalogue-image-studio'), 'error');
+			$this->queue_notice(__('Settings could not be saved. Please try again.', 'optivra'), 'error');
 			$this->redirect_after_settings_post();
 			return;
 		}
@@ -272,14 +272,14 @@ class Catalogue_Image_Studio_Admin {
 
 		if (isset($_POST['clear_local_cache'])) {
 			$this->plugin->jobs()->delete_all();
-			$this->queue_notice(__('Local image job cache cleared.', 'catalogue-image-studio'), 'success');
+			$this->queue_notice(__('Local image job cache cleared.', 'optivra'), 'success');
 			$this->redirect_after_settings_post();
 			return;
 		}
 
 		if (isset($_POST['reset_local_data'])) {
 			$this->plugin->jobs()->delete_all();
-			$this->queue_notice(__('Plugin local data reset.', 'catalogue-image-studio'), 'success');
+			$this->queue_notice(__('Plugin local data reset.', 'optivra'), 'success');
 			$this->redirect_after_settings_post();
 			return;
 		}
@@ -295,10 +295,10 @@ class Catalogue_Image_Studio_Admin {
 			if (is_wp_error($usage)) {
 				$this->queue_notice($usage->get_error_message(), 'error');
 			} else {
-				$this->queue_notice(__('Store connected to Optivra.', 'catalogue-image-studio'), 'success');
+				$this->queue_notice(__('Store connected to Optivra.', 'optivra'), 'success');
 			}
 		} else {
-			$this->queue_notice(__('Settings saved.', 'catalogue-image-studio'), 'success');
+			$this->queue_notice(__('Settings saved.', 'optivra'), 'success');
 		}
 
 		$this->redirect_after_settings_post();
@@ -312,7 +312,7 @@ class Catalogue_Image_Studio_Admin {
 
 		$settings['enabled']                 = true;
 		$posted_token = isset($input['api_token']) ? trim(sanitize_text_field((string) $input['api_token'])) : '';
-		$placeholder_token = __('Token saved - leave blank to keep it', 'catalogue-image-studio');
+		$placeholder_token = __('Token saved - leave blank to keep it', 'optivra');
 		$settings['api_token'] = ('' !== $posted_token && $posted_token !== $placeholder_token && false === strpos($posted_token, '*'))
 			? $posted_token
 			: (string) $settings['api_token'];
@@ -432,7 +432,7 @@ class Catalogue_Image_Studio_Admin {
 		$usage   = $this->get_usage();
 
 		if (is_wp_error($usage)) {
-			$this->add_error(__('Connect your Optivra account before scanning or processing images.', 'catalogue-image-studio'));
+			$this->add_error(__('Connect your Optivra account before scanning or processing images.', 'optivra'));
 			return;
 		}
 
@@ -441,12 +441,12 @@ class Catalogue_Image_Studio_Admin {
 		if ('scan' === $action) {
 			$result = $this->plugin->scanner()->scan($this->get_scan_filters_from_request());
 			if ((int) $result['slots_found'] <= 0) {
-				$this->add_error(__('No images found. Check product status/category filters or run with debug mode enabled.', 'catalogue-image-studio'));
+				$this->add_error(__('No images found. Check product status/category filters or run with debug mode enabled.', 'optivra'));
 			} else {
 				$this->add_success(
 					sprintf(
 						/* translators: 1: slots found, 2: jobs created/refreshed */
-						__('Scan complete. Found %1$d images and refreshed %2$d jobs.', 'catalogue-image-studio'),
+						__('Scan complete. Found %1$d images and refreshed %2$d jobs.', 'optivra'),
 						(int) $result['slots_found'],
 						count((array) $result['job_ids'])
 					)
@@ -460,7 +460,7 @@ class Catalogue_Image_Studio_Admin {
 			$this->plugin->jobs()->update_statuses((array) $result['job_ids'], 'queued');
 			$this->add_success(sprintf(
 				/* translators: %d: jobs queued */
-				__('%d image(s) queued.', 'catalogue-image-studio'),
+				__('%d image(s) queued.', 'optivra'),
 				count((array) $result['job_ids'])
 			));
 			return;
@@ -471,7 +471,7 @@ class Catalogue_Image_Studio_Admin {
 			$this->plugin->jobs()->update_statuses($job_ids, 'queued');
 			$this->add_success(sprintf(
 				/* translators: %d: jobs queued */
-				__('%d selected image(s) queued.', 'catalogue-image-studio'),
+				__('%d selected image(s) queued.', 'optivra'),
 				count($job_ids)
 			));
 			return;
@@ -480,7 +480,7 @@ class Catalogue_Image_Studio_Admin {
 		if ('process_next_batch' === $action) {
 			$settings = $this->plugin->get_settings();
 			if (! empty($settings['pause_low_credits']) && $this->is_low_credit_state($usage)) {
-				$this->add_error(__('Processing is paused because credits are running low. Buy credits or disable the pause setting to continue.', 'catalogue-image-studio'));
+				$this->add_error(__('Processing is paused because credits are running low. Buy credits or disable the pause setting to continue.', 'optivra'));
 				return;
 			}
 
@@ -490,7 +490,7 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		if (empty($job_ids)) {
-			$this->add_error('approve' === $action ? __('Select at least one image to approve.', 'catalogue-image-studio') : __('Select at least one image.', 'catalogue-image-studio'));
+			$this->add_error('approve' === $action ? __('Select at least one image to approve.', 'optivra') : __('Select at least one image.', 'optivra'));
 			return;
 		}
 
@@ -500,11 +500,11 @@ class Catalogue_Image_Studio_Admin {
 			if ($credits_remaining < count($job_ids)) {
 				$job_ids = array_slice($job_ids, 0, $credits_remaining);
 
-				$this->add_error(__('Insufficient credits. Processing available images only; buy credits or upgrade plan to process the rest.', 'catalogue-image-studio'));
+				$this->add_error(__('Insufficient credits. Processing available images only; buy credits or upgrade plan to process the rest.', 'optivra'));
 			}
 
 			if (empty($job_ids)) {
-				$this->add_error(__('No credits available. Buy credits or upgrade plan to continue.', 'catalogue-image-studio'));
+				$this->add_error(__('No credits available. Buy credits or upgrade plan to continue.', 'optivra'));
 				return;
 			}
 		}
@@ -513,7 +513,7 @@ class Catalogue_Image_Studio_Admin {
 			$updated = $this->plugin->jobs()->update_statuses($job_ids, 'unprocessed');
 			$this->add_success(sprintf(
 				/* translators: %d: jobs cancelled */
-				__('%d image(s) removed from queue.', 'catalogue-image-studio'),
+				__('%d image(s) removed from queue.', 'optivra'),
 				$updated
 			));
 			return;
@@ -545,7 +545,7 @@ class Catalogue_Image_Studio_Admin {
 				$this->add_success(
 					sprintf(
 						/* translators: %d: approved images */
-						_n('%d image approved and applied.', '%d images approved and applied.', $success, 'catalogue-image-studio'),
+						_n('%d image approved and applied.', '%d images approved and applied.', $success, 'optivra'),
 						$success
 					)
 				);
@@ -557,7 +557,7 @@ class Catalogue_Image_Studio_Admin {
 			$this->add_success(
 				sprintf(
 					/* translators: 1: action, 2: count */
-					__('%1$s complete for %2$d image(s).', 'catalogue-image-studio'),
+					__('%1$s complete for %2$d image(s).', 'optivra'),
 					ucfirst(str_replace('_', ' ', $action)),
 					$success
 				)
@@ -568,7 +568,7 @@ class Catalogue_Image_Studio_Admin {
 			$this->add_error(
 				sprintf(
 					/* translators: %d: count */
-					__('%d image action(s) failed.', 'catalogue-image-studio'),
+					__('%d image action(s) failed.', 'optivra'),
 					$failed
 				)
 			);
@@ -692,7 +692,7 @@ class Catalogue_Image_Studio_Admin {
 			case 'revert':
 				return $this->plugin->approval()->revert($job_id);
 			default:
-				return new WP_Error('catalogue_image_studio_unknown_action', __('Unknown action.', 'catalogue-image-studio'));
+				return new WP_Error('catalogue_image_studio_unknown_action', __('Unknown action.', 'optivra'));
 		}
 	}
 
@@ -703,7 +703,7 @@ class Catalogue_Image_Studio_Admin {
 		$job = $this->plugin->jobs()->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Job not found.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_job', __('Job not found.', 'optivra'));
 		}
 
 		$processed_url = (string) ($job['processed_url'] ?? '');
@@ -781,7 +781,7 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	private function redirect_after_settings_post(): void {
-		$target = admin_url('admin.php?page=catalogue-image-studio');
+		$target = admin_url('admin.php?page=optivra');
 		if (! empty($_POST['catalogue_image_studio_full_settings'])) {
 			$target = add_query_arg('cis_tab', 'settings', $target);
 		}
@@ -810,7 +810,7 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	public function render_page(): void {
 		if (! current_user_can('manage_woocommerce')) {
-			wp_die(esc_html__('You do not have permission to access this page.', 'catalogue-image-studio'));
+			wp_die(esc_html__('You do not have permission to access this page.', 'optivra'));
 		}
 
 		$settings = $this->plugin->get_settings();
@@ -820,8 +820,8 @@ class Catalogue_Image_Studio_Admin {
 		$tab       = $this->get_current_tab();
 		?>
 		<div class="wrap catalogue-image-studio-admin">
-			<h1><?php echo esc_html__('Catalogue Image Studio', 'catalogue-image-studio'); ?></h1>
-			<p class="catalogue-image-studio-page-intro"><?php echo esc_html__('Configure how Optivra optimises and writes product images back to your store.', 'catalogue-image-studio'); ?></p>
+			<h1><?php echo esc_html__('Catalogue Image Studio', 'optivra'); ?></h1>
+			<p class="catalogue-image-studio-page-intro"><?php echo esc_html__('Configure how Optivra optimises and writes product images back to your store.', 'optivra'); ?></p>
 			<?php $this->render_queued_notices(); ?>
 			<?php settings_errors('catalogue_image_studio_messages'); ?>
 
@@ -876,24 +876,24 @@ class Catalogue_Image_Studio_Admin {
 		<div class="catalogue-image-studio-panel">
 			<div class="catalogue-image-studio-dashboard-head">
 				<div>
-					<h2><?php echo esc_html__('Dashboard', 'catalogue-image-studio'); ?></h2>
+					<h2><?php echo esc_html__('Dashboard', 'optivra'); ?></h2>
 					<?php $this->render_usage($usage); ?>
 				</div>
 				<div class="catalogue-image-studio-cta-buttons">
-					<a class="button button-primary" href="<?php echo esc_url(add_query_arg(['page' => 'catalogue-image-studio', 'cis_tab' => 'scan'], admin_url('admin.php'))); ?>"><?php echo esc_html__('Scan Catalogue', 'catalogue-image-studio'); ?></a>
-					<a class="button" href="<?php echo esc_url(add_query_arg(['page' => 'catalogue-image-studio', 'cis_tab' => 'review'], admin_url('admin.php'))); ?>"><?php echo esc_html__('Review Images', 'catalogue-image-studio'); ?></a>
-					<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy Credits', 'catalogue-image-studio'); ?></a>
-					<a class="button" href="<?php echo esc_url($this->get_account_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage Account', 'catalogue-image-studio'); ?></a>
+					<a class="button button-primary" href="<?php echo esc_url(add_query_arg(['page' => 'optivra', 'cis_tab' => 'scan'], admin_url('admin.php'))); ?>"><?php echo esc_html__('Scan Catalogue', 'optivra'); ?></a>
+					<a class="button" href="<?php echo esc_url(add_query_arg(['page' => 'optivra', 'cis_tab' => 'review'], admin_url('admin.php'))); ?>"><?php echo esc_html__('Review Images', 'optivra'); ?></a>
+					<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy Credits', 'optivra'); ?></a>
+					<a class="button" href="<?php echo esc_url($this->get_account_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage Account', 'optivra'); ?></a>
 				</div>
 			</div>
 			<div class="catalogue-image-studio-metrics">
 				<?php
-				$this->render_metric(__('Images scanned', 'catalogue-image-studio'), $images_scanned);
-				$this->render_metric(__('Queued', 'catalogue-image-studio'), (int) ($counts['queued'] ?? 0));
-				$this->render_metric(__('Processing', 'catalogue-image-studio'), (int) ($counts['processing'] ?? 0));
-				$this->render_metric(__('Completed', 'catalogue-image-studio'), (int) ($counts['completed'] ?? 0));
-				$this->render_metric(__('Failed', 'catalogue-image-studio'), (int) ($counts['failed'] ?? 0));
-				$this->render_metric(__('Awaiting approval', 'catalogue-image-studio'), $awaiting_approval);
+				$this->render_metric(__('Images scanned', 'optivra'), $images_scanned);
+				$this->render_metric(__('Queued', 'optivra'), (int) ($counts['queued'] ?? 0));
+				$this->render_metric(__('Processing', 'optivra'), (int) ($counts['processing'] ?? 0));
+				$this->render_metric(__('Completed', 'optivra'), (int) ($counts['completed'] ?? 0));
+				$this->render_metric(__('Failed', 'optivra'), (int) ($counts['failed'] ?? 0));
+				$this->render_metric(__('Awaiting approval', 'optivra'), $awaiting_approval);
 				?>
 			</div>
 		</div>
@@ -914,25 +914,25 @@ class Catalogue_Image_Studio_Admin {
 		$slots   = $this->filter_slots_by_processing_state($this->plugin->scanner()->get_product_images($filters));
 		?>
 		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Scan Catalogue', 'catalogue-image-studio'); ?></h2>
+			<h2><?php echo esc_html__('Scan Catalogue', 'optivra'); ?></h2>
 			<?php $this->render_scan_filters($filters); ?>
 			<form method="post" action="">
 				<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
 				<?php $this->render_hidden_scan_filters($filters); ?>
 				<div class="catalogue-image-studio-toolbar">
-					<strong><?php echo esc_html(sprintf(__('%d image(s) visible', 'catalogue-image-studio'), count($slots))); ?></strong>
+					<strong><?php echo esc_html(sprintf(__('%d image(s) visible', 'optivra'), count($slots))); ?></strong>
 					<div class="catalogue-image-studio-cta-buttons">
-						<button type="submit" name="catalogue_image_studio_action" value="scan" class="button"><?php echo esc_html__('Scan all product images', 'catalogue-image-studio'); ?></button>
-						<button type="submit" name="catalogue_image_studio_action" value="queue_selected_slots" class="button button-primary"><?php echo esc_html__('Queue selected', 'catalogue-image-studio'); ?></button>
-						<button type="submit" name="catalogue_image_studio_action" value="queue_visible" class="button"><?php echo esc_html__('Queue all visible', 'catalogue-image-studio'); ?></button>
-						<button type="submit" name="catalogue_image_studio_action" value="queue_category" class="button"><?php echo esc_html__('Queue category', 'catalogue-image-studio'); ?></button>
+						<button type="submit" name="catalogue_image_studio_action" value="scan" class="button"><?php echo esc_html__('Scan all product images', 'optivra'); ?></button>
+						<button type="submit" name="catalogue_image_studio_action" value="queue_selected_slots" class="button button-primary"><?php echo esc_html__('Queue selected', 'optivra'); ?></button>
+						<button type="submit" name="catalogue_image_studio_action" value="queue_visible" class="button"><?php echo esc_html__('Queue all visible', 'optivra'); ?></button>
+						<button type="submit" name="catalogue_image_studio_action" value="queue_category" class="button"><?php echo esc_html__('Queue category', 'optivra'); ?></button>
 					</div>
 				</div>
 				<table class="widefat fixed striped catalogue-image-studio-jobs">
-					<thead><tr><td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td><th><?php echo esc_html__('Image', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Product', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Slot', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Status', 'catalogue-image-studio'); ?></th></tr></thead>
+					<thead><tr><td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td><th><?php echo esc_html__('Image', 'optivra'); ?></th><th><?php echo esc_html__('Product', 'optivra'); ?></th><th><?php echo esc_html__('Slot', 'optivra'); ?></th><th><?php echo esc_html__('Status', 'optivra'); ?></th></tr></thead>
 					<tbody>
 						<?php if (empty($slots)) : ?>
-							<tr><td colspan="5"><?php echo esc_html__('No images found. Check product status/category filters or run with debug mode enabled.', 'catalogue-image-studio'); ?></td></tr>
+							<tr><td colspan="5"><?php echo esc_html__('No images found. Check product status/category filters or run with debug mode enabled.', 'optivra'); ?></td></tr>
 						<?php else : ?>
 							<?php foreach ($slots as $slot) : ?>
 								<?php $this->render_scan_slot_row($slot); ?>
@@ -972,15 +972,15 @@ class Catalogue_Image_Studio_Admin {
 		<form method="get" action="" class="catalogue-image-studio-filters">
 			<input type="hidden" name="page" value="catalogue-image-studio" />
 			<input type="hidden" name="cis_tab" value="scan" />
-			<label><span><?php echo esc_html__('Category', 'catalogue-image-studio'); ?></span><select name="filter_category"><option value="0"><?php echo esc_html__('All categories', 'catalogue-image-studio'); ?></option><?php if (! is_wp_error($categories)) : foreach ($categories as $category) : ?><option value="<?php echo esc_attr((string) $category->term_id); ?>" <?php selected((int) ($filters['category'] ?? 0), (int) $category->term_id); ?>><?php echo esc_html($category->name); ?></option><?php endforeach; endif; ?></select></label>
-			<label><span><?php echo esc_html__('Product status', 'catalogue-image-studio'); ?></span><select name="filter_product_status"><option value="publish" <?php selected('publish', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Published', 'catalogue-image-studio'); ?></option><option value="draft" <?php selected('draft', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Draft', 'catalogue-image-studio'); ?></option><option value="private" <?php selected('private', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Private', 'catalogue-image-studio'); ?></option><option value="all" <?php selected('all', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('All', 'catalogue-image-studio'); ?></option></select></label>
-			<label><span><?php echo esc_html__('Product type', 'catalogue-image-studio'); ?></span><select name="filter_product_type"><option value=""><?php echo esc_html__('All types', 'catalogue-image-studio'); ?></option><option value="simple" <?php selected('simple', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Simple', 'catalogue-image-studio'); ?></option><option value="variable" <?php selected('variable', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Variable', 'catalogue-image-studio'); ?></option></select></label>
-			<label><span><?php echo esc_html__('Processing state', 'catalogue-image-studio'); ?></span><select name="filter_processing_state"><option value=""><?php echo esc_html__('All', 'catalogue-image-studio'); ?></option><option value="unprocessed" <?php selected('unprocessed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Unprocessed', 'catalogue-image-studio'); ?></option><option value="processed" <?php selected('processed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Already processed', 'catalogue-image-studio'); ?></option></select></label>
-			<label><span><?php echo esc_html__('Stock', 'catalogue-image-studio'); ?></span><select name="filter_stock_status"><option value=""><?php echo esc_html__('Any stock status', 'catalogue-image-studio'); ?></option><option value="instock" <?php selected('instock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('In stock', 'catalogue-image-studio'); ?></option><option value="outofstock" <?php selected('outofstock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('Out of stock', 'catalogue-image-studio'); ?></option></select></label>
-			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_image_featured_only" value="1" <?php checked(isset($_GET['filter_image_featured_only'])); ?> /><span><?php echo esc_html__('Featured images only', 'catalogue-image-studio'); ?></span></label>
-			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_image_gallery_only" value="1" <?php checked(isset($_GET['filter_image_gallery_only'])); ?> /><span><?php echo esc_html__('Gallery images only', 'catalogue-image-studio'); ?></span></label>
-			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_include_category" value="1" <?php checked(! empty($filters['include_category'])); ?> /><span><?php echo esc_html__('Include category images', 'catalogue-image-studio'); ?></span></label>
-			<div class="catalogue-image-studio-filter-actions"><button class="button button-primary"><?php echo esc_html__('Apply filters', 'catalogue-image-studio'); ?></button></div>
+			<label><span><?php echo esc_html__('Category', 'optivra'); ?></span><select name="filter_category"><option value="0"><?php echo esc_html__('All categories', 'optivra'); ?></option><?php if (! is_wp_error($categories)) : foreach ($categories as $category) : ?><option value="<?php echo esc_attr((string) $category->term_id); ?>" <?php selected((int) ($filters['category'] ?? 0), (int) $category->term_id); ?>><?php echo esc_html($category->name); ?></option><?php endforeach; endif; ?></select></label>
+			<label><span><?php echo esc_html__('Product status', 'optivra'); ?></span><select name="filter_product_status"><option value="publish" <?php selected('publish', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Published', 'optivra'); ?></option><option value="draft" <?php selected('draft', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Draft', 'optivra'); ?></option><option value="private" <?php selected('private', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Private', 'optivra'); ?></option><option value="all" <?php selected('all', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('All', 'optivra'); ?></option></select></label>
+			<label><span><?php echo esc_html__('Product type', 'optivra'); ?></span><select name="filter_product_type"><option value=""><?php echo esc_html__('All types', 'optivra'); ?></option><option value="simple" <?php selected('simple', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Simple', 'optivra'); ?></option><option value="variable" <?php selected('variable', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Variable', 'optivra'); ?></option></select></label>
+			<label><span><?php echo esc_html__('Processing state', 'optivra'); ?></span><select name="filter_processing_state"><option value=""><?php echo esc_html__('All', 'optivra'); ?></option><option value="unprocessed" <?php selected('unprocessed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Unprocessed', 'optivra'); ?></option><option value="processed" <?php selected('processed', isset($_GET['filter_processing_state']) ? sanitize_key(wp_unslash($_GET['filter_processing_state'])) : ''); ?>><?php echo esc_html__('Already processed', 'optivra'); ?></option></select></label>
+			<label><span><?php echo esc_html__('Stock', 'optivra'); ?></span><select name="filter_stock_status"><option value=""><?php echo esc_html__('Any stock status', 'optivra'); ?></option><option value="instock" <?php selected('instock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('In stock', 'optivra'); ?></option><option value="outofstock" <?php selected('outofstock', (string) ($filters['stock_status'] ?? '')); ?>><?php echo esc_html__('Out of stock', 'optivra'); ?></option></select></label>
+			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_image_featured_only" value="1" <?php checked(isset($_GET['filter_image_featured_only'])); ?> /><span><?php echo esc_html__('Featured images only', 'optivra'); ?></span></label>
+			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_image_gallery_only" value="1" <?php checked(isset($_GET['filter_image_gallery_only'])); ?> /><span><?php echo esc_html__('Gallery images only', 'optivra'); ?></span></label>
+			<label class="catalogue-image-studio-filter-check"><input type="checkbox" name="filter_include_category" value="1" <?php checked(! empty($filters['include_category'])); ?> /><span><?php echo esc_html__('Include category images', 'optivra'); ?></span></label>
+			<div class="catalogue-image-studio-filter-actions"><button class="button button-primary"><?php echo esc_html__('Apply filters', 'optivra'); ?></button></div>
 		</form>
 		<?php
 	}
@@ -1039,7 +1039,7 @@ class Catalogue_Image_Studio_Admin {
 		$attachment_id = (int) $slot['attachment_id'];
 		$value         = implode(':', [$product_id, $attachment_id, sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]);
 		$job           = $this->plugin->jobs()->find_by_slot($slot);
-		$status        = $job ? $this->format_status((string) $job['status']) : __('Ready to queue', 'catalogue-image-studio');
+		$status        = $job ? $this->format_status((string) $job['status']) : __('Ready to queue', 'optivra');
 		$product_name  = ! empty($slot['product_name']) ? (string) $slot['product_name'] : get_the_title($product_id);
 		$slot_label    = (string) $slot['image_role'];
 		if ('gallery' === $slot_label) {
@@ -1050,8 +1050,8 @@ class Catalogue_Image_Studio_Admin {
 		?>
 		<tr>
 			<th scope="row" class="check-column"><input type="checkbox" class="catalogue-image-studio-job-check" name="slots[]" value="<?php echo esc_attr($value); ?>" /></th>
-			<td><?php $this->render_thumbnail((string) ($slot['image_url'] ?? wp_get_attachment_image_url($attachment_id, 'thumbnail')), __('Product image', 'catalogue-image-studio')); ?></td>
-			<td><strong><?php echo esc_html($product_name); ?></strong><br /><a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'catalogue-image-studio'); ?></a></td>
+			<td><?php $this->render_thumbnail((string) ($slot['image_url'] ?? wp_get_attachment_image_url($attachment_id, 'thumbnail')), __('Product image', 'optivra')); ?></td>
+			<td><strong><?php echo esc_html($product_name); ?></strong><br /><a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'optivra'); ?></a></td>
 			<td><?php echo esc_html($slot_label); ?></td>
 			<td><?php echo esc_html($status); ?></td>
 		</tr>
@@ -1063,24 +1063,24 @@ class Catalogue_Image_Studio_Admin {
 		$settings = $this->plugin->get_settings();
 		?>
 		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Queue', 'catalogue-image-studio'); ?></h2>
+			<h2><?php echo esc_html__('Queue', 'optivra'); ?></h2>
 			<?php if (! empty($settings['show_low_credit_warning'])) : ?>
 				<?php $this->render_monetisation_prompt($usage, max(0, (int) ($usage['credits_remaining'] ?? 0)), count($jobs), false); ?>
 			<?php endif; ?>
 			<?php if (! empty($settings['auto_refresh_job_status']) && ! empty($jobs)) : ?>
-				<p class="catalogue-image-studio-help"><?php echo esc_html__('This queue refreshes automatically while jobs are active.', 'catalogue-image-studio'); ?></p>
+				<p class="catalogue-image-studio-help"><?php echo esc_html__('This queue refreshes automatically while jobs are active.', 'optivra'); ?></p>
 				<script>window.setTimeout(function () { window.location.reload(); }, 15000);</script>
 			<?php endif; ?>
 			<form method="post" action="">
 				<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
 				<div class="catalogue-image-studio-toolbar">
 					<select name="catalogue_image_studio_action">
-						<option value="process"><?php echo esc_html__('Process selected', 'catalogue-image-studio'); ?></option>
-						<option value="process_next_batch"><?php echo esc_html__('Process next batch', 'catalogue-image-studio'); ?></option>
-						<option value="retry"><?php echo esc_html__('Retry failed', 'catalogue-image-studio'); ?></option>
-						<option value="cancel"><?php echo esc_html__('Cancel selected', 'catalogue-image-studio'); ?></option>
+						<option value="process"><?php echo esc_html__('Process selected', 'optivra'); ?></option>
+						<option value="process_next_batch"><?php echo esc_html__('Process next batch', 'optivra'); ?></option>
+						<option value="retry"><?php echo esc_html__('Retry failed', 'optivra'); ?></option>
+						<option value="cancel"><?php echo esc_html__('Cancel selected', 'optivra'); ?></option>
 					</select>
-					<button type="submit" class="button button-primary"><?php echo esc_html__('Apply', 'catalogue-image-studio'); ?></button>
+					<button type="submit" class="button button-primary"><?php echo esc_html__('Apply', 'optivra'); ?></button>
 				</div>
 				<?php $this->render_jobs_table($jobs, true); ?>
 			</form>
@@ -1092,18 +1092,18 @@ class Catalogue_Image_Studio_Admin {
 		$jobs = $this->plugin->jobs()->query(['status' => ['completed', 'approved', 'rejected', 'reverted']], 100, 0);
 		?>
 		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Review & Approve', 'catalogue-image-studio'); ?></h2>
+			<h2><?php echo esc_html__('Review & Approve', 'optivra'); ?></h2>
 			<form method="post" action="">
 				<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
 				<div class="catalogue-image-studio-toolbar">
 					<select name="catalogue_image_studio_action">
-						<option value="approve"><?php echo esc_html__('Approve all selected', 'catalogue-image-studio'); ?></option>
-						<option value="reject"><?php echo esc_html__('Reject selected', 'catalogue-image-studio'); ?></option>
-						<option value="retry"><?php echo esc_html__('Retry selected', 'catalogue-image-studio'); ?></option>
-						<option value="regenerate_seo"><?php echo esc_html__('Regenerate SEO selected', 'catalogue-image-studio'); ?></option>
-						<option value="revert"><?php echo esc_html__('Revert selected', 'catalogue-image-studio'); ?></option>
+						<option value="approve"><?php echo esc_html__('Approve all selected', 'optivra'); ?></option>
+						<option value="reject"><?php echo esc_html__('Reject selected', 'optivra'); ?></option>
+						<option value="retry"><?php echo esc_html__('Retry selected', 'optivra'); ?></option>
+						<option value="regenerate_seo"><?php echo esc_html__('Regenerate SEO selected', 'optivra'); ?></option>
+						<option value="revert"><?php echo esc_html__('Revert selected', 'optivra'); ?></option>
 					</select>
-					<button type="submit" class="button button-primary"><?php echo esc_html__('Apply', 'catalogue-image-studio'); ?></button>
+					<button type="submit" class="button button-primary"><?php echo esc_html__('Apply', 'optivra'); ?></button>
 				</div>
 				<?php $this->render_jobs_table($jobs, true); ?>
 			</form>
@@ -1117,16 +1117,16 @@ class Catalogue_Image_Studio_Admin {
 		<div class="optivra-settings-page">
 			<div class="optivra-settings-header">
 				<div>
-					<h2><?php echo esc_html__('Optivra Settings', 'catalogue-image-studio'); ?></h2>
-					<p><?php echo esc_html__('Configure how Optivra scans, processes, reviews and publishes product images.', 'catalogue-image-studio'); ?></p>
+					<h2><?php echo esc_html__('Optivra Settings', 'optivra'); ?></h2>
+					<p><?php echo esc_html__('Configure how Optivra scans, processes, reviews and publishes product images.', 'optivra'); ?></p>
 				</div>
-				<span class="optivra-status-pill <?php echo is_wp_error($usage) ? 'is-disconnected' : 'is-connected'; ?>"><?php echo is_wp_error($usage) ? esc_html__('Not connected', 'catalogue-image-studio') : esc_html__('Connected', 'catalogue-image-studio'); ?></span>
+				<span class="optivra-status-pill <?php echo is_wp_error($usage) ? 'is-disconnected' : 'is-connected'; ?>"><?php echo is_wp_error($usage) ? esc_html__('Not connected', 'optivra') : esc_html__('Connected', 'optivra'); ?></span>
 			</div>
 			<?php if (! is_wp_error($usage)) : ?>
 				<div class="optivra-summary-grid">
-					<?php $this->render_summary_card(__('Plan', 'catalogue-image-studio'), (string) ($usage['plan'] ?? __('Unknown', 'catalogue-image-studio'))); ?>
-					<?php $this->render_summary_card(__('Credits', 'catalogue-image-studio'), (string) ((int) ($usage['credits_remaining'] ?? 0) . ' / ' . (int) ($usage['credits_total'] ?? 0))); ?>
-					<?php $this->render_summary_card(__('Reset date', 'catalogue-image-studio'), (string) ($usage['current_period_end'] ?? __('Not available', 'catalogue-image-studio'))); ?>
+					<?php $this->render_summary_card(__('Plan', 'optivra'), (string) ($usage['plan'] ?? __('Unknown', 'optivra'))); ?>
+					<?php $this->render_summary_card(__('Credits', 'optivra'), (string) ((int) ($usage['credits_remaining'] ?? 0) . ' / ' . (int) ($usage['credits_total'] ?? 0))); ?>
+					<?php $this->render_summary_card(__('Reset date', 'optivra'), (string) ($usage['current_period_end'] ?? __('Not available', 'optivra'))); ?>
 				</div>
 			<?php endif; ?>
 			<form method="post" action="" class="optivra-settings-form">
@@ -1135,19 +1135,19 @@ class Catalogue_Image_Studio_Admin {
 				<input type="hidden" name="catalogue_image_studio_full_settings" value="1" />
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Connection', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Connect this store with the Site API Token from your Optivra account.', 'catalogue-image-studio'); ?></p></div>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Connection', 'optivra'); ?></h3><p><?php echo esc_html__('Connect this store with the Site API Token from your Optivra account.', 'optivra'); ?></p></div>
 					<div class="optivra-connection-grid">
 						<div>
-							<?php $this->render_text_setting('api_token', __('Site API Token', 'catalogue-image-studio'), __('Leave this blank to keep the existing saved token.', 'catalogue-image-studio'), '', 'password', ! empty($settings['api_token']) ? __('Token saved - leave blank to keep existing token', 'catalogue-image-studio') : __('Paste your Site API Token', 'catalogue-image-studio')); ?>
-							<?php if (! empty($settings['api_token'])) : ?><p class="optivra-muted"><?php echo esc_html(sprintf(__('Saved token: %s', 'catalogue-image-studio'), $this->mask_token((string) $settings['api_token']))); ?></p><?php endif; ?>
+							<?php $this->render_text_setting('api_token', __('Site API Token', 'optivra'), __('Leave this blank to keep the existing saved token.', 'optivra'), '', 'password', ! empty($settings['api_token']) ? __('Token saved - leave blank to keep existing token', 'optivra') : __('Paste your Site API Token', 'optivra')); ?>
+							<?php if (! empty($settings['api_token'])) : ?><p class="optivra-muted"><?php echo esc_html(sprintf(__('Saved token: %s', 'optivra'), $this->mask_token((string) $settings['api_token']))); ?></p><?php endif; ?>
 							<div class="optivra-button-row">
-								<button type="submit" name="connect_store" value="1" class="button button-primary"><?php echo esc_html__('Connect', 'catalogue-image-studio'); ?></button>
-								<button type="submit" name="test_connection" value="1" class="button"><?php echo esc_html__('Test connection', 'catalogue-image-studio'); ?></button>
-								<?php if (! empty($settings['api_token'])) : ?><button type="submit" name="disconnect_store" value="1" class="button optivra-danger-button"><?php echo esc_html__('Disconnect', 'catalogue-image-studio'); ?></button><?php endif; ?>
+								<button type="submit" name="connect_store" value="1" class="button button-primary"><?php echo esc_html__('Connect', 'optivra'); ?></button>
+								<button type="submit" name="test_connection" value="1" class="button"><?php echo esc_html__('Test connection', 'optivra'); ?></button>
+								<?php if (! empty($settings['api_token'])) : ?><button type="submit" name="disconnect_store" value="1" class="button optivra-danger-button"><?php echo esc_html__('Disconnect', 'optivra'); ?></button><?php endif; ?>
 							</div>
 							<div class="optivra-link-row">
-								<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get API token', 'catalogue-image-studio'); ?></a>
-								<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'catalogue-image-studio'); ?></a>
+								<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get API token', 'optivra'); ?></a>
+								<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'optivra'); ?></a>
 							</div>
 						</div>
 						<div class="optivra-status-panel"><?php $this->render_connection_status($usage, ! is_wp_error($usage)); ?></div>
@@ -1155,28 +1155,28 @@ class Catalogue_Image_Studio_Admin {
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Processing Defaults', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Choose the default scan, queue and publish behaviour for product images.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_toggle_setting('require_approval', __('Require review before replacing images', 'catalogue-image-studio'), __('Processed images wait for approval before WooCommerce product images are replaced.', 'catalogue-image-studio'), ! empty($settings['require_approval'])); ?>
-					<?php $this->render_toggle_setting('auto_process_new_images', __('Auto-process newly scanned images', 'catalogue-image-studio'), __('Newly discovered images can be queued for processing automatically.', 'catalogue-image-studio'), ! empty($settings['auto_process_new_images'])); ?>
-					<?php $this->render_toggle_setting('process_featured_images', __('Include featured/product images', 'catalogue-image-studio'), __('Scan and queue main product images by default.', 'catalogue-image-studio'), ! empty($settings['process_featured_images'])); ?>
-					<?php $this->render_toggle_setting('process_gallery_images', __('Include gallery images', 'catalogue-image-studio'), __('Scan and queue WooCommerce gallery images by default.', 'catalogue-image-studio'), ! empty($settings['process_gallery_images'])); ?>
-					<?php $this->render_toggle_setting('process_category_images', __('Include category thumbnail images', 'catalogue-image-studio'), __('Allow scans to include product category thumbnails when selected.', 'catalogue-image-studio'), ! empty($settings['process_category_images'])); ?>
-					<?php $this->render_toggle_setting('duplicate_detection', __('Duplicate detection', 'catalogue-image-studio'), __('Reuse previous processed results when the same source image is encountered.', 'catalogue-image-studio'), ! empty($settings['duplicate_detection'])); ?>
-					<?php $this->render_toggle_setting('pause_on_low_credits', __('Pause processing when credits are low', 'catalogue-image-studio'), __('Stop larger queue batches before credits are exhausted.', 'catalogue-image-studio'), ! empty($settings['pause_on_low_credits'])); ?>
-					<?php $this->render_toggle_setting('retry_failed_jobs', __('Retry failed jobs automatically', 'catalogue-image-studio'), __('Keep failed jobs ready for a quick retry pass.', 'catalogue-image-studio'), ! empty($settings['retry_failed_jobs'])); ?>
-					<?php $this->render_toggle_setting('auto_refresh_job_status', __('Auto-refresh job status', 'catalogue-image-studio'), __('Refresh queue status while jobs are active.', 'catalogue-image-studio'), ! empty($settings['auto_refresh_job_status'])); ?>
-					<?php $this->render_number_setting('batch_size', __('Batch size', 'catalogue-image-studio'), __('How many queued images to process at once.', 'catalogue-image-studio'), (int) ($settings['batch_size'] ?? 10), 1, 50); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Processing Defaults', 'optivra'); ?></h3><p><?php echo esc_html__('Choose the default scan, queue and publish behaviour for product images.', 'optivra'); ?></p></div>
+					<?php $this->render_toggle_setting('require_approval', __('Require review before replacing images', 'optivra'), __('Processed images wait for approval before WooCommerce product images are replaced.', 'optivra'), ! empty($settings['require_approval'])); ?>
+					<?php $this->render_toggle_setting('auto_process_new_images', __('Auto-process newly scanned images', 'optivra'), __('Newly discovered images can be queued for processing automatically.', 'optivra'), ! empty($settings['auto_process_new_images'])); ?>
+					<?php $this->render_toggle_setting('process_featured_images', __('Include featured/product images', 'optivra'), __('Scan and queue main product images by default.', 'optivra'), ! empty($settings['process_featured_images'])); ?>
+					<?php $this->render_toggle_setting('process_gallery_images', __('Include gallery images', 'optivra'), __('Scan and queue WooCommerce gallery images by default.', 'optivra'), ! empty($settings['process_gallery_images'])); ?>
+					<?php $this->render_toggle_setting('process_category_images', __('Include category thumbnail images', 'optivra'), __('Allow scans to include product category thumbnails when selected.', 'optivra'), ! empty($settings['process_category_images'])); ?>
+					<?php $this->render_toggle_setting('duplicate_detection', __('Duplicate detection', 'optivra'), __('Reuse previous processed results when the same source image is encountered.', 'optivra'), ! empty($settings['duplicate_detection'])); ?>
+					<?php $this->render_toggle_setting('pause_on_low_credits', __('Pause processing when credits are low', 'optivra'), __('Stop larger queue batches before credits are exhausted.', 'optivra'), ! empty($settings['pause_on_low_credits'])); ?>
+					<?php $this->render_toggle_setting('retry_failed_jobs', __('Retry failed jobs automatically', 'optivra'), __('Keep failed jobs ready for a quick retry pass.', 'optivra'), ! empty($settings['retry_failed_jobs'])); ?>
+					<?php $this->render_toggle_setting('auto_refresh_job_status', __('Auto-refresh job status', 'optivra'), __('Refresh queue status while jobs are active.', 'optivra'), ! empty($settings['auto_refresh_job_status'])); ?>
+					<?php $this->render_number_setting('batch_size', __('Batch size', 'optivra'), __('How many queued images to process at once.', 'optivra'), (int) ($settings['batch_size'] ?? 10), 1, 50); ?>
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Background', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Choose an Optivra preset or upload a brand background from the Media Library.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_select_setting('background_source', __('Background source', 'catalogue-image-studio'), __('Use an Optivra preset or your own uploaded background image.', 'catalogue-image-studio'), ['preset' => __('Optivra preset', 'catalogue-image-studio'), 'custom' => __('Custom uploaded background', 'catalogue-image-studio')], (string) ($settings['background_source'] ?? 'preset')); ?>
-					<?php $this->render_select_setting('background_preset', __('Background preset', 'catalogue-image-studio'), __('Default background style when using Optivra presets.', 'catalogue-image-studio'), $this->get_background_presets(), (string) ($settings['background_preset'] ?? 'optivra-default')); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Background', 'optivra'); ?></h3><p><?php echo esc_html__('Choose an Optivra preset or upload a brand background from the Media Library.', 'optivra'); ?></p></div>
+					<?php $this->render_select_setting('background_source', __('Background source', 'optivra'), __('Use an Optivra preset or your own uploaded background image.', 'optivra'), ['preset' => __('Optivra preset', 'optivra'), 'custom' => __('Custom uploaded background', 'optivra')], (string) ($settings['background_source'] ?? 'preset')); ?>
+					<?php $this->render_select_setting('background_preset', __('Background preset', 'optivra'), __('Default background style when using Optivra presets.', 'optivra'), $this->get_background_presets(), (string) ($settings['background_preset'] ?? 'optivra-default')); ?>
 					<div class="optivra-setting-row">
-						<div><strong class="optivra-setting-label"><?php echo esc_html__('Custom background upload', 'catalogue-image-studio'); ?></strong><p class="optivra-setting-description"><?php echo esc_html__('Preview stays contained here; the full image is never rendered in the admin screen.', 'catalogue-image-studio'); ?></p></div>
+						<div><strong class="optivra-setting-label"><?php echo esc_html__('Custom background upload', 'optivra'); ?></strong><p class="optivra-setting-description"><?php echo esc_html__('Preview stays contained here; the full image is never rendered in the admin screen.', 'optivra'); ?></p></div>
 						<div class="optivra-setting-control">
 							<input type="hidden" id="catalogue-image-studio-custom-background-id" name="custom_background_attachment_id" value="<?php echo esc_attr((string) ($settings['custom_background_attachment_id'] ?? 0)); ?>" />
-							<div class="optivra-button-row"><button type="button" class="button" id="catalogue-image-studio-pick-background"><?php echo esc_html__('Choose background', 'catalogue-image-studio'); ?></button><button type="button" class="button" id="catalogue-image-studio-remove-background"><?php echo esc_html__('Remove background', 'catalogue-image-studio'); ?></button></div>
+							<div class="optivra-button-row"><button type="button" class="button" id="catalogue-image-studio-pick-background"><?php echo esc_html__('Choose background', 'optivra'); ?></button><button type="button" class="button" id="catalogue-image-studio-remove-background"><?php echo esc_html__('Remove background', 'optivra'); ?></button></div>
 							<div class="optivra-preview-card">
 								<img id="catalogue-image-studio-custom-background-preview" class="optivra-background-preview catalogue-image-studio-background-preview" src="<?php echo esc_url((string) ($custom_background['url'] ?? '')); ?>" alt="" <?php echo empty($custom_background['url']) ? 'hidden' : ''; ?> />
 								<small id="catalogue-image-studio-custom-background-filename" <?php echo empty($custom_background['filename']) ? 'hidden' : ''; ?>><?php echo ! empty($custom_background['filename']) ? esc_html($custom_background['filename']) : ''; ?></small>
@@ -1186,64 +1186,64 @@ class Catalogue_Image_Studio_Admin {
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Framing', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Global framing defaults. Image-to-edge is controlled per queued image.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_select_setting('default_scale_mode', __('Default image framing', 'catalogue-image-studio'), __('Choose the default amount of space around the product.', 'catalogue-image-studio'), $this->get_scale_modes(), (string) ($settings['default_scale_mode'] ?? 'auto')); ?>
-					<?php $this->render_toggle_setting('smart_scaling', __('Smart product framing', 'catalogue-image-studio'), __('Let Optivra keep products comfortably framed without clipping.', 'catalogue-image-studio'), ! empty($settings['smart_scaling'])); ?>
-					<?php $this->render_number_setting('framing_padding', __('Product padding / safe margin', 'catalogue-image-studio'), __('Default safe margin around products, expressed as a percentage.', 'catalogue-image-studio'), (int) ($settings['framing_padding'] ?? 8), 0, 30); ?>
-					<?php $this->render_toggle_setting('preserve_transparent_edges', __('Preserve transparent product edges', 'catalogue-image-studio'), __('Avoid trimming subtle transparent edges unless a job override says otherwise.', 'catalogue-image-studio'), ! empty($settings['preserve_transparent_edges'])); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Framing', 'optivra'); ?></h3><p><?php echo esc_html__('Global framing defaults. Image-to-edge is controlled per queued image.', 'optivra'); ?></p></div>
+					<?php $this->render_select_setting('default_scale_mode', __('Default image framing', 'optivra'), __('Choose the default amount of space around the product.', 'optivra'), $this->get_scale_modes(), (string) ($settings['default_scale_mode'] ?? 'auto')); ?>
+					<?php $this->render_toggle_setting('smart_scaling', __('Smart product framing', 'optivra'), __('Let Optivra keep products comfortably framed without clipping.', 'optivra'), ! empty($settings['smart_scaling'])); ?>
+					<?php $this->render_number_setting('framing_padding', __('Product padding / safe margin', 'optivra'), __('Default safe margin around products, expressed as a percentage.', 'optivra'), (int) ($settings['framing_padding'] ?? 8), 0, 30); ?>
+					<?php $this->render_toggle_setting('preserve_transparent_edges', __('Preserve transparent product edges', 'optivra'), __('Avoid trimming subtle transparent edges unless a job override says otherwise.', 'optivra'), ! empty($settings['preserve_transparent_edges'])); ?>
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Shadow', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Control the product shadow style used during processing.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_select_setting('shadow_mode', __('Shadow mode', 'catalogue-image-studio'), __('Off disables shadow entirely. Under product creates a contact shadow; behind product adds depth.', 'catalogue-image-studio'), $this->get_shadow_modes(), (string) ($settings['shadow_mode'] ?? 'under')); ?>
-					<?php $this->render_select_setting('shadow_strength', __('Shadow strength', 'catalogue-image-studio'), __('Preset shadow intensity.', 'catalogue-image-studio'), $this->get_shadow_strengths(), (string) ($settings['shadow_strength'] ?? 'medium')); ?>
-					<details class="optivra-subdetails"><summary><?php echo esc_html__('Advanced shadow settings', 'catalogue-image-studio'); ?></summary>
-						<?php $this->render_range_setting('shadow_opacity', __('Shadow opacity', 'catalogue-image-studio'), __('Opacity percentage for custom shadows.', 'catalogue-image-studio'), (int) ($settings['shadow_opacity'] ?? 23), 0, 100); ?>
-						<?php $this->render_range_setting('shadow_blur', __('Shadow blur', 'catalogue-image-studio'), __('Blur radius for soft edges.', 'catalogue-image-studio'), (int) ($settings['shadow_blur'] ?? 22), 0, 80); ?>
-						<?php $this->render_number_setting('shadow_offset_x', __('Shadow offset X', 'catalogue-image-studio'), __('Horizontal shadow offset in pixels.', 'catalogue-image-studio'), (int) ($settings['shadow_offset_x'] ?? 0), -300, 300); ?>
-						<?php $this->render_number_setting('shadow_offset_y', __('Shadow offset Y', 'catalogue-image-studio'), __('Vertical shadow offset in pixels.', 'catalogue-image-studio'), (int) ($settings['shadow_offset_y'] ?? 0), -300, 300); ?>
-						<?php $this->render_range_setting('shadow_spread', __('Shadow spread / scale', 'catalogue-image-studio'), __('Relative spread percentage for the shadow.', 'catalogue-image-studio'), (int) ($settings['shadow_spread'] ?? 100), 25, 200); ?>
-						<?php $this->render_range_setting('shadow_softness', __('Shadow softness', 'catalogue-image-studio'), __('Extra softness applied to shadow edges.', 'catalogue-image-studio'), (int) ($settings['shadow_softness'] ?? 60), 0, 100); ?>
-						<?php $this->render_text_setting('shadow_color', __('Shadow colour', 'catalogue-image-studio'), __('Default is black.', 'catalogue-image-studio'), (string) ($settings['shadow_color'] ?? '#000000'), 'color'); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Shadow', 'optivra'); ?></h3><p><?php echo esc_html__('Control the product shadow style used during processing.', 'optivra'); ?></p></div>
+					<?php $this->render_select_setting('shadow_mode', __('Shadow mode', 'optivra'), __('Off disables shadow entirely. Under product creates a contact shadow; behind product adds depth.', 'optivra'), $this->get_shadow_modes(), (string) ($settings['shadow_mode'] ?? 'under')); ?>
+					<?php $this->render_select_setting('shadow_strength', __('Shadow strength', 'optivra'), __('Preset shadow intensity.', 'optivra'), $this->get_shadow_strengths(), (string) ($settings['shadow_strength'] ?? 'medium')); ?>
+					<details class="optivra-subdetails"><summary><?php echo esc_html__('Advanced shadow settings', 'optivra'); ?></summary>
+						<?php $this->render_range_setting('shadow_opacity', __('Shadow opacity', 'optivra'), __('Opacity percentage for custom shadows.', 'optivra'), (int) ($settings['shadow_opacity'] ?? 23), 0, 100); ?>
+						<?php $this->render_range_setting('shadow_blur', __('Shadow blur', 'optivra'), __('Blur radius for soft edges.', 'optivra'), (int) ($settings['shadow_blur'] ?? 22), 0, 80); ?>
+						<?php $this->render_number_setting('shadow_offset_x', __('Shadow offset X', 'optivra'), __('Horizontal shadow offset in pixels.', 'optivra'), (int) ($settings['shadow_offset_x'] ?? 0), -300, 300); ?>
+						<?php $this->render_number_setting('shadow_offset_y', __('Shadow offset Y', 'optivra'), __('Vertical shadow offset in pixels.', 'optivra'), (int) ($settings['shadow_offset_y'] ?? 0), -300, 300); ?>
+						<?php $this->render_range_setting('shadow_spread', __('Shadow spread / scale', 'optivra'), __('Relative spread percentage for the shadow.', 'optivra'), (int) ($settings['shadow_spread'] ?? 100), 25, 200); ?>
+						<?php $this->render_range_setting('shadow_softness', __('Shadow softness', 'optivra'), __('Extra softness applied to shadow edges.', 'optivra'), (int) ($settings['shadow_softness'] ?? 60), 0, 100); ?>
+						<?php $this->render_text_setting('shadow_color', __('Shadow colour', 'optivra'), __('Default is black.', 'optivra'), (string) ($settings['shadow_color'] ?? '#000000'), 'color'); ?>
 					</details>
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Lighting Enhancement', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Improve product lighting before the final image is saved.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_toggle_setting('lighting_enabled', __('Enable lighting enhancement', 'catalogue-image-studio'), __('Apply lighting correction during processing.', 'catalogue-image-studio'), ! empty($settings['lighting_enabled'])); ?>
-					<?php $this->render_select_setting('lighting_mode', __('Enhancement mode', 'catalogue-image-studio'), __('Choose whether lighting corrections target the product or full image.', 'catalogue-image-studio'), $this->get_lighting_modes(), (string) ($settings['lighting_mode'] ?? 'auto')); ?>
-					<?php $this->render_range_setting('brightness_correction', __('Brightness correction', 'catalogue-image-studio'), __('Adjust brightness from -100 to 100.', 'catalogue-image-studio'), (int) ($settings['brightness_correction'] ?? 0), -100, 100); ?>
-					<?php $this->render_range_setting('contrast_correction', __('Contrast correction', 'catalogue-image-studio'), __('Adjust contrast from -100 to 100.', 'catalogue-image-studio'), (int) ($settings['contrast_correction'] ?? 0), -100, 100); ?>
-					<?php $this->render_toggle_setting('highlight_recovery', __('Highlight recovery', 'catalogue-image-studio'), __('Reduce harsh highlights where possible.', 'catalogue-image-studio'), ! empty($settings['highlight_recovery'])); ?>
-					<?php $this->render_toggle_setting('shadow_lift', __('Shadow lift', 'catalogue-image-studio'), __('Recover detail in dark product areas.', 'catalogue-image-studio'), ! empty($settings['shadow_lift'])); ?>
-					<?php $this->render_toggle_setting('neutralize_tint', __('Colour balance / neutralise tint', 'catalogue-image-studio'), __('Balance colour casts for more natural product colour.', 'catalogue-image-studio'), ! empty($settings['neutralize_tint'])); ?>
-					<?php $this->render_select_setting('lighting_strength', __('Strength', 'catalogue-image-studio'), __('Overall lighting enhancement strength.', 'catalogue-image-studio'), $this->get_lighting_strengths(), (string) ($settings['lighting_strength'] ?? 'medium')); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Lighting Enhancement', 'optivra'); ?></h3><p><?php echo esc_html__('Improve product lighting before the final image is saved.', 'optivra'); ?></p></div>
+					<?php $this->render_toggle_setting('lighting_enabled', __('Enable lighting enhancement', 'optivra'), __('Apply lighting correction during processing.', 'optivra'), ! empty($settings['lighting_enabled'])); ?>
+					<?php $this->render_select_setting('lighting_mode', __('Enhancement mode', 'optivra'), __('Choose whether lighting corrections target the product or full image.', 'optivra'), $this->get_lighting_modes(), (string) ($settings['lighting_mode'] ?? 'auto')); ?>
+					<?php $this->render_range_setting('brightness_correction', __('Brightness correction', 'optivra'), __('Adjust brightness from -100 to 100.', 'optivra'), (int) ($settings['brightness_correction'] ?? 0), -100, 100); ?>
+					<?php $this->render_range_setting('contrast_correction', __('Contrast correction', 'optivra'), __('Adjust contrast from -100 to 100.', 'optivra'), (int) ($settings['contrast_correction'] ?? 0), -100, 100); ?>
+					<?php $this->render_toggle_setting('highlight_recovery', __('Highlight recovery', 'optivra'), __('Reduce harsh highlights where possible.', 'optivra'), ! empty($settings['highlight_recovery'])); ?>
+					<?php $this->render_toggle_setting('shadow_lift', __('Shadow lift', 'optivra'), __('Recover detail in dark product areas.', 'optivra'), ! empty($settings['shadow_lift'])); ?>
+					<?php $this->render_toggle_setting('neutralize_tint', __('Colour balance / neutralise tint', 'optivra'), __('Balance colour casts for more natural product colour.', 'optivra'), ! empty($settings['neutralize_tint'])); ?>
+					<?php $this->render_select_setting('lighting_strength', __('Strength', 'optivra'), __('Overall lighting enhancement strength.', 'optivra'), $this->get_lighting_strengths(), (string) ($settings['lighting_strength'] ?? 'medium')); ?>
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('SEO Metadata', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Control generated filenames and attachment metadata.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_toggle_setting('generate_seo_filename', __('Generate SEO filename', 'catalogue-image-studio'), __('Rename processed files to cleaner, search-friendly filenames.', 'catalogue-image-studio'), ! empty($settings['generate_seo_filename'])); ?>
-					<?php $this->render_toggle_setting('generate_alt_text', __('Generate alt text', 'catalogue-image-studio'), __('Fill image alt text suggestions automatically.', 'catalogue-image-studio'), ! empty($settings['generate_alt_text'])); ?>
-					<?php $this->render_toggle_setting('generate_image_title', __('Generate image title', 'catalogue-image-studio'), __('Fill the WordPress media title with the suggested image title.', 'catalogue-image-studio'), ! empty($settings['generate_image_title'])); ?>
-					<?php $this->render_toggle_setting('generate_caption', __('Generate caption', 'catalogue-image-studio'), __('Generate an attachment caption when available.', 'catalogue-image-studio'), ! empty($settings['generate_caption'])); ?>
-					<?php $this->render_toggle_setting('generate_description', __('Generate description', 'catalogue-image-studio'), __('Generate an attachment description when available.', 'catalogue-image-studio'), ! empty($settings['generate_description'])); ?>
-					<?php $this->render_toggle_setting('only_fill_missing_metadata', __('Only fill missing metadata', 'catalogue-image-studio'), __('Leave existing attachment metadata alone unless a field is blank.', 'catalogue-image-studio'), ! empty($settings['only_fill_missing_metadata'])); ?>
-					<?php $this->render_toggle_setting('overwrite_existing_metadata', __('Override existing metadata', 'catalogue-image-studio'), __('Allow generated metadata to replace existing values. This cannot be combined with only-fill-missing.', 'catalogue-image-studio'), ! empty($settings['overwrite_existing_metadata'])); ?>
-					<?php $this->render_text_setting('brand_keyword_suffix', __('Brand keyword suffix', 'catalogue-image-studio'), __('Optional brand or collection term to append to generated SEO suggestions.', 'catalogue-image-studio'), (string) ($settings['brand_keyword_suffix'] ?? '')); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('SEO Metadata', 'optivra'); ?></h3><p><?php echo esc_html__('Control generated filenames and attachment metadata.', 'optivra'); ?></p></div>
+					<?php $this->render_toggle_setting('generate_seo_filename', __('Generate SEO filename', 'optivra'), __('Rename processed files to cleaner, search-friendly filenames.', 'optivra'), ! empty($settings['generate_seo_filename'])); ?>
+					<?php $this->render_toggle_setting('generate_alt_text', __('Generate alt text', 'optivra'), __('Fill image alt text suggestions automatically.', 'optivra'), ! empty($settings['generate_alt_text'])); ?>
+					<?php $this->render_toggle_setting('generate_image_title', __('Generate image title', 'optivra'), __('Fill the WordPress media title with the suggested image title.', 'optivra'), ! empty($settings['generate_image_title'])); ?>
+					<?php $this->render_toggle_setting('generate_caption', __('Generate caption', 'optivra'), __('Generate an attachment caption when available.', 'optivra'), ! empty($settings['generate_caption'])); ?>
+					<?php $this->render_toggle_setting('generate_description', __('Generate description', 'optivra'), __('Generate an attachment description when available.', 'optivra'), ! empty($settings['generate_description'])); ?>
+					<?php $this->render_toggle_setting('only_fill_missing_metadata', __('Only fill missing metadata', 'optivra'), __('Leave existing attachment metadata alone unless a field is blank.', 'optivra'), ! empty($settings['only_fill_missing_metadata'])); ?>
+					<?php $this->render_toggle_setting('overwrite_existing_metadata', __('Override existing metadata', 'optivra'), __('Allow generated metadata to replace existing values. This cannot be combined with only-fill-missing.', 'optivra'), ! empty($settings['overwrite_existing_metadata'])); ?>
+					<?php $this->render_text_setting('brand_keyword_suffix', __('Brand keyword suffix', 'optivra'), __('Optional brand or collection term to append to generated SEO suggestions.', 'optivra'), (string) ($settings['brand_keyword_suffix'] ?? '')); ?>
 					<?php $this->render_seo_preview_example($settings); ?>
 				</section>
 
 				<section class="optivra-card">
-					<div class="optivra-card-header"><h3><?php echo esc_html__('Notifications', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Choose how Optivra reports completed and failed work.', 'catalogue-image-studio'); ?></p></div>
-					<?php $this->render_toggle_setting('show_completion_alerts', __('Show admin notices for completed batches', 'catalogue-image-studio'), __('Display success notices after processing or approval actions complete.', 'catalogue-image-studio'), ! empty($settings['show_completion_alerts'])); ?>
-					<?php $this->render_toggle_setting('show_failed_alerts', __('Show admin notices for failed jobs', 'catalogue-image-studio'), __('Display failure notices when the API or processing workflow returns an error.', 'catalogue-image-studio'), ! empty($settings['show_failed_alerts'])); ?>
-					<?php $this->render_toggle_setting('email_batch_complete', __('Email admin when batch completes', 'catalogue-image-studio'), __('Send an email when a processing batch finishes.', 'catalogue-image-studio'), ! empty($settings['email_batch_complete'])); ?>
-					<?php $this->render_toggle_setting('email_job_failed', __('Email admin when job fails', 'catalogue-image-studio'), __('Send an email when an image job fails.', 'catalogue-image-studio'), ! empty($settings['email_job_failed'])); ?>
-					<?php $this->render_text_setting('notification_email', __('Notification email address', 'catalogue-image-studio'), __('Optional. Defaults to the WordPress admin email if left blank.', 'catalogue-image-studio'), (string) ($settings['notification_email'] ?? ''), 'email'); ?>
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Notifications', 'optivra'); ?></h3><p><?php echo esc_html__('Choose how Optivra reports completed and failed work.', 'optivra'); ?></p></div>
+					<?php $this->render_toggle_setting('show_completion_alerts', __('Show admin notices for completed batches', 'optivra'), __('Display success notices after processing or approval actions complete.', 'optivra'), ! empty($settings['show_completion_alerts'])); ?>
+					<?php $this->render_toggle_setting('show_failed_alerts', __('Show admin notices for failed jobs', 'optivra'), __('Display failure notices when the API or processing workflow returns an error.', 'optivra'), ! empty($settings['show_failed_alerts'])); ?>
+					<?php $this->render_toggle_setting('email_batch_complete', __('Email admin when batch completes', 'optivra'), __('Send an email when a processing batch finishes.', 'optivra'), ! empty($settings['email_batch_complete'])); ?>
+					<?php $this->render_toggle_setting('email_job_failed', __('Email admin when job fails', 'optivra'), __('Send an email when an image job fails.', 'optivra'), ! empty($settings['email_job_failed'])); ?>
+					<?php $this->render_text_setting('notification_email', __('Notification email address', 'optivra'), __('Optional. Defaults to the WordPress admin email if left blank.', 'optivra'), (string) ($settings['notification_email'] ?? ''), 'email'); ?>
 				</section>
 
 				<?php $this->render_advanced_settings($settings); ?>
-				<div class="optivra-save-bar"><button type="submit" class="button button-primary"><?php echo esc_html__('Save Settings', 'catalogue-image-studio'); ?></button></div>
+				<div class="optivra-save-bar"><button type="submit" class="button button-primary"><?php echo esc_html__('Save Settings', 'optivra'); ?></button></div>
 			</form>
 		</div>
 		<?php
@@ -1253,12 +1253,12 @@ class Catalogue_Image_Studio_Admin {
 		$failed = $this->plugin->jobs()->query(['status' => 'failed'], 50, 0);
 		?>
 		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Logs', 'catalogue-image-studio'); ?></h2>
+			<h2><?php echo esc_html__('Logs', 'optivra'); ?></h2>
 			<div class="catalogue-image-studio-log-grid">
-				<section><h3><?php echo esc_html__('Connection logs', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Connection attempts are recorded in WooCommerce logs under source catalogue-image-studio. Secrets are never written to logs.', 'catalogue-image-studio'); ?></p></section>
-				<section><h3><?php echo esc_html__('Job logs', 'catalogue-image-studio'); ?></h3><p><?php echo esc_html__('Recent failed job messages appear below. Full job events are available in WooCommerce logs.', 'catalogue-image-studio'); ?></p></section>
+				<section><h3><?php echo esc_html__('Connection logs', 'optivra'); ?></h3><p><?php echo esc_html__('Connection attempts are recorded in WooCommerce logs under source catalogue-image-studio. Secrets are never written to logs.', 'optivra'); ?></p></section>
+				<section><h3><?php echo esc_html__('Job logs', 'optivra'); ?></h3><p><?php echo esc_html__('Recent failed job messages appear below. Full job events are available in WooCommerce logs.', 'optivra'); ?></p></section>
 			</div>
-			<button type="button" class="button" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('catalogue-image-studio-diagnostics').textContent);"><?php echo esc_html__('Copy support diagnostics', 'catalogue-image-studio'); ?></button>
+			<button type="button" class="button" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('catalogue-image-studio-diagnostics').textContent);"><?php echo esc_html__('Copy support diagnostics', 'optivra'); ?></button>
 			<pre id="catalogue-image-studio-diagnostics"><?php echo esc_html(wp_json_encode(['plugin' => CIS_VERSION, 'site' => home_url(), 'php' => PHP_VERSION], JSON_PRETTY_PRINT)); ?></pre>
 			<?php $this->render_jobs_table($failed, false); ?>
 		</div>
@@ -1267,14 +1267,14 @@ class Catalogue_Image_Studio_Admin {
 
 	private function render_jobs_table(array $jobs, bool $selectable): void {
 		$empty_message = $selectable
-			? __('Run your first scan to find WooCommerce product images.', 'catalogue-image-studio')
-			: __('No failed jobs to show.', 'catalogue-image-studio');
+			? __('Run your first scan to find WooCommerce product images.', 'optivra')
+			: __('No failed jobs to show.', 'optivra');
 		?>
 		<table class="widefat fixed striped catalogue-image-studio-jobs">
 			<thead>
 				<tr>
 					<?php if ($selectable) : ?><td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td><?php endif; ?>
-					<th><?php echo esc_html__('Product', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Before', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('After', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Slot', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Status', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('SEO filename / alt preview', 'catalogue-image-studio'); ?></th><th><?php echo esc_html__('Progress / message', 'catalogue-image-studio'); ?></th>
+					<th><?php echo esc_html__('Product', 'optivra'); ?></th><th><?php echo esc_html__('Before', 'optivra'); ?></th><th><?php echo esc_html__('After', 'optivra'); ?></th><th><?php echo esc_html__('Slot', 'optivra'); ?></th><th><?php echo esc_html__('Status', 'optivra'); ?></th><th><?php echo esc_html__('SEO filename / alt preview', 'optivra'); ?></th><th><?php echo esc_html__('Progress / message', 'optivra'); ?></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -1292,17 +1292,17 @@ class Catalogue_Image_Studio_Admin {
 
 	private function render_tabs(string $active_tab): void {
 		$tabs = [
-			'dashboard' => __('Dashboard', 'catalogue-image-studio'),
-			'scan'      => __('Scan Catalogue', 'catalogue-image-studio'),
-			'queue'     => __('Queue', 'catalogue-image-studio'),
-			'review'    => __('Review & Approve', 'catalogue-image-studio'),
-			'settings'  => __('Settings', 'catalogue-image-studio'),
-			'logs'      => __('Logs', 'catalogue-image-studio'),
+			'dashboard' => __('Dashboard', 'optivra'),
+			'scan'      => __('Scan Catalogue', 'optivra'),
+			'queue'     => __('Queue', 'optivra'),
+			'review'    => __('Review & Approve', 'optivra'),
+			'settings'  => __('Settings', 'optivra'),
+			'logs'      => __('Logs', 'optivra'),
 		];
 		?>
 		<nav class="nav-tab-wrapper catalogue-image-studio-tabs">
 			<?php foreach ($tabs as $tab => $label) : ?>
-				<a class="nav-tab <?php echo $tab === $active_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['page' => 'catalogue-image-studio', 'cis_tab' => $tab], admin_url('admin.php'))); ?>">
+				<a class="nav-tab <?php echo $tab === $active_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['page' => 'optivra', 'cis_tab' => $tab], admin_url('admin.php'))); ?>">
 					<?php echo esc_html($label); ?>
 				</a>
 			<?php endforeach; ?>
@@ -1317,7 +1317,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings = $this->plugin->get_settings();
 
 		if (empty($settings['api_base_url']) || empty($settings['api_token'])) {
-			return new WP_Error('catalogue_image_studio_not_connected', __('Not connected.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_not_connected', __('Not connected.', 'optivra'));
 		}
 
 		$client = new Catalogue_Image_Studio_SaaSClient(
@@ -1338,9 +1338,26 @@ class Catalogue_Image_Studio_Admin {
 		?>
 		<div class="catalogue-image-studio-panel catalogue-image-studio-onboarding">
 			<div class="catalogue-image-studio-step">1</div>
-			<h2><?php echo esc_html__('Connect Catalogue Image Studio to Optivra', 'catalogue-image-studio'); ?></h2>
-			<p><?php echo esc_html__('Paste your Site API Token from your Optivra account to connect this store.', 'catalogue-image-studio'); ?></p>
+			<h2><?php echo esc_html__('Connect Catalogue Image Studio to Optivra', 'optivra'); ?></h2>
+			<p><?php echo esc_html__('Paste your Site API Token from your Optivra account to connect this store.', 'optivra'); ?></p>
+			<?php $this->render_external_service_disclosure(); ?>
 			<?php $this->render_connection_form($settings, $usage, false, true); ?>
+		</div>
+		<?php
+	}
+
+	private function render_external_service_disclosure(): void {
+		?>
+		<div class="catalogue-image-studio-disclosure">
+			<strong><?php echo esc_html__('External service disclosure', 'optivra'); ?></strong>
+			<p><?php echo esc_html__('This plugin connects your WooCommerce store to Optivra\'s external image processing service. When you scan or process images, selected product/image data is sent to Optivra for background replacement, optimisation, SEO metadata generation, and review workflow support.', 'optivra'); ?></p>
+			<p><?php echo esc_html__('An Optivra account is required for image processing. Image processing uses credits from your Optivra account.', 'optivra'); ?></p>
+			<div class="catalogue-image-studio-link-row">
+				<a href="<?php echo esc_url(CIS_TERMS_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Terms of Service', 'optivra'); ?></a>
+				<a href="<?php echo esc_url(CIS_PRIVACY_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Privacy Policy', 'optivra'); ?></a>
+				<a href="<?php echo esc_url(CIS_DATA_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Data Processing', 'optivra'); ?></a>
+				<a href="<?php echo esc_url(CIS_SUPPORT_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Support', 'optivra'); ?></a>
+			</div>
 		</div>
 		<?php
 	}
@@ -1352,13 +1369,13 @@ class Catalogue_Image_Studio_Admin {
 	private function render_advanced_settings(array $settings): void {
 		?>
 		<details class="catalogue-image-studio-advanced optivra-card">
-			<summary><?php echo esc_html__('Advanced (for support / development only)', 'catalogue-image-studio'); ?></summary>
-			<p class="catalogue-image-studio-warning"><?php echo esc_html__('These settings are for development/support use only. Most users should not change them.', 'catalogue-image-studio'); ?></p>
-			<?php $this->render_text_setting('api_base_url_override', __('API Base URL override', 'catalogue-image-studio'), __('Only change this when support asks you to point the plugin at a different Optivra API.', 'catalogue-image-studio'), (string) ($settings['api_base_url_override'] ?? ''), 'url'); ?>
-			<?php $this->render_toggle_setting('debug_mode', __('Debug mode', 'catalogue-image-studio'), __('Enable detailed logging for support and troubleshooting.', 'catalogue-image-studio'), ! empty($settings['debug_mode'])); ?>
+			<summary><?php echo esc_html__('Advanced (for support / development only)', 'optivra'); ?></summary>
+			<p class="catalogue-image-studio-warning"><?php echo esc_html__('These settings are for development/support use only. Most users should not change them.', 'optivra'); ?></p>
+			<?php $this->render_text_setting('api_base_url_override', __('API Base URL override', 'optivra'), __('Only change this when support asks you to point the plugin at a different Optivra API.', 'optivra'), (string) ($settings['api_base_url_override'] ?? ''), 'url'); ?>
+			<?php $this->render_toggle_setting('debug_mode', __('Debug mode', 'optivra'), __('Enable detailed logging for support and troubleshooting.', 'optivra'), ! empty($settings['debug_mode'])); ?>
 			<div class="optivra-button-row">
-				<button type="submit" name="clear_local_cache" value="1" class="button"><?php echo esc_html__('Clear local cache', 'catalogue-image-studio'); ?></button>
-				<button type="submit" name="reset_local_data" value="1" class="button optivra-danger-button"><?php echo esc_html__('Reset plugin local data', 'catalogue-image-studio'); ?></button>
+				<button type="submit" name="clear_local_cache" value="1" class="button"><?php echo esc_html__('Clear local cache', 'optivra'); ?></button>
+				<button type="submit" name="reset_local_data" value="1" class="button optivra-danger-button"><?php echo esc_html__('Reset plugin local data', 'optivra'); ?></button>
 			</div>
 		</details>
 		<?php
@@ -1372,8 +1389,8 @@ class Catalogue_Image_Studio_Admin {
 		if (! $connected || is_wp_error($usage)) {
 			?>
 			<div class="catalogue-image-studio-status-card catalogue-image-studio-status-card-disconnected">
-				<strong><?php echo esc_html__('Not connected', 'catalogue-image-studio'); ?></strong>
-				<p><?php echo esc_html__('Connect your Optivra account to view credits and process images.', 'catalogue-image-studio'); ?></p>
+				<strong><?php echo esc_html__('Not connected', 'optivra'); ?></strong>
+				<p><?php echo esc_html__('Connect your Optivra account to view credits and process images.', 'optivra'); ?></p>
 			</div>
 			<?php
 			return;
@@ -1390,8 +1407,8 @@ class Catalogue_Image_Studio_Admin {
 		if (is_wp_error($usage)) {
 			?>
 			<div class="catalogue-image-studio-status-card catalogue-image-studio-status-card-disconnected">
-				<strong><?php echo esc_html__('Not connected', 'catalogue-image-studio'); ?></strong>
-				<p><?php echo esc_html__('Connect your Optivra account to view credits and process images.', 'catalogue-image-studio'); ?></p>
+				<strong><?php echo esc_html__('Not connected', 'optivra'); ?></strong>
+				<p><?php echo esc_html__('Connect your Optivra account to view credits and process images.', 'optivra'); ?></p>
 			</div>
 			<?php
 			return;
@@ -1399,31 +1416,31 @@ class Catalogue_Image_Studio_Admin {
 
 		?>
 		<div class="catalogue-image-studio-status-card catalogue-image-studio-status-card-connected">
-			<strong><?php echo esc_html__('Connected', 'catalogue-image-studio'); ?></strong>
+			<strong><?php echo esc_html__('Connected', 'optivra'); ?></strong>
 			<?php if (! empty($usage['domain']) && is_string($usage['domain'])) : ?>
-				<p><?php echo esc_html(sprintf(__('Connected domain: %s', 'catalogue-image-studio'), $usage['domain'])); ?></p>
+				<p><?php echo esc_html(sprintf(__('Connected domain: %s', 'optivra'), $usage['domain'])); ?></p>
 			<?php endif; ?>
 		</div>
 		<div class="catalogue-image-studio-usage">
 			<div>
-				<span><?php echo esc_html__('Plan', 'catalogue-image-studio'); ?></span>
+				<span><?php echo esc_html__('Plan', 'optivra'); ?></span>
 				<strong><?php echo esc_html(ucfirst((string) ($usage['plan'] ?? 'unknown'))); ?></strong>
 			</div>
 			<div>
-				<span><?php echo esc_html__('Credits', 'catalogue-image-studio'); ?></span>
+				<span><?php echo esc_html__('Credits', 'optivra'); ?></span>
 				<strong><?php echo esc_html((string) ($usage['credits_remaining'] ?? 0)); ?> / <?php echo esc_html((string) ($usage['credits_total'] ?? 0)); ?></strong>
 			</div>
 			<div>
-				<span><?php echo esc_html__('Status', 'catalogue-image-studio'); ?></span>
+				<span><?php echo esc_html__('Status', 'optivra'); ?></span>
 				<strong><?php echo esc_html(ucfirst((string) ($usage['subscription_status'] ?? 'unknown'))); ?></strong>
 			</div>
 			<div>
-				<span><?php echo esc_html__('Reset date', 'catalogue-image-studio'); ?></span>
+				<span><?php echo esc_html__('Reset date', 'optivra'); ?></span>
 				<strong>
 					<?php
 					$period_end = isset($usage['current_period_end']) ? $usage['current_period_end'] : ($usage['next_reset_at'] ?? null);
 					$period_ts  = is_string($period_end) ? strtotime($period_end) : false;
-					echo esc_html($period_ts ? date_i18n(get_option('date_format'), $period_ts) : __('Unavailable', 'catalogue-image-studio'));
+					echo esc_html($period_ts ? date_i18n(get_option('date_format'), $period_ts) : __('Unavailable', 'optivra'));
 					?>
 				</strong>
 			</div>
@@ -1433,7 +1450,7 @@ class Catalogue_Image_Studio_Admin {
 		$total     = max(0, (int) ($usage['credits_total'] ?? 0));
 		$percent   = $total > 0 ? min(100, max(0, round(($remaining / $total) * 100))) : 0;
 		?>
-		<div class="catalogue-image-studio-credit-meter" aria-label="<?php echo esc_attr__('Credits remaining', 'catalogue-image-studio'); ?>">
+		<div class="catalogue-image-studio-credit-meter" aria-label="<?php echo esc_attr__('Credits remaining', 'optivra'); ?>">
 			<div style="width: <?php echo esc_attr((string) $percent); ?>%;"></div>
 		</div>
 		<p class="catalogue-image-studio-muted">
@@ -1443,16 +1460,16 @@ class Catalogue_Image_Studio_Admin {
 				$next_reset
 					? sprintf(
 						/* translators: %s: reset date */
-						__('Next reset: %s', 'catalogue-image-studio'),
+						__('Next reset: %s', 'optivra'),
 						date_i18n(get_option('date_format'), $next_reset)
 					)
-					: __('Next reset date unavailable.', 'catalogue-image-studio')
+					: __('Next reset date unavailable.', 'optivra')
 			);
 			?>
 		</p>
 		<div class="catalogue-image-studio-cta-buttons">
-			<a class="button button-primary" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Upgrade plan', 'catalogue-image-studio'); ?></a>
-			<a class="button" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage billing', 'catalogue-image-studio'); ?></a>
+			<a class="button button-primary" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Upgrade plan', 'optivra'); ?></a>
+			<a class="button" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage billing', 'optivra'); ?></a>
 		</div>
 		<?php
 	}
@@ -1468,23 +1485,23 @@ class Catalogue_Image_Studio_Admin {
 		?>
 		<div class="catalogue-image-studio-panel catalogue-image-studio-panel-wide">
 			<div class="catalogue-image-studio-workflow-steps">
-				<div class="catalogue-image-studio-workflow-step <?php echo $connected ? 'catalogue-image-studio-workflow-step-complete' : ''; ?>"><span>1</span><?php echo esc_html__('Connect', 'catalogue-image-studio'); ?></div>
-				<div class="catalogue-image-studio-workflow-step"><span>2</span><?php echo esc_html__('Scan', 'catalogue-image-studio'); ?></div>
-				<div class="catalogue-image-studio-workflow-step"><span>3</span><?php echo esc_html__('Optimise', 'catalogue-image-studio'); ?></div>
-				<div class="catalogue-image-studio-workflow-step"><span>4</span><?php echo esc_html__('Review & approve', 'catalogue-image-studio'); ?></div>
+				<div class="catalogue-image-studio-workflow-step <?php echo $connected ? 'catalogue-image-studio-workflow-step-complete' : ''; ?>"><span>1</span><?php echo esc_html__('Connect', 'optivra'); ?></div>
+				<div class="catalogue-image-studio-workflow-step"><span>2</span><?php echo esc_html__('Scan', 'optivra'); ?></div>
+				<div class="catalogue-image-studio-workflow-step"><span>3</span><?php echo esc_html__('Optimise', 'optivra'); ?></div>
+				<div class="catalogue-image-studio-workflow-step"><span>4</span><?php echo esc_html__('Review & approve', 'optivra'); ?></div>
 			</div>
 			<div class="catalogue-image-studio-toolbar">
-				<h2><?php echo esc_html__('Images', 'catalogue-image-studio'); ?></h2>
+				<h2><?php echo esc_html__('Images', 'optivra'); ?></h2>
 				<form method="post" action="">
 					<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
 					<input type="hidden" name="catalogue_image_studio_action" value="scan" />
-					<button type="submit" class="button" <?php disabled(! $connected); ?>><?php echo esc_html__('Scan Product Images', 'catalogue-image-studio'); ?></button>
+					<button type="submit" class="button" <?php disabled(! $connected); ?>><?php echo esc_html__('Scan Product Images', 'optivra'); ?></button>
 				</form>
 			</div>
 
 			<?php if (! $connected) : ?>
 				<div class="catalogue-image-studio-empty-state">
-					<?php echo esc_html__('Connect your Optivra account, then scan your product catalogue to find images ready for optimisation.', 'catalogue-image-studio'); ?>
+					<?php echo esc_html__('Connect your Optivra account, then scan your product catalogue to find images ready for optimisation.', 'optivra'); ?>
 				</div>
 			<?php else : ?>
 				<?php $this->render_monetisation_prompt($usage, $credits_remaining, $processable_count, $insufficient); ?>
@@ -1495,12 +1512,12 @@ class Catalogue_Image_Studio_Admin {
 				<div class="tablenav top">
 					<div class="alignleft actions">
 						<select name="catalogue_image_studio_action" <?php disabled(! $connected); ?>>
-							<option value="process"><?php echo esc_html__('Process selected', 'catalogue-image-studio'); ?></option>
-							<option value="approve"><?php echo esc_html__('Approve selected', 'catalogue-image-studio'); ?></option>
-							<option value="reject"><?php echo esc_html__('Reject selected', 'catalogue-image-studio'); ?></option>
-							<option value="revert"><?php echo esc_html__('Revert selected', 'catalogue-image-studio'); ?></option>
+							<option value="process"><?php echo esc_html__('Process selected', 'optivra'); ?></option>
+							<option value="approve"><?php echo esc_html__('Approve selected', 'optivra'); ?></option>
+							<option value="reject"><?php echo esc_html__('Reject selected', 'optivra'); ?></option>
+							<option value="revert"><?php echo esc_html__('Revert selected', 'optivra'); ?></option>
 						</select>
-						<button type="submit" class="button button-primary" <?php disabled(! $connected); ?>><?php echo esc_html__('Apply', 'catalogue-image-studio'); ?></button>
+						<button type="submit" class="button button-primary" <?php disabled(! $connected); ?>><?php echo esc_html__('Apply', 'optivra'); ?></button>
 					</div>
 				</div>
 
@@ -1509,18 +1526,18 @@ class Catalogue_Image_Studio_Admin {
 						<thead>
 							<tr>
 								<td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td>
-								<th><?php echo esc_html__('Product', 'catalogue-image-studio'); ?></th>
-								<th><?php echo esc_html__('Before', 'catalogue-image-studio'); ?></th>
-								<th><?php echo esc_html__('After', 'catalogue-image-studio'); ?></th>
-								<th><?php echo esc_html__('Slot', 'catalogue-image-studio'); ?></th>
-								<th><?php echo esc_html__('Status', 'catalogue-image-studio'); ?></th>
-								<th><?php echo esc_html__('SEO', 'catalogue-image-studio'); ?></th>
-								<th><?php echo esc_html__('Updated', 'catalogue-image-studio'); ?></th>
+								<th><?php echo esc_html__('Product', 'optivra'); ?></th>
+								<th><?php echo esc_html__('Before', 'optivra'); ?></th>
+								<th><?php echo esc_html__('After', 'optivra'); ?></th>
+								<th><?php echo esc_html__('Slot', 'optivra'); ?></th>
+								<th><?php echo esc_html__('Status', 'optivra'); ?></th>
+								<th><?php echo esc_html__('SEO', 'optivra'); ?></th>
+								<th><?php echo esc_html__('Updated', 'optivra'); ?></th>
 							</tr>
 						</thead>
 						<tbody>
 							<?php if (empty($jobs)) : ?>
-								<tr><td colspan="8"><?php echo esc_html__('Run your first scan to find WooCommerce product images.', 'catalogue-image-studio'); ?></td></tr>
+								<tr><td colspan="8"><?php echo esc_html__('Run your first scan to find WooCommerce product images.', 'optivra'); ?></td></tr>
 							<?php else : ?>
 								<?php foreach ($jobs as $job) : ?>
 									<?php $this->render_job_row($job); ?>
@@ -1544,32 +1561,32 @@ class Catalogue_Image_Studio_Admin {
 					echo esc_html(
 						sprintf(
 							/* translators: %d: images left */
-							__('You have %d images left to optimise.', 'catalogue-image-studio'),
+							__('You have %d images left to optimise.', 'optivra'),
 							$credits_remaining
 						)
 					);
 					?>
 				</strong>
 				<p>
-					<?php echo esc_html__('Selected:', 'catalogue-image-studio'); ?>
+					<?php echo esc_html__('Selected:', 'optivra'); ?>
 					<span data-cis-selected-count>0</span>
-					<?php echo esc_html__('image(s). Available credits:', 'catalogue-image-studio'); ?>
+					<?php echo esc_html__('image(s). Available credits:', 'optivra'); ?>
 					<?php echo esc_html((string) $credits_remaining); ?>.
 				</p>
 				<?php if ($insufficient) : ?>
 					<p><?php echo esc_html(sprintf(
 						/* translators: %d: processable images */
-						__('Process %d now, then buy credits or upgrade plan. Upgrade to process your full catalogue.', 'catalogue-image-studio'),
+						__('Process %d now, then buy credits or upgrade plan. Upgrade to process your full catalogue.', 'optivra'),
 						$available_now
 					)); ?></p>
 				<?php else : ?>
-					<p><?php echo esc_html__('Upgrade to process your full catalogue.', 'catalogue-image-studio'); ?></p>
+					<p><?php echo esc_html__('Upgrade to process your full catalogue.', 'optivra'); ?></p>
 				<?php endif; ?>
 			</div>
 			<div class="catalogue-image-studio-cta-buttons">
-				<a class="button button-primary" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Upgrade plan', 'catalogue-image-studio'); ?></a>
-				<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy credits', 'catalogue-image-studio'); ?></a>
-				<a class="button" href="<?php echo esc_url($this->get_account_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage account', 'catalogue-image-studio'); ?></a>
+				<a class="button button-primary" href="<?php echo esc_url($this->get_upgrade_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Upgrade plan', 'optivra'); ?></a>
+				<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy credits', 'optivra'); ?></a>
+				<a class="button" href="<?php echo esc_url($this->get_account_url($usage)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage account', 'optivra'); ?></a>
 			</div>
 		</div>
 		<?php
@@ -1600,31 +1617,31 @@ class Catalogue_Image_Studio_Admin {
 					<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
 				<?php endif; ?>
 				<label class="catalogue-image-studio-token-field" for="catalogue-image-studio-api-token">
-					<span><?php echo esc_html__('Site API Token', 'catalogue-image-studio'); ?></span>
+					<span><?php echo esc_html__('Site API Token', 'optivra'); ?></span>
 					<input
 						type="password"
 						id="catalogue-image-studio-api-token"
 						name="api_token"
 						class="regular-text"
 						value=""
-						placeholder="<?php echo esc_attr(! empty($settings['api_token']) ? __('Token saved - leave blank to keep it', 'catalogue-image-studio') : __('Paste your Site API Token', 'catalogue-image-studio')); ?>"
+						placeholder="<?php echo esc_attr(! empty($settings['api_token']) ? __('Token saved - leave blank to keep it', 'optivra') : __('Paste your Site API Token', 'optivra')); ?>"
 						autocomplete="new-password"
 					/>
 					<?php if (! empty($settings['api_token'])) : ?>
-						<small class="catalogue-image-studio-help"><?php echo esc_html(sprintf(__('Saved token: %s', 'catalogue-image-studio'), $this->mask_token((string) $settings['api_token']))); ?></small>
+						<small class="catalogue-image-studio-help"><?php echo esc_html(sprintf(__('Saved token: %s', 'optivra'), $this->mask_token((string) $settings['api_token']))); ?></small>
 					<?php endif; ?>
 				</label>
 
 				<div class="catalogue-image-studio-link-row">
-					<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'catalogue-image-studio'); ?></a>
-					<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'catalogue-image-studio'); ?></a>
+					<a href="<?php echo esc_url(trailingslashit((string) $this->get_account_url(is_array($usage) ? $usage : [], $settings)) . 'sites'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Get your API token', 'optivra'); ?></a>
+					<a href="<?php echo esc_url(trailingslashit((string) $this->get_app_base_url($usage, $settings)) . 'signup'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Create an Optivra account', 'optivra'); ?></a>
 				</div>
 
 				<div class="catalogue-image-studio-actions">
-					<button type="submit" name="connect_store" value="1" class="button button-primary"><?php echo esc_html__('Connect', 'catalogue-image-studio'); ?></button>
-					<button type="submit" name="test_connection" value="1" class="button"><?php echo esc_html__('Test', 'catalogue-image-studio'); ?></button>
+					<button type="submit" name="connect_store" value="1" class="button button-primary"><?php echo esc_html__('Connect', 'optivra'); ?></button>
+					<button type="submit" name="test_connection" value="1" class="button"><?php echo esc_html__('Test', 'optivra'); ?></button>
 					<?php if (! empty($settings['api_token'])) : ?>
-						<button type="submit" name="disconnect_store" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Disconnect', 'catalogue-image-studio'); ?></button>
+						<button type="submit" name="disconnect_store" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Disconnect', 'optivra'); ?></button>
 					<?php endif; ?>
 				</div>
 
@@ -1744,7 +1761,7 @@ class Catalogue_Image_Studio_Admin {
 		$presets = isset($settings['category_presets']) && is_array($settings['category_presets']) ? $settings['category_presets'] : [];
 
 		if (empty($presets)) {
-			echo '<p class="catalogue-image-studio-help">' . esc_html__('No category presets saved yet. Categories without a preset use your defaults.', 'catalogue-image-studio') . '</p>';
+			echo '<p class="catalogue-image-studio-help">' . esc_html__('No category presets saved yet. Categories without a preset use your defaults.', 'optivra') . '</p>';
 			return;
 		}
 
@@ -1757,8 +1774,8 @@ class Catalogue_Image_Studio_Admin {
 
 			echo '<div class="catalogue-image-studio-preset-chip">';
 			echo '<strong>' . esc_html($term->name) . '</strong>';
-			echo '<span>' . esc_html($this->get_scale_modes()[(string) ($preset['scale_mode'] ?? 'auto')] ?? __('Auto', 'catalogue-image-studio')) . '</span>';
-			echo '<span>' . esc_html($this->get_background_presets()[(string) ($preset['background_preset'] ?? 'optivra-default')] ?? __('Optivra Default', 'catalogue-image-studio')) . '</span>';
+			echo '<span>' . esc_html($this->get_scale_modes()[(string) ($preset['scale_mode'] ?? 'auto')] ?? __('Auto', 'optivra')) . '</span>';
+			echo '<span>' . esc_html($this->get_background_presets()[(string) ($preset['background_preset'] ?? 'optivra-default')] ?? __('Optivra Default', 'optivra')) . '</span>';
 			echo '</div>';
 		}
 		echo '</div>';
@@ -1772,66 +1789,66 @@ class Catalogue_Image_Studio_Admin {
 		}
 		?>
 		<div class="catalogue-image-studio-example">
-			<strong><?php echo esc_html__('Preview example', 'catalogue-image-studio'); ?></strong>
+			<strong><?php echo esc_html__('Preview example', 'optivra'); ?></strong>
 			<p><?php echo esc_html($example_filename . '.webp'); ?></p>
-			<p><?php echo esc_html__('Alt text: Black Leather Wallet product image', 'catalogue-image-studio'); ?></p>
+			<p><?php echo esc_html__('Alt text: Black Leather Wallet product image', 'optivra'); ?></p>
 		</div>
 		<?php
 	}
 
 	private function get_background_presets(): array {
 		return [
-			'optivra-default' => __('Optivra Default', 'catalogue-image-studio'),
-			'soft-white'      => __('Soft White', 'catalogue-image-studio'),
-			'cool-studio'     => __('Cool Studio', 'catalogue-image-studio'),
-			'warm-studio'     => __('Warm Studio', 'catalogue-image-studio'),
+			'optivra-default' => __('Optivra Default', 'optivra'),
+			'soft-white'      => __('Soft White', 'optivra'),
+			'cool-studio'     => __('Cool Studio', 'optivra'),
+			'warm-studio'     => __('Warm Studio', 'optivra'),
 		];
 	}
 
 	private function get_scale_modes(): array {
 		return [
-			'auto'     => __('Auto', 'catalogue-image-studio'),
-			'tight'    => __('Tight', 'catalogue-image-studio'),
-			'balanced' => __('Balanced', 'catalogue-image-studio'),
-			'loose'    => __('Loose', 'catalogue-image-studio'),
-			'close-up' => __('Close-up', 'catalogue-image-studio'),
-			'wide'     => __('Wide', 'catalogue-image-studio'),
-			'tall'     => __('Tall', 'catalogue-image-studio'),
+			'auto'     => __('Auto', 'optivra'),
+			'tight'    => __('Tight', 'optivra'),
+			'balanced' => __('Balanced', 'optivra'),
+			'loose'    => __('Loose', 'optivra'),
+			'close-up' => __('Close-up', 'optivra'),
+			'wide'     => __('Wide', 'optivra'),
+			'tall'     => __('Tall', 'optivra'),
 		];
 	}
 
 	private function get_shadow_modes(): array {
 		return [
-			'off'    => __('Off', 'catalogue-image-studio'),
-			'under'  => __('Under product', 'catalogue-image-studio'),
-			'behind' => __('Behind product', 'catalogue-image-studio'),
-			'custom' => __('Custom', 'catalogue-image-studio'),
+			'off'    => __('Off', 'optivra'),
+			'under'  => __('Under product', 'optivra'),
+			'behind' => __('Behind product', 'optivra'),
+			'custom' => __('Custom', 'optivra'),
 		];
 	}
 
 	private function get_shadow_strengths(): array {
 		return [
-			'light'  => __('Light', 'catalogue-image-studio'),
-			'medium' => __('Medium', 'catalogue-image-studio'),
-			'strong' => __('Strong', 'catalogue-image-studio'),
-			'custom' => __('Custom', 'catalogue-image-studio'),
+			'light'  => __('Light', 'optivra'),
+			'medium' => __('Medium', 'optivra'),
+			'strong' => __('Strong', 'optivra'),
+			'custom' => __('Custom', 'optivra'),
 		];
 	}
 
 	private function get_lighting_modes(): array {
 		return [
-			'auto'          => __('Auto', 'catalogue-image-studio'),
-			'product-only'  => __('Product only', 'catalogue-image-studio'),
-			'whole-image'   => __('Whole image', 'catalogue-image-studio'),
+			'auto'          => __('Auto', 'optivra'),
+			'product-only'  => __('Product only', 'optivra'),
+			'whole-image'   => __('Whole image', 'optivra'),
 		];
 	}
 
 	private function get_lighting_strengths(): array {
 		return [
-			'low'    => __('Low', 'catalogue-image-studio'),
-			'medium' => __('Medium', 'catalogue-image-studio'),
-			'high'   => __('High', 'catalogue-image-studio'),
-			'custom' => __('Custom', 'catalogue-image-studio'),
+			'low'    => __('Low', 'optivra'),
+			'medium' => __('Medium', 'optivra'),
+			'high'   => __('High', 'optivra'),
+			'custom' => __('Custom', 'optivra'),
 		];
 	}
 
@@ -2083,7 +2100,7 @@ class Catalogue_Image_Studio_Admin {
 		$attachment_id    = (int) ($job['attachment_id'] ?? 0);
 		$before_url       = $attachment_id ? wp_get_attachment_image_url($attachment_id, 'thumbnail') : '';
 		$processed_links  = $this->get_processed_image_links($job);
-		$product_title    = $product_id ? get_the_title($product_id) : __('Unknown product', 'catalogue-image-studio');
+		$product_title    = $product_id ? get_the_title($product_id) : __('Unknown product', 'optivra');
 		?>
 		<tr>
 			<?php if ($selectable) : ?>
@@ -2093,9 +2110,9 @@ class Catalogue_Image_Studio_Admin {
 			<?php endif; ?>
 			<td>
 				<strong><?php echo esc_html($product_title); ?></strong><br />
-				<a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'catalogue-image-studio'); ?></a>
+				<a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'optivra'); ?></a>
 			</td>
-			<td><?php $this->render_thumbnail($before_url, __('Before', 'catalogue-image-studio')); ?></td>
+			<td><?php $this->render_thumbnail($before_url, __('Before', 'optivra')); ?></td>
 			<td><?php $this->render_after_thumbnail($processed_links, $job); ?></td>
 			<td><?php echo esc_html((string) $job['image_role']); ?> <?php echo 'gallery' === (string) $job['image_role'] ? esc_html('#' . ((int) $job['gallery_index'] + 1)) : ''; ?></td>
 			<td>
@@ -2120,16 +2137,16 @@ class Catalogue_Image_Studio_Admin {
 		$job_id = (int) ($job['id'] ?? 0);
 		?>
 		<details class="optivra-job-options">
-			<summary><?php echo esc_html__('Framing overrides', 'catalogue-image-studio'); ?></summary>
-			<label class="optivra-inline-check"><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][enabled]" value="1" <?php checked(! empty($job['edge_to_edge_enabled'])); ?> /> <?php echo esc_html__('Image to edge', 'catalogue-image-studio'); ?></label>
+			<summary><?php echo esc_html__('Framing overrides', 'optivra'); ?></summary>
+			<label class="optivra-inline-check"><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][enabled]" value="1" <?php checked(! empty($job['edge_to_edge_enabled'])); ?> /> <?php echo esc_html__('Image to edge', 'optivra'); ?></label>
 			<div class="optivra-edge-grid">
-				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][left]" value="1" <?php checked(! empty($job['edge_to_edge_left'])); ?> /> <?php echo esc_html__('Left edge', 'catalogue-image-studio'); ?></label>
-				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][right]" value="1" <?php checked(! empty($job['edge_to_edge_right'])); ?> /> <?php echo esc_html__('Right edge', 'catalogue-image-studio'); ?></label>
-				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][top]" value="1" <?php checked(! empty($job['edge_to_edge_top'])); ?> /> <?php echo esc_html__('Top edge', 'catalogue-image-studio'); ?></label>
-				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][bottom]" value="1" <?php checked(! empty($job['edge_to_edge_bottom'])); ?> /> <?php echo esc_html__('Bottom edge', 'catalogue-image-studio'); ?></label>
+				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][left]" value="1" <?php checked(! empty($job['edge_to_edge_left'])); ?> /> <?php echo esc_html__('Left edge', 'optivra'); ?></label>
+				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][right]" value="1" <?php checked(! empty($job['edge_to_edge_right'])); ?> /> <?php echo esc_html__('Right edge', 'optivra'); ?></label>
+				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][top]" value="1" <?php checked(! empty($job['edge_to_edge_top'])); ?> /> <?php echo esc_html__('Top edge', 'optivra'); ?></label>
+				<label><input type="checkbox" name="edge_overrides[<?php echo esc_attr((string) $job_id); ?>][bottom]" value="1" <?php checked(! empty($job['edge_to_edge_bottom'])); ?> /> <?php echo esc_html__('Bottom edge', 'optivra'); ?></label>
 			</div>
 			<?php if ('completed' === (string) ($job['status'] ?? '')) : ?>
-				<small class="catalogue-image-studio-help"><?php echo esc_html__('Process this image again to apply changed framing overrides.', 'catalogue-image-studio'); ?></small>
+				<small class="catalogue-image-studio-help"><?php echo esc_html__('Process this image again to apply changed framing overrides.', 'optivra'); ?></small>
 			<?php endif; ?>
 		</details>
 		<?php
@@ -2142,11 +2159,11 @@ class Catalogue_Image_Studio_Admin {
 	private function render_seo_fields(array $job): void {
 		$job_id = (int) $job['id'];
 		$fields = [
-			'filename'    => __('Filename', 'catalogue-image-studio'),
-			'alt_text'    => __('Alt', 'catalogue-image-studio'),
-			'title'       => __('Title', 'catalogue-image-studio'),
-			'caption'     => __('Caption', 'catalogue-image-studio'),
-			'description' => __('Description', 'catalogue-image-studio'),
+			'filename'    => __('Filename', 'optivra'),
+			'alt_text'    => __('Alt', 'optivra'),
+			'title'       => __('Title', 'optivra'),
+			'caption'     => __('Caption', 'optivra'),
+			'description' => __('Description', 'optivra'),
 		];
 		$values = [
 			'filename'    => (string) ($job['seo_filename'] ?? ''),
@@ -2173,7 +2190,7 @@ class Catalogue_Image_Studio_Admin {
 
 	private function render_thumbnail(string $url, string $label): void {
 		if ('' === $url) {
-			echo '<span class="catalogue-image-studio-muted">' . esc_html__('None', 'catalogue-image-studio') . '</span>';
+			echo '<span class="catalogue-image-studio-muted">' . esc_html__('None', 'optivra') . '</span>';
 			return;
 		}
 
@@ -2227,23 +2244,23 @@ class Catalogue_Image_Studio_Admin {
 	private function render_after_thumbnail(array $links, array $job): void {
 		if ('' === $links['preview'] || '' === $links['full']) {
 			echo '<div class="catalogue-image-studio-missing-after">';
-			echo '<span>' . esc_html__('Processed image file missing', 'catalogue-image-studio') . '</span>';
-			echo '<small>' . esc_html__('Reprocess this image before approving.', 'catalogue-image-studio') . '</small>';
-			echo '<button type="submit" class="button button-small" name="catalogue_image_studio_action" value="retry" onclick="var box=this.closest(\'tr\').querySelector(\'.catalogue-image-studio-job-check\'); if (box) { box.checked = true; }">' . esc_html__('Reprocess', 'catalogue-image-studio') . '</button>';
+			echo '<span>' . esc_html__('Processed image file missing', 'optivra') . '</span>';
+			echo '<small>' . esc_html__('Reprocess this image before approving.', 'optivra') . '</small>';
+			echo '<button type="submit" class="button button-small" name="catalogue_image_studio_action" value="retry" onclick="var box=this.closest(\'tr\').querySelector(\'.catalogue-image-studio-job-check\'); if (box) { box.checked = true; }">' . esc_html__('Reprocess', 'optivra') . '</button>';
 			echo '</div>';
 			return;
 		}
 
 		?>
 		<a href="<?php echo esc_url($links['full']); ?>" target="_blank" rel="noopener noreferrer" class="catalogue-image-studio-after-link">
-			<img src="<?php echo esc_url($links['preview']); ?>" alt="<?php echo esc_attr__('After', 'catalogue-image-studio'); ?>" class="catalogue-image-studio-thumb" onerror="this.closest('a').style.display='none'; var n=this.parentNode.parentNode.querySelector('.catalogue-image-studio-after-error'); if(n){n.hidden=false;}" />
+			<img src="<?php echo esc_url($links['preview']); ?>" alt="<?php echo esc_attr__('After', 'optivra'); ?>" class="catalogue-image-studio-thumb" onerror="this.closest('a').style.display='none'; var n=this.parentNode.parentNode.querySelector('.catalogue-image-studio-after-error'); if(n){n.hidden=false;}" />
 		</a>
 		<div class="catalogue-image-studio-missing-after catalogue-image-studio-after-error" hidden>
-			<span><?php echo esc_html__('Processed image could not be found', 'catalogue-image-studio'); ?></span>
-			<small><?php echo esc_html__('Reprocess this image before approving.', 'catalogue-image-studio'); ?></small>
+			<span><?php echo esc_html__('Processed image could not be found', 'optivra'); ?></span>
+			<small><?php echo esc_html__('Reprocess this image before approving.', 'optivra'); ?></small>
 		</div>
 		<?php if ('remote' === $links['source']) : ?>
-			<small class="catalogue-image-studio-help"><?php echo esc_html__('Remote preview. Approving will import this file into Media Library.', 'catalogue-image-studio'); ?></small>
+			<small class="catalogue-image-studio-help"><?php echo esc_html__('Remote preview. Approving will import this file into Media Library.', 'optivra'); ?></small>
 		<?php endif; ?>
 		<?php
 	}
@@ -2253,23 +2270,23 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function render_job_diagnostics(array $job): void {
 		$rows = [
-			__('Job ID', 'catalogue-image-studio')                  => (string) ($job['id'] ?? ''),
-			__('Product ID', 'catalogue-image-studio')              => (string) ($job['product_id'] ?? ''),
-			__('Original attachment ID', 'catalogue-image-studio')  => (string) ($job['original_attachment_id'] ?? $job['attachment_id'] ?? ''),
-			__('Processed attachment ID', 'catalogue-image-studio') => (string) ($job['processed_attachment_id'] ?? ''),
-			__('Processed URL', 'catalogue-image-studio')           => (string) ($job['processed_url'] ?? ''),
-			__('Storage bucket', 'catalogue-image-studio')          => (string) ($job['processed_storage_bucket'] ?? ''),
-			__('Storage path', 'catalogue-image-studio')            => (string) ($job['processed_storage_path'] ?? ''),
-			__('Last processing error', 'catalogue-image-studio')   => (string) ($job['error_message'] ?? ''),
-			__('Last approval error', 'catalogue-image-studio')     => (string) ($job['approval_error'] ?? ''),
+			__('Job ID', 'optivra')                  => (string) ($job['id'] ?? ''),
+			__('Product ID', 'optivra')              => (string) ($job['product_id'] ?? ''),
+			__('Original attachment ID', 'optivra')  => (string) ($job['original_attachment_id'] ?? $job['attachment_id'] ?? ''),
+			__('Processed attachment ID', 'optivra') => (string) ($job['processed_attachment_id'] ?? ''),
+			__('Processed URL', 'optivra')           => (string) ($job['processed_url'] ?? ''),
+			__('Storage bucket', 'optivra')          => (string) ($job['processed_storage_bucket'] ?? ''),
+			__('Storage path', 'optivra')            => (string) ($job['processed_storage_path'] ?? ''),
+			__('Last processing error', 'optivra')   => (string) ($job['error_message'] ?? ''),
+			__('Last approval error', 'optivra')     => (string) ($job['approval_error'] ?? ''),
 		];
 		?>
 		<details class="optivra-job-diagnostics">
-			<summary><?php echo esc_html__('Technical details', 'catalogue-image-studio'); ?></summary>
+			<summary><?php echo esc_html__('Technical details', 'optivra'); ?></summary>
 			<dl>
 				<?php foreach ($rows as $label => $value) : ?>
 					<dt><?php echo esc_html($label); ?></dt>
-					<dd><?php echo '' !== trim($value) ? esc_html($value) : esc_html__('Not stored', 'catalogue-image-studio'); ?></dd>
+					<dd><?php echo '' !== trim($value) ? esc_html($value) : esc_html__('Not stored', 'optivra'); ?></dd>
 				<?php endforeach; ?>
 			</dl>
 		</details>

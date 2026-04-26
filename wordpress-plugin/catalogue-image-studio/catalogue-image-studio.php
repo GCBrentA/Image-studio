@@ -1,12 +1,18 @@
 <?php
 /**
- * Plugin Name: Catalogue Image Studio
- * Plugin URI:  https://example.com/catalogue-image-studio
- * Description: WooCommerce catalogue image tooling for product image preparation.
- * Version:     0.1.0
- * Author:      Catalogue Image Studio
- * Text Domain: catalogue-image-studio
- * Requires PHP: 7.4
+ * Plugin Name: Optivra - AI Product Image Optimizer for WooCommerce
+ * Plugin URI:  https://optivra.com
+ * Description: AI product image background replacement, review workflow, and SEO metadata optimisation for WooCommerce.
+ * Version:     1.0.0
+ * Author:      Optivra
+ * Author URI:  https://optivra.com
+ * License:     GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: optivra
+ * Requires at least: 6.3
+ * Requires PHP: 8.0
+ * WC requires at least: 8.0
+ * WC tested up to: 10.5.3
  *
  * @package CatalogueImageStudio
  */
@@ -15,15 +21,19 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('CIS_VERSION', '0.1.0');
+define('CIS_VERSION', '1.0.0');
 define('CIS_FILE', __FILE__);
 define('CIS_PATH', plugin_dir_path(__FILE__));
 define('CIS_URL', plugin_dir_url(__FILE__));
+define('CIS_TERMS_URL', 'https://optivra.com/terms');
+define('CIS_PRIVACY_URL', 'https://optivra.com/privacy');
+define('CIS_DATA_URL', 'https://optivra.com/docs/data-processing');
+define('CIS_SUPPORT_URL', 'https://optivra.com/support');
 
 /**
  * Minimum supported PHP version for the plugin runtime.
  */
-define('CIS_MINIMUM_PHP_VERSION', '7.4');
+define('CIS_MINIMUM_PHP_VERSION', '8.0');
 
 /**
  * Check whether the current site meets plugin runtime requirements.
@@ -32,6 +42,10 @@ define('CIS_MINIMUM_PHP_VERSION', '7.4');
  */
 function catalogue_image_studio_requirements_met() {
 	return version_compare(PHP_VERSION, CIS_MINIMUM_PHP_VERSION, '>=');
+}
+
+function catalogue_image_studio_is_woocommerce_active(): bool {
+	return class_exists('WooCommerce') && function_exists('wc_get_products');
 }
 
 /**
@@ -49,11 +63,22 @@ function catalogue_image_studio_render_php_notice() {
 		esc_html(
 			sprintf(
 				/* translators: 1: current PHP version, 2: required PHP version */
-				__('Catalogue Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'catalogue-image-studio'),
+				__('Catalogue Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra'),
 				PHP_VERSION,
 				CIS_MINIMUM_PHP_VERSION
 			)
 		)
+	);
+}
+
+function catalogue_image_studio_render_woocommerce_notice(): void {
+	if (! current_user_can('activate_plugins')) {
+		return;
+	}
+
+	printf(
+		'<div class="notice notice-warning"><p>%s</p></div>',
+		esc_html__('Optivra requires WooCommerce to scan, queue, process, and replace product images. Activate WooCommerce before using Optivra.', 'optivra')
 	);
 }
 
@@ -74,12 +99,12 @@ function catalogue_image_studio_activate() {
 		esc_html(
 			sprintf(
 				/* translators: 1: current PHP version, 2: required PHP version */
-				__('Catalogue Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'catalogue-image-studio'),
+				__('Catalogue Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra'),
 				PHP_VERSION,
 				CIS_MINIMUM_PHP_VERSION
 			)
 		),
-		esc_html__('Plugin activation failed', 'catalogue-image-studio'),
+		esc_html__('Plugin activation failed', 'optivra'),
 		['back_link' => true]
 	);
 }
@@ -109,6 +134,10 @@ add_action(
 		$plugin = Catalogue_Image_Studio_Plugin::instance();
 
 		if (is_admin()) {
+			if (! catalogue_image_studio_is_woocommerce_active()) {
+				add_action('admin_notices', 'catalogue_image_studio_render_woocommerce_notice');
+			}
+
 			new Catalogue_Image_Studio_Admin($plugin);
 		}
 	}

@@ -33,7 +33,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
 				'catalogue_image_studio_missing_api_settings',
-				__('Paste your Site API Token to connect this store.', 'catalogue-image-studio')
+				__('Paste your Site API Token to connect this store.', 'optivra')
 			);
 		}
 
@@ -78,7 +78,7 @@ class Catalogue_Image_Studio_SaaSClient {
 				'catalogue_image_studio_invalid_api_response',
 				sprintf(
 					/* translators: 1: status code, 2: API base URL */
-					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'catalogue-image-studio'),
+					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'optivra'),
 					$status_code,
 					$this->api_base_url
 				)
@@ -86,12 +86,12 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
-			$message = $this->get_error_message($decoded, __('Image processing failed.', 'catalogue-image-studio'));
+			$message = $this->get_error_message($decoded, __('Image processing failed.', 'optivra'));
 			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
 		}
 
 		if (empty($decoded['processed_url'])) {
-			return new WP_Error('catalogue_image_studio_missing_processed_url', __('The image processing API did not return a processed image URL.', 'catalogue-image-studio'));
+			return new WP_Error('catalogue_image_studio_missing_processed_url', __('The image processing API did not return a processed image URL.', 'optivra'));
 		}
 
 		return $decoded;
@@ -106,7 +106,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
 				'catalogue_image_studio_missing_api_settings',
-				__('Paste your Site API Token to connect this store.', 'catalogue-image-studio')
+				__('Paste your Site API Token to connect this store.', 'optivra')
 			);
 		}
 
@@ -135,7 +135,7 @@ class Catalogue_Image_Studio_SaaSClient {
 				'catalogue_image_studio_invalid_api_response',
 				sprintf(
 					/* translators: 1: status code, 2: API base URL */
-					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'catalogue-image-studio'),
+					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'optivra'),
 					$status_code,
 					$this->api_base_url
 				)
@@ -143,7 +143,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
-			$message = $this->get_error_message($decoded, __('Connection test failed.', 'catalogue-image-studio'));
+			$message = $this->get_error_message($decoded, __('Connection test failed.', 'optivra'));
 			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
 		}
 
