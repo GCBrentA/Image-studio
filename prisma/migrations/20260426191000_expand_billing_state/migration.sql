@@ -33,7 +33,7 @@ UPDATE "stripe_events"
 SET
   "stripe_event_id" = COALESCE("stripe_event_id", "id"),
   "event_type" = COALESCE("event_type", "type"),
-  "status" = CASE WHEN "processed_at" IS NULL THEN "received" ELSE 'processed' END
+  "status" = CASE WHEN "processed_at" IS NULL THEN 'received' ELSE 'processed' END
 WHERE "stripe_event_id" IS NULL OR "event_type" IS NULL;
 
 ALTER TABLE "stripe_events"

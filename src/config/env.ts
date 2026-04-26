@@ -20,8 +20,7 @@ const runtimeEnvVars = [
   "STRIPE_PRICE_AGENCY",
   "STRIPE_SUCCESS_URL",
   "STRIPE_CANCEL_URL",
-  "APP_BASE_URL",
-  "BILLING_CURRENCY"
+  "APP_BASE_URL"
 ] as const;
 
 const missingEnvVars = runtimeEnvVars.filter((key) => !process.env[key]);

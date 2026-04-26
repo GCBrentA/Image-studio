@@ -95,7 +95,7 @@ In Render, add the same variables from `.env.example` under the service Environm
 Build Command:
 
 ```bash
-npm install && npm run build
+npm install && npx prisma generate && npx prisma migrate deploy && npm run build
 ```
 
 Start Command:
@@ -104,7 +104,7 @@ Start Command:
 npm run start
 ```
 
-`npm run start` runs `dist/server.js`. If Render starts a runtime bundle without that compiled file, the start preflight rebuilds once before launching the server.
+`npm run start` applies `npx prisma migrate deploy` before loading `dist/server.js`, then launches the server. If Render starts a runtime bundle without that compiled file, the start preflight rebuilds once before launching the server. Set `SKIP_PRISMA_MIGRATE_DEPLOY=1` only for emergency diagnostics where migrations must be run separately.
 
 ### Supabase Connection Strings
 
@@ -181,7 +181,7 @@ Local development uses Prisma Migrate Dev. After setting `DATABASE_URL` in `.env
 npm run prisma:migrate -- --name init_optivra_schema
 ```
 
-Render and production Supabase databases use Prisma Migrate Deploy. Run migrations manually before deploy with:
+Render and production Supabase databases use Prisma Migrate Deploy. The Render Build Command and `npm run start` both run `npx prisma migrate deploy` so missing production columns are repaired before the app accepts traffic. You can also run migrations manually before deploy with:
 
 ```bash
 npx prisma migrate deploy

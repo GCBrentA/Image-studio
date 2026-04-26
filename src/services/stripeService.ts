@@ -82,9 +82,7 @@ export const validateBillingEnvironment = (): string[] => {
 
   errors.push(...urlErrors);
 
-  if (!process.env.BILLING_CURRENCY) {
-    errors.push("BILLING_CURRENCY is missing");
-  } else if (env.billingCurrency !== "usd") {
+  if (env.billingCurrency !== "usd") {
     errors.push("BILLING_CURRENCY must be usd");
   }
 

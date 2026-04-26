@@ -49,6 +49,7 @@ model User {
   billing_plan           SubscriptionPlan?
   billing_status         SubscriptionStatus?
   billing_email          String?
+  trial_ends_at          DateTime?
   current_period_start   DateTime?
   current_period_end     DateTime?
   cancel_at_period_end   Boolean             @default(false)
@@ -90,9 +91,13 @@ model Subscription {
   current_period_start   DateTime?
   current_period_end     DateTime
   stripe_subscription_id String?            @unique
+  stripe_customer_id     String?
   stripe_price_id        String?
   stripe_product_id      String?
+  billing_plan           String?
+  billing_status         String?
   cancel_at_period_end   Boolean            @default(false)
+  trial_ends_at          DateTime?
   credits_included       Int                @default(0)
   credits_remaining      Int                @default(0)
   credits_used           Int                @default(0)
