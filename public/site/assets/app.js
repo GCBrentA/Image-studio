@@ -19,7 +19,7 @@ function routeTo(path) {
   if (normalized === "/dashboard") {
     loadDashboard();
   }
-  if (normalized === "/account/billing" || normalized === "/billing/success") {
+  if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
     loadBilling();
   }
 }
@@ -35,6 +35,8 @@ function pageTitle(path) {
     "/account/billing": "Billing | Optivra",
     "/billing/success": "Billing Success | Optivra",
     "/billing/cancel": "Billing Cancelled | Optivra",
+    "/billing/credits/success": "Credit Purchase Success | Optivra",
+    "/billing/credits/cancel": "Credit Purchase Cancelled | Optivra",
     "/docs": "Docs | Optivra",
     "/support": "Support | Optivra",
     "/terms": "Terms | Optivra",
@@ -197,7 +199,7 @@ document.addEventListener("click", async (event) => {
     await checkout({ type: "subscription", plan: planButton.dataset.plan });
   }
   if (packButton) {
-    await checkout({ type: "credit_pack", pack: packButton.dataset.pack });
+    await creditCheckout(packButton.dataset.pack, packButton);
   }
 });
 
@@ -212,6 +214,38 @@ async function checkout(payload) {
     body: JSON.stringify(payload)
   });
   location.href = body.url;
+}
+
+async function creditCheckout(pack, button) {
+  if (!token()) {
+    history.pushState({}, "", "/login");
+    routeTo("/login");
+    return;
+  }
+
+  const originalText = button?.textContent;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Opening checkout...";
+    }
+    setText("billing-message", "");
+    const body = await api("/api/billing/create-credit-checkout-session", {
+      method: "POST",
+      body: JSON.stringify({ pack })
+    });
+    location.href = body.url;
+  } catch (error) {
+    setText("billing-message", error.message);
+    if (!document.getElementById("billing-message")) {
+      alert(error.message);
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 async function openPortal() {

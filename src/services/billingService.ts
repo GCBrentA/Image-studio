@@ -8,7 +8,7 @@ import {
   getPlanByKey,
   getPlanByPriceId
 } from "./billingCatalog";
-import { ensureBillingReady, getStripe } from "./stripeService";
+import { ensureBillingReady, ensureCreditBillingReady, getStripe } from "./stripeService";
 import type { StripeWebhookEvent } from "./stripeService";
 
 type StripeCustomerRef = string | { id: string } | null;
@@ -47,6 +47,10 @@ type StripeCheckoutSessionLike = {
   mode: "payment" | "setup" | "subscription" | null;
   customer: StripeCustomerRef;
   subscription?: string | { id: string } | null;
+  payment_intent?: string | { id: string } | null;
+  payment_status?: "paid" | "unpaid" | "no_payment_required" | null;
+  amount_total?: number | null;
+  currency?: string | null;
   metadata?: Record<string, string> | null;
   customer_details?: {
     email?: string | null;
@@ -85,9 +89,15 @@ type PortalSessionResult = {
   url: string;
 };
 
+type CreditCheckoutSessionInput = {
+  pack?: string;
+};
+
 const appUrl = (): string => env.appUrl || env.apiBaseUrl || `http://localhost:${env.port}`;
 const successUrl = (): string => env.stripeSuccessUrl || `${appUrl().replace(/\/$/, "")}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
 const cancelUrl = (): string => env.stripeCancelUrl || `${appUrl().replace(/\/$/, "")}/billing/cancel`;
+const creditSuccessUrl = (): string => `${appUrl().replace(/\/$/, "")}/billing/credits/success?session_id={CHECKOUT_SESSION_ID}`;
+const creditCancelUrl = (): string => `${appUrl().replace(/\/$/, "")}/billing/credits/cancel`;
 
 const isKnownPrismaError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
   error instanceof Prisma.PrismaClientKnownRequestError;
@@ -167,21 +177,20 @@ export const createCheckoutSession = async (
   userId: string,
   input: CheckoutSessionInput
 ): Promise<CheckoutSessionResult> => {
-  await ensureBillingReady();
-  const customerId = await getCustomerId(userId);
-  const site = await prisma.connectedSite.findFirst({
-    where: {
-      user_id: userId
-    },
-    orderBy: {
-      created_at: "asc"
-    },
-    select: {
-      domain: true
-    }
-  });
-
   if (input.type === "subscription") {
+    await ensureBillingReady();
+    const customerId = await getCustomerId(userId);
+    const site = await prisma.connectedSite.findFirst({
+      where: {
+        user_id: userId
+      },
+      orderBy: {
+        created_at: "asc"
+      },
+      select: {
+        domain: true
+      }
+    });
     const plan = getPlanByKey(input.plan ?? "");
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
@@ -225,37 +234,52 @@ export const createCheckoutSession = async (
   }
 
   if (input.type === "credit_pack") {
-    const pack = getCreditPackByKey(input.pack ?? "");
-    const session = await getStripe().checkout.sessions.create({
-      mode: "payment",
-      customer: customerId,
-      line_items: [
-        {
-          price: pack.priceId,
-          quantity: 1
-        }
-      ],
-      success_url: successUrl(),
-      cancel_url: cancelUrl(),
-      metadata: {
-        userId,
-        checkoutType: "credit_pack",
-        pack: pack.key,
-        credits: String(pack.credits)
-      }
+    return createCreditCheckoutSession(userId, {
+      pack: input.pack
     });
-
-    if (!session.url) {
-      throw new HttpError(502, "Stripe did not return a checkout URL");
-    }
-
-    return {
-      id: session.id,
-      url: session.url
-    };
   }
 
   throw new HttpError(400, "Invalid checkout session type");
+};
+
+export const createCreditCheckoutSession = async (
+  userId: string,
+  input: CreditCheckoutSessionInput
+): Promise<CheckoutSessionResult> => {
+  await ensureCreditBillingReady();
+  const customerId = await getCustomerId(userId);
+  const pack = getCreditPackByKey(input.pack ?? "");
+  const session = await getStripe().checkout.sessions.create({
+    mode: "payment",
+    customer: customerId,
+    line_items: [
+      {
+        price: pack.priceId,
+        quantity: 1
+      }
+    ],
+    success_url: creditSuccessUrl(),
+    cancel_url: creditCancelUrl(),
+    metadata: {
+      account_id: userId,
+      user_id: userId,
+      userId,
+      type: "credit_purchase",
+      checkoutType: "credit_purchase",
+      credit_pack: pack.key,
+      pack: pack.key,
+      credits: String(pack.credits)
+    }
+  });
+
+  if (!session.url) {
+    throw new HttpError(502, "Stripe did not return a checkout URL");
+  }
+
+  return {
+    id: session.id,
+    url: session.url
+  };
 };
 
 export const createCustomerPortalSession = async (userId: string): Promise<PortalSessionResult> => {
@@ -397,10 +421,14 @@ const upsertSubscriptionFromStripe = async (
   });
 };
 
-const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike): Promise<void> => {
+const handleCheckoutSessionCompleted = async (
+  session: StripeCheckoutSessionLike,
+  stripeEventId?: string
+): Promise<void> => {
   const customerId = getCustomerIdFromStripeObject(session.customer);
   const userId = session.metadata?.userId ?? session.metadata?.user_id ?? session.metadata?.account_id;
   const billingEmail = session.customer_details?.email ?? null;
+  const checkoutType = session.metadata?.type ?? session.metadata?.checkoutType;
 
   if (customerId && userId) {
     await prisma.user.update({
@@ -414,6 +442,43 @@ const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike
     });
   }
 
+  if (checkoutType === "credit_purchase") {
+    if (session.mode !== "payment" || session.payment_status !== "paid" || !userId) {
+      return;
+    }
+
+    const packKey = session.metadata?.credit_pack ?? session.metadata?.pack;
+    const pack = packKey ? getCreditPackByKey(packKey) : null;
+    const metadataCredits = Number(session.metadata?.credits ?? 0);
+
+    if (!pack || metadataCredits !== pack.credits) {
+      throw new Error("Stripe credit purchase metadata does not match server credit pack config");
+    }
+
+    const paymentIntentId = typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id;
+
+    await addCredits(userId, pack.credits, CreditLedgerReason.purchase, {
+      idempotencyKey: `stripe-checkout:${session.id}:credits`,
+      source: "stripe_credit_purchase",
+      description: `${pack.displayName} purchased`,
+      stripeEventId: stripeEventId ?? session.id
+    });
+
+    console.info("Stripe credit purchase processed", {
+      accountId: userId,
+      creditPack: pack.key,
+      credits: pack.credits,
+      stripeCheckoutSessionId: session.id,
+      stripePaymentIntentId: paymentIntentId ?? null,
+      amountTotal: session.amount_total ?? null,
+      currency: session.currency ?? null
+    });
+
+    return;
+  }
+
   if (session.mode === "subscription" && session.subscription) {
     const subscriptionId =
       typeof session.subscription === "string" ? session.subscription : session.subscription.id;
@@ -422,19 +487,6 @@ const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike
     return;
   }
 
-  if (session.mode === "payment" && userId) {
-    const packKey = session.metadata?.pack;
-    const pack = packKey ? getCreditPackByKey(packKey) : null;
-
-    if (pack) {
-      await addCredits(userId, pack.credits, CreditLedgerReason.purchase, {
-        idempotencyKey: `stripe-checkout:${session.id}:credits`,
-        source: "credit_purchase",
-        description: "Credit pack purchase",
-        stripeEventId: session.id
-      });
-    }
-  }
 };
 
 const handleSubscriptionDeleted = async (subscription: StripeSubscriptionLike): Promise<void> => {
@@ -587,7 +639,7 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
   try {
     switch (event.type) {
       case "checkout.session.completed":
-        await handleCheckoutSessionCompleted(event.data.object as StripeCheckoutSessionLike);
+        await handleCheckoutSessionCompleted(event.data.object as StripeCheckoutSessionLike, event.id);
         result = "processed";
         break;
       case "customer.subscription.created":

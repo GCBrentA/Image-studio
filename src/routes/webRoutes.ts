@@ -11,6 +11,8 @@ const webPaths = new Set([
   "/account/billing",
   "/billing/success",
   "/billing/cancel",
+  "/billing/credits/success",
+  "/billing/credits/cancel",
   "/docs",
   "/support",
   "/terms",

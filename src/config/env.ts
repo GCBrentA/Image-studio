@@ -18,6 +18,10 @@ const runtimeEnvVars = [
   "STRIPE_PRICE_GROWTH",
   "STRIPE_PRICE_PRO",
   "STRIPE_PRICE_AGENCY",
+  "STRIPE_CREDIT_PRICE_SMALL",
+  "STRIPE_CREDIT_PRICE_MEDIUM",
+  "STRIPE_CREDIT_PRICE_LARGE",
+  "STRIPE_CREDIT_PRICE_AGENCY",
   "STRIPE_SUCCESS_URL",
   "STRIPE_CANCEL_URL",
   "APP_BASE_URL"
@@ -51,9 +55,10 @@ export const env = {
     agency: process.env.STRIPE_PRICE_AGENCY ?? process.env.STRIPE_AGENCY_PRICE_ID ?? ""
   },
   stripeCreditPackPriceIds: {
-    credits_100: process.env.STRIPE_CREDIT_PACK_100_PRICE_ID ?? "",
-    credits_300: process.env.STRIPE_CREDIT_PACK_300_PRICE_ID ?? "",
-    credits_1000: process.env.STRIPE_CREDIT_PACK_1000_PRICE_ID ?? ""
+    small: process.env.STRIPE_CREDIT_PRICE_SMALL ?? process.env.STRIPE_CREDIT_PACK_100_PRICE_ID ?? "",
+    medium: process.env.STRIPE_CREDIT_PRICE_MEDIUM ?? process.env.STRIPE_CREDIT_PACK_300_PRICE_ID ?? "",
+    large: process.env.STRIPE_CREDIT_PRICE_LARGE ?? process.env.STRIPE_CREDIT_PACK_1000_PRICE_ID ?? "",
+    agency: process.env.STRIPE_CREDIT_PRICE_AGENCY ?? ""
   },
   stripeSuccessUrl: process.env.STRIPE_SUCCESS_URL ?? "",
   stripeCancelUrl: process.env.STRIPE_CANCEL_URL ?? "",

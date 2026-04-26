@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type { JwtAuthenticatedRequest } from "../middleware/jwtAuth";
 import {
+  createCreditCheckoutSession,
   createCheckoutSession,
   createCustomerPortalSession,
   processStripeEvent
@@ -28,6 +29,25 @@ export const createCheckout = async (
   const session = await createCheckoutSession(request.user.userId, {
     type: body.type === "credit_pack" ? "credit_pack" : "subscription",
     plan: typeof body.plan === "string" ? body.plan : undefined,
+    pack: typeof body.pack === "string" ? body.pack : undefined
+  });
+
+  response.status(201).json(session);
+};
+
+export const createCreditCheckout = async (
+  request: JwtAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  if (!request.user) {
+    response.status(401).json({
+      error: "Unauthorized"
+    });
+    return;
+  }
+
+  const body = request.body as CheckoutSessionBody;
+  const session = await createCreditCheckoutSession(request.user.userId, {
     pack: typeof body.pack === "string" ? body.pack : undefined
   });
 

@@ -1,7 +1,7 @@
 import Stripe = require("stripe");
 import { env } from "../config/env";
 import { HttpError } from "../utils/httpError";
-import { subscriptionPlans, type SubscriptionPlanKey } from "./billingCatalog";
+import { creditPacks, subscriptionPlans, type CreditPackKey, type SubscriptionPlanKey } from "./billingCatalog";
 
 export type StripeWebhookEvent = {
   id: string;
@@ -13,6 +13,7 @@ export type StripeWebhookEvent = {
 
 let stripeClient: Stripe.Stripe | null = null;
 let billingValidationPromise: Promise<void> | null = null;
+let creditPriceValidationPromise: Promise<void> | null = null;
 
 export const getStripe = (): Stripe.Stripe => {
   if (!env.stripeSecretKey) {
@@ -133,6 +134,31 @@ const validateStripePrice = async (planKey: SubscriptionPlanKey, priceId: string
   }
 };
 
+const validateStripeCreditPrice = async (packKey: CreditPackKey, priceId: string): Promise<void> => {
+  const pack = creditPacks[packKey];
+
+  try {
+    const price = await getStripe().prices.retrieve(priceId);
+
+    if (
+      !price.active ||
+      price.type !== "one_time" ||
+      price.currency !== env.billingCurrency ||
+      price.recurring
+    ) {
+      console.error(`Stripe credit price for ${pack.displayName} is not configured correctly: ${maskPriceId(priceId)}`);
+      throw new HttpError(503, `Stripe credit price for ${pack.displayName} is not configured correctly. Check ${pack.priceEnvVar} in Render.`);
+    }
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    console.error(`Stripe credit price for ${pack.displayName} is not configured correctly: ${maskPriceId(priceId)}`);
+    throw new HttpError(503, `Stripe credit price for ${pack.displayName} is not configured correctly. Check ${pack.priceEnvVar} in Render.`);
+  }
+};
+
 export const ensureBillingReady = async (): Promise<void> => {
   const envErrors = validateBillingEnvironment();
 
@@ -149,6 +175,33 @@ export const ensureBillingReady = async (): Promise<void> => {
   }
 
   await billingValidationPromise;
+};
+
+export const ensureCreditBillingReady = async (): Promise<void> => {
+  const envErrors = validateBillingEnvironment();
+
+  const creditErrors = (Object.keys(creditPacks) as CreditPackKey[])
+    .map((packKey) => {
+      const pack = creditPacks[packKey];
+      return validateEnvPrefix(pack.priceEnvVar, pack.priceId, ["price_"]);
+    })
+    .filter((error): error is string => Boolean(error));
+
+  const errors = [...envErrors, ...creditErrors];
+
+  if (errors.length > 0) {
+    throw new HttpError(503, `Credit checkout is not fully configured: ${errors.join(", ")}`);
+  }
+
+  if (!creditPriceValidationPromise) {
+    creditPriceValidationPromise = Promise.all(
+      (Object.keys(creditPacks) as CreditPackKey[]).map((packKey) =>
+        validateStripeCreditPrice(packKey, creditPacks[packKey].priceId)
+      )
+    ).then(() => undefined);
+  }
+
+  await creditPriceValidationPromise;
 };
 
 export const validateBillingAtStartup = (): void => {

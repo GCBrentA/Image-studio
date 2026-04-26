@@ -43,6 +43,7 @@ export type DeductCreditOptions = {
 export type CreditLedgerSource =
   | "free_trial"
   | "stripe_invoice_payment_succeeded"
+  | "stripe_credit_purchase"
   | "credit_purchase"
   | "image_processing"
   | "manual_adjustment";

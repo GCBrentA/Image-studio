@@ -106,9 +106,10 @@
           </div>
           <h2 class="section-heading">Credit packs</h2>
           <div class="pack-row">
-            <button data-pack="credits_100">100 credits · $19</button>
-            <button data-pack="credits_300">300 credits · $49</button>
-            <button data-pack="credits_1000">1000 credits · $129</button>
+            <button data-pack="small">25 Credits - $10 USD</button>
+            <button data-pack="medium">100 Credits - $35 USD</button>
+            <button data-pack="large">300 Credits - $90 USD</button>
+            <button data-pack="agency">1000 Credits - $250 USD</button>
           </div>
         </div>
       </section>
@@ -142,7 +143,7 @@
             <div class="dashboard-actions">
               <a class="button ghost" href="/account/billing" data-link>Billing</a>
               <button class="button primary" data-plan="growth">Upgrade plan</button>
-              <button class="button ghost" data-pack="credits_300">Buy credits</button>
+              <button class="button ghost" data-pack="medium">Buy credits</button>
             </div>
           </div>
           <div class="dashboard-grid">
@@ -182,6 +183,16 @@
                 <article class="price-card"><h2>Agency</h2><strong>$429 USD/month</strong><p>1,500 credits monthly.</p><button data-plan="agency">Upgrade</button></article>
               </div>
             </section>
+            <section class="dash-panel wide" id="buy-credits">
+              <h2>Buy Extra Credits</h2>
+              <p class="form-message" id="billing-message"></p>
+              <div class="pricing-grid compact-pricing">
+                <article class="price-card"><h2>25 Credits</h2><strong>$10 USD</strong><p>Small top-up for a quick batch.</p><button data-pack="small">Buy Credits</button></article>
+                <article class="price-card"><h2>100 Credits</h2><strong>$35 USD</strong><p>Medium pack for a catalogue pass.</p><button data-pack="medium">Buy Credits</button></article>
+                <article class="price-card"><h2>300 Credits</h2><strong>$90 USD</strong><p>Large pack for growing stores.</p><button data-pack="large">Buy Credits</button></article>
+                <article class="price-card"><h2>1000 Credits</h2><strong>$250 USD</strong><p>Agency pack for high-volume work.</p><button data-pack="agency">Buy Credits</button></article>
+              </div>
+            </section>
           </div>
         </div>
       </section>
@@ -200,6 +211,24 @@
           <p class="eyebrow">Billing</p>
           <h1>Checkout cancelled</h1>
           <p>No changes were made to your subscription.</p>
+          <a class="button primary" href="/account/billing" data-link>Back to Billing</a>
+        </div>
+      </section>
+
+      <section class="page" data-page="/billing/credits/success">
+        <div class="page-band prose">
+          <p class="eyebrow">Billing</p>
+          <h1>Credit purchase received</h1>
+          <p>Your credits are being added. This can take a moment.</p>
+          <a class="button primary" href="/account/billing" data-link>Back to Billing</a>
+        </div>
+      </section>
+
+      <section class="page" data-page="/billing/credits/cancel">
+        <div class="page-band prose">
+          <p class="eyebrow">Billing</p>
+          <h1>Credit purchase cancelled</h1>
+          <p>No credits were added and no payment was completed.</p>
           <a class="button primary" href="/account/billing" data-link>Back to Billing</a>
         </div>
       </section>

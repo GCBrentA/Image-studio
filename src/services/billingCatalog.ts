@@ -38,26 +38,45 @@ export const subscriptionPlans = {
 } as const;
 
 export const creditPacks = {
-  credits_100: {
-    key: "credits_100",
-    name: "100 credits",
+  small: {
+    key: "small",
+    name: "25 Credits",
+    displayName: "25 Credits",
+    credits: 25,
+    displayPrice: "$10 USD",
+    currency: "usd",
+    priceId: env.stripeCreditPackPriceIds.small,
+    priceEnvVar: "STRIPE_CREDIT_PRICE_SMALL"
+  },
+  medium: {
+    key: "medium",
+    name: "100 Credits",
+    displayName: "100 Credits",
     credits: 100,
-    price_usd: 19,
-    priceId: env.stripeCreditPackPriceIds.credits_100
+    displayPrice: "$35 USD",
+    currency: "usd",
+    priceId: env.stripeCreditPackPriceIds.medium,
+    priceEnvVar: "STRIPE_CREDIT_PRICE_MEDIUM"
   },
-  credits_300: {
-    key: "credits_300",
-    name: "300 credits",
+  large: {
+    key: "large",
+    name: "300 Credits",
+    displayName: "300 Credits",
     credits: 300,
-    price_usd: 49,
-    priceId: env.stripeCreditPackPriceIds.credits_300
+    displayPrice: "$90 USD",
+    currency: "usd",
+    priceId: env.stripeCreditPackPriceIds.large,
+    priceEnvVar: "STRIPE_CREDIT_PRICE_LARGE"
   },
-  credits_1000: {
-    key: "credits_1000",
-    name: "1000 credits",
+  agency: {
+    key: "agency",
+    name: "1000 Credits",
+    displayName: "1000 Credits",
     credits: 1000,
-    price_usd: 129,
-    priceId: env.stripeCreditPackPriceIds.credits_1000
+    displayPrice: "$250 USD",
+    currency: "usd",
+    priceId: env.stripeCreditPackPriceIds.agency,
+    priceEnvVar: "STRIPE_CREDIT_PRICE_AGENCY"
   }
 } as const;
 
@@ -89,7 +108,7 @@ export const getCreditPackByKey = (pack: string) => {
   const selectedPack = creditPacks[pack as CreditPackKey];
 
   if (!selectedPack.priceId) {
-    throw new HttpError(503, `Stripe price is not configured for ${selectedPack.name}`);
+    throw new HttpError(503, `Stripe credit price for ${selectedPack.displayName} is not configured correctly. Check ${selectedPack.priceEnvVar} in Render.`);
   }
 
   return selectedPack;

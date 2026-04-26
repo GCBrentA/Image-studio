@@ -142,9 +142,10 @@ Create monthly recurring Stripe Prices for:
 
 Create one-time Stripe Prices for:
 
-- `100` credits: `$19`
-- `300` credits: `$49`
-- `1000` credits: `$129`
+- Optivra Credits - Small Pack: `25` credits, `$10 USD` one-time
+- Optivra Credits - Medium Pack: `100` credits, `$35 USD` one-time
+- Optivra Credits - Large Pack: `300` credits, `$90 USD` one-time
+- Optivra Credits - Agency Pack: `1000` credits, `$250 USD` one-time
 
 Set the matching Render environment variables:
 
@@ -163,7 +164,13 @@ BILLING_CURRENCY=usd
 STRIPE_CREDIT_PACK_100_PRICE_ID=
 STRIPE_CREDIT_PACK_300_PRICE_ID=
 STRIPE_CREDIT_PACK_1000_PRICE_ID=
+STRIPE_CREDIT_PRICE_SMALL=
+STRIPE_CREDIT_PRICE_MEDIUM=
+STRIPE_CREDIT_PRICE_LARGE=
+STRIPE_CREDIT_PRICE_AGENCY=
 ```
+
+Copy the resulting one-time Stripe Price IDs into Render as `STRIPE_CREDIT_PRICE_SMALL`, `STRIPE_CREDIT_PRICE_MEDIUM`, `STRIPE_CREDIT_PRICE_LARGE`, and `STRIPE_CREDIT_PRICE_AGENCY`. Credit checkout uses `POST /api/billing/create-credit-checkout-session` with `{ "pack": "small" | "medium" | "large" | "agency" }` and creates a Stripe Checkout Session in `payment` mode.
 
 Configure the Stripe webhook URL as:
 
@@ -273,14 +280,19 @@ Valid plans are `starter`, `growth`, `pro`, and `agency`.
 
 Create a credit pack checkout session:
 
+```http
+POST /api/billing/create-credit-checkout-session
+Authorization: Bearer account-jwt
+Content-Type: application/json
+```
+
 ```json
 {
-  "type": "credit_pack",
-  "pack": "credits_300"
+  "pack": "medium"
 }
 ```
 
-Valid packs are `credits_100`, `credits_300`, and `credits_1000`.
+Valid packs are `small`, `medium`, `large`, and `agency`.
 
 Both checkout calls return:
 
