@@ -88,6 +88,13 @@
 	font-size: 19px;
 }
 
+.catalogue-image-studio-admin .catalogue-image-studio-settings-section {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	align-self: start;
+}
+
 .catalogue-image-studio-admin .catalogue-image-studio-settings-section + .catalogue-image-studio-settings-section {
 	margin-top: 0;
 }
@@ -123,6 +130,7 @@
 	display: grid;
 	gap: 6px;
 	font-weight: 700;
+	width: 100%;
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-help {
@@ -133,16 +141,28 @@
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-toggle {
-	padding: 10px 12px;
+	padding: 14px 16px;
 	background: #fff;
 	border: 1px solid var(--cis-line);
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toggle-row {
+.catalogue-image-studio-admin .catalogue-image-studio-toggle-content {
 	display: flex;
-	gap: 8px;
-	align-items: center;
+	gap: 16px;
+	align-items: flex-start;
+	justify-content: space-between;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-toggle-copy {
+	display: grid;
+	gap: 4px;
+	flex: 1 1 auto;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-toggle-copy strong {
+	font-size: 14px;
+	line-height: 1.35;
 }
 
 .catalogue-image-studio-admin input[type="checkbox"] {
@@ -272,7 +292,6 @@
 .catalogue-image-studio-admin .catalogue-image-studio-advanced-grid label {
 	display: grid;
 	gap: 7px;
-	margin: 14px 0;
 	font-weight: 700;
 }
 
@@ -281,6 +300,11 @@
 	max-width: 100%;
 	min-height: 44px;
 	border-radius: 8px;
+}
+
+.catalogue-image-studio-admin .catalogue-image-studio-connection-status-panel {
+	display: grid;
+	gap: 16px;
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-control-grid {
@@ -319,7 +343,7 @@
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-link-row {
-	margin: 8px 0 16px;
+	margin: 0;
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-link-row a {
@@ -431,7 +455,7 @@
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-usage div {
-	padding: 10px;
+	padding: 14px;
 	background: #fff;
 	border: 1px solid var(--cis-line);
 	border-radius: 8px;

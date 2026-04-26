@@ -146,12 +146,20 @@ class Catalogue_Image_Studio_ProductScanner {
 		}
 
 		$file = (string) get_attached_file($attachment_id);
+		$url  = (string) wp_get_attachment_url($attachment_id);
+		$extension = '';
 
-		if ('' === $file || ! file_exists($file)) {
-			return false;
+		if ('' !== $file) {
+			$extension = strtolower((string) pathinfo($file, PATHINFO_EXTENSION));
 		}
 
-		$extension = strtolower((string) pathinfo($file, PATHINFO_EXTENSION));
+		if ('' === $extension && '' !== $url) {
+			$extension = strtolower((string) pathinfo((string) wp_parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+		}
+
+		if ('' === $extension) {
+			return in_array($mime, ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'], true);
+		}
 
 		return in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true);
 	}

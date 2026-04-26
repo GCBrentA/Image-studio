@@ -1352,11 +1352,13 @@ class Catalogue_Image_Studio_Admin {
 	private function render_toggle_field(string $name, string $label, bool $checked, string $help): void {
 		?>
 		<label class="catalogue-image-studio-toggle">
-			<span class="catalogue-image-studio-toggle-row">
+			<span class="catalogue-image-studio-toggle-content">
+				<span class="catalogue-image-studio-toggle-copy">
+					<strong><?php echo esc_html($label); ?></strong>
+					<small class="catalogue-image-studio-help"><?php echo esc_html($help); ?></small>
+				</span>
 				<input type="checkbox" name="<?php echo esc_attr($name); ?>" value="1" <?php checked($checked); ?> />
-				<strong><?php echo esc_html($label); ?></strong>
 			</span>
-			<small class="catalogue-image-studio-help"><?php echo esc_html($help); ?></small>
 		</label>
 		<?php
 	}
