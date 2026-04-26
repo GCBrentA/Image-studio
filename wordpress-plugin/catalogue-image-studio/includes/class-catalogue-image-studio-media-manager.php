@@ -97,7 +97,7 @@ class Catalogue_Image_Studio_MediaManager {
 			'ID' => $attachment_id,
 		];
 
-		if (! empty($seo['title']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_title))) {
+		if (! empty($settings['generate_image_title']) && ! empty($seo['title']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_title))) {
 			$post_update['post_title'] = sanitize_text_field((string) $seo['title']);
 		}
 

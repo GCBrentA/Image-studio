@@ -71,7 +71,15 @@ class Catalogue_Image_Studio_SaaSClient {
 		$decoded     = json_decode($body, true);
 
 		if (! is_array($decoded)) {
-			return new WP_Error('catalogue_image_studio_invalid_api_response', __('The image processing API returned invalid JSON.', 'catalogue-image-studio'));
+			return new WP_Error(
+				'catalogue_image_studio_invalid_api_response',
+				sprintf(
+					/* translators: 1: status code, 2: API base URL */
+					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'catalogue-image-studio'),
+					$status_code,
+					$this->api_base_url
+				)
+			);
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
@@ -120,7 +128,15 @@ class Catalogue_Image_Studio_SaaSClient {
 		$decoded     = json_decode($body, true);
 
 		if (! is_array($decoded)) {
-			return new WP_Error('catalogue_image_studio_invalid_api_response', __('The image processing API returned invalid JSON.', 'catalogue-image-studio'));
+			return new WP_Error(
+				'catalogue_image_studio_invalid_api_response',
+				sprintf(
+					/* translators: 1: status code, 2: API base URL */
+					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'catalogue-image-studio'),
+					$status_code,
+					$this->api_base_url
+				)
+			);
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
