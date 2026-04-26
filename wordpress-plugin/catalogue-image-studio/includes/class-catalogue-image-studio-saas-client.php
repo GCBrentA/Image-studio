@@ -53,6 +53,8 @@ class Catalogue_Image_Studio_SaaSClient {
 							'background'     => $options['background'] ?? null,
 							'scale_percent'  => $options['scale_percent'] ?? null,
 							'background_image_url' => $options['background_image_url'] ?? null,
+							'settings'       => $options['settings'] ?? null,
+							'jobOverrides'   => $options['job_overrides'] ?? null,
 						],
 						static function ($value): bool {
 							return null !== $value && '' !== $value;

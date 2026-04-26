@@ -70,6 +70,11 @@ class Catalogue_Image_Studio_Job_Repository {
 
 		$data['original_attachment_id'] = (int) $slot['attachment_id'];
 		$data['status']                 = 'unprocessed';
+		$data['edge_to_edge_enabled']   = 0;
+		$data['edge_to_edge_left']      = 0;
+		$data['edge_to_edge_right']     = 0;
+		$data['edge_to_edge_top']       = 0;
+		$data['edge_to_edge_bottom']    = 0;
 		$data['created_at']             = $now;
 
 		$wpdb->insert($table, $data);
@@ -121,6 +126,31 @@ class Catalogue_Image_Studio_Job_Repository {
 
 		$data['updated_at'] = current_time('mysql', true);
 		$wpdb->update(catalogue_image_studio_table_name(), $data, ['id' => $job_id]);
+	}
+
+	/**
+	 * Save per-job framing override controls.
+	 *
+	 * @param array<int,array<string,mixed>> $overrides Overrides keyed by job ID.
+	 * @return void
+	 */
+	public function update_edge_overrides(array $overrides): void {
+		foreach ($overrides as $job_id => $override) {
+			if (! is_array($override)) {
+				continue;
+			}
+
+			$this->update(
+				absint($job_id),
+				[
+					'edge_to_edge_enabled' => ! empty($override['enabled']) ? 1 : 0,
+					'edge_to_edge_left'    => ! empty($override['left']) ? 1 : 0,
+					'edge_to_edge_right'   => ! empty($override['right']) ? 1 : 0,
+					'edge_to_edge_top'     => ! empty($override['top']) ? 1 : 0,
+					'edge_to_edge_bottom'  => ! empty($override['bottom']) ? 1 : 0,
+				]
+			);
+		}
 	}
 
 	/**

@@ -674,3 +674,349 @@
 		grid-template-columns: 1fr;
 	}
 }
+
+.catalogue-image-studio-admin .optivra-settings-page {
+	max-width: 1280px;
+	display: grid;
+	gap: 20px;
+}
+
+.catalogue-image-studio-admin .optivra-settings-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 20px;
+	padding: 4px 2px;
+}
+
+.catalogue-image-studio-admin .optivra-settings-header h2 {
+	margin: 0;
+	font-size: 28px;
+	line-height: 1.2;
+	color: var(--cis-ink);
+}
+
+.catalogue-image-studio-admin .optivra-settings-header p,
+.catalogue-image-studio-admin .optivra-card-header p,
+.catalogue-image-studio-admin .optivra-setting-description,
+.catalogue-image-studio-admin .optivra-muted {
+	margin: 6px 0 0;
+	color: var(--cis-muted);
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.catalogue-image-studio-admin .optivra-status-pill {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 116px;
+	padding: 7px 12px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 800;
+}
+
+.catalogue-image-studio-admin .optivra-status-pill.is-connected {
+	color: #067647;
+	background: #ecfdf3;
+	border: 1px solid #abefc6;
+}
+
+.catalogue-image-studio-admin .optivra-status-pill.is-disconnected {
+	color: #b42318;
+	background: #fff1f3;
+	border: 1px solid #fecdca;
+}
+
+.catalogue-image-studio-admin .optivra-summary-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 14px;
+}
+
+.catalogue-image-studio-admin .optivra-summary-card,
+.catalogue-image-studio-admin .optivra-card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	box-shadow: 0 12px 30px rgba(16, 24, 40, 0.05);
+}
+
+.catalogue-image-studio-admin .optivra-summary-card {
+	padding: 16px 18px;
+}
+
+.catalogue-image-studio-admin .optivra-summary-card span {
+	display: block;
+	color: var(--cis-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.catalogue-image-studio-admin .optivra-summary-card strong {
+	display: block;
+	margin-top: 6px;
+	color: var(--cis-ink);
+	font-size: 18px;
+}
+
+.catalogue-image-studio-admin .optivra-settings-form,
+.catalogue-image-studio-admin .optivra-card {
+	display: grid;
+	gap: 0;
+}
+
+.catalogue-image-studio-admin .optivra-card {
+	padding: 22px 24px;
+	margin: 0;
+}
+
+.catalogue-image-studio-admin .optivra-card + .optivra-card,
+.catalogue-image-studio-admin .optivra-card + .catalogue-image-studio-advanced,
+.catalogue-image-studio-admin .catalogue-image-studio-advanced + .optivra-save-bar {
+	margin-top: 18px;
+}
+
+.catalogue-image-studio-admin .optivra-card-header {
+	margin-bottom: 16px;
+	padding-bottom: 14px;
+	border-bottom: 1px solid #eef0f4;
+}
+
+.catalogue-image-studio-admin .optivra-card-header h3 {
+	margin: 0;
+	color: var(--cis-ink);
+	font-size: 20px;
+	font-weight: 800;
+}
+
+.catalogue-image-studio-admin .optivra-setting-row {
+	display: grid;
+	grid-template-columns: minmax(260px, 1fr) minmax(220px, 360px);
+	gap: 24px;
+	align-items: center;
+	padding: 16px 0;
+	border-bottom: 1px solid #f0f2f5;
+}
+
+.catalogue-image-studio-admin .optivra-setting-row:last-child {
+	border-bottom: 0;
+}
+
+.catalogue-image-studio-admin .optivra-setting-label {
+	display: block;
+	color: var(--cis-ink);
+	font-size: 14px;
+	font-weight: 800;
+}
+
+.catalogue-image-studio-admin .optivra-setting-control {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 10px;
+}
+
+.catalogue-image-studio-admin .optivra-setting-control select,
+.catalogue-image-studio-admin .optivra-setting-control input[type="text"],
+.catalogue-image-studio-admin .optivra-setting-control input[type="password"],
+.catalogue-image-studio-admin .optivra-setting-control input[type="email"],
+.catalogue-image-studio-admin .optivra-setting-control input[type="url"],
+.catalogue-image-studio-admin .optivra-setting-control input[type="number"] {
+	width: 100%;
+	max-width: 360px;
+	min-height: 40px;
+	border-radius: 8px;
+	border-color: #d0d5dd;
+}
+
+.catalogue-image-studio-admin .optivra-compact-control input {
+	max-width: 120px;
+}
+
+.catalogue-image-studio-admin .optivra-range-control input[type="range"] {
+	width: 220px;
+}
+
+.catalogue-image-studio-admin .optivra-range-control output {
+	min-width: 34px;
+	text-align: right;
+	font-weight: 800;
+}
+
+.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"] {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.catalogue-image-studio-admin .optivra-toggle span {
+	position: relative;
+	display: inline-block;
+	width: 44px;
+	height: 24px;
+	border-radius: 999px;
+	background: #d0d5dd;
+	transition: background 0.2s ease;
+}
+
+.catalogue-image-studio-admin .optivra-toggle span::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 18px;
+	height: 18px;
+	background: #fff;
+	border-radius: 50%;
+	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.24);
+	transition: transform 0.2s ease;
+}
+
+.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"]:checked + span {
+	background: linear-gradient(135deg, var(--cis-brand), var(--cis-brand-strong));
+}
+
+.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"]:checked + span::after {
+	transform: translateX(20px);
+}
+
+.catalogue-image-studio-admin .optivra-connection-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+	gap: 24px;
+}
+
+.catalogue-image-studio-admin .optivra-status-panel {
+	padding: 16px;
+	background: var(--cis-soft);
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+}
+
+.catalogue-image-studio-admin .optivra-button-row,
+.catalogue-image-studio-admin .optivra-link-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+.catalogue-image-studio-admin .optivra-link-row a {
+	color: var(--cis-brand-strong);
+	font-weight: 700;
+	text-decoration: none;
+}
+
+.catalogue-image-studio-admin .optivra-preview-card {
+	display: grid;
+	gap: 8px;
+	justify-items: start;
+	padding: 12px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 10px;
+}
+
+.catalogue-image-studio-admin .optivra-background-preview {
+	width: 220px;
+	height: 160px;
+	max-width: 220px;
+	max-height: 160px;
+	object-fit: cover;
+	border-radius: 8px;
+	border: 1px solid #dcdcde;
+	background: #f6f7f7;
+}
+
+.catalogue-image-studio-admin .optivra-subdetails {
+	margin-top: 12px;
+	padding: 14px 16px;
+	background: #fbfcfe;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+}
+
+.catalogue-image-studio-admin .optivra-subdetails summary {
+	cursor: pointer;
+	font-weight: 800;
+	color: var(--cis-ink);
+}
+
+.catalogue-image-studio-admin .optivra-save-bar {
+	position: sticky;
+	bottom: 16px;
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 18px;
+	padding: 16px 20px;
+	background: rgba(255, 255, 255, 0.96);
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
+}
+
+.catalogue-image-studio-admin .optivra-danger-button {
+	color: var(--cis-danger);
+	border-color: #f2b8b5;
+}
+
+.catalogue-image-studio-admin .optivra-job-options {
+	margin-top: 10px;
+	padding: 10px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+}
+
+.catalogue-image-studio-admin .optivra-job-options summary {
+	cursor: pointer;
+	font-weight: 800;
+}
+
+.catalogue-image-studio-admin .optivra-inline-check input[type="checkbox"],
+.catalogue-image-studio-admin .optivra-edge-grid input[type="checkbox"] {
+	position: static;
+	width: 16px;
+	height: 16px;
+	margin: 0 6px 0 0;
+	border-radius: 4px;
+	appearance: auto;
+	-webkit-appearance: checkbox;
+	background: #fff;
+}
+
+.catalogue-image-studio-admin .optivra-inline-check input[type="checkbox"]::after,
+.catalogue-image-studio-admin .optivra-edge-grid input[type="checkbox"]::after {
+	content: none;
+}
+
+.catalogue-image-studio-admin .optivra-edge-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.catalogue-image-studio-admin .optivra-edge-grid label,
+.catalogue-image-studio-admin .optivra-inline-check {
+	display: flex;
+	align-items: center;
+	font-size: 12px;
+	color: var(--cis-ink);
+}
+
+@media (max-width: 960px) {
+	.catalogue-image-studio-admin .optivra-setting-row,
+	.catalogue-image-studio-admin .optivra-connection-grid,
+	.catalogue-image-studio-admin .optivra-summary-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.catalogue-image-studio-admin .optivra-setting-control {
+		justify-content: flex-start;
+	}
+}

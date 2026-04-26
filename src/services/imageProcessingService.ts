@@ -16,6 +16,8 @@ export type ProcessImageInput = {
   background?: string;
   scalePercent?: number;
   backgroundImageUrl?: string;
+  settings?: unknown;
+  jobOverrides?: unknown;
 };
 
 export type ProcessedImageResult = {
@@ -232,15 +234,48 @@ const normalizeScalePercent = (scalePercent?: number): number => {
   return Math.min(Math.max(scalePercent, 75), 88);
 };
 
-const buildShadow = async (width: number, height: number, productWidth: number, productHeight: number, productTop: number): Promise<Buffer> => {
-  const shadowCy = Math.min(height - 100, productTop + productHeight * 0.9);
+const getObject = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+const getNumber = (value: unknown, fallback: number, min: number, max: number): number =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+
+const getString = (value: unknown, fallback: string): string =>
+  typeof value === "string" && value.trim() ? value.trim() : fallback;
+
+const buildShadow = async (
+  width: number,
+  height: number,
+  productWidth: number,
+  productHeight: number,
+  productTop: number,
+  settings?: unknown
+): Promise<Buffer | null> => {
+  const shadowSettings = getObject(settings);
+  const mode = getString(shadowSettings.mode, "under");
+
+  if (mode === "off") {
+    return null;
+  }
+
+  const opacity = getNumber(shadowSettings.opacity, mode === "behind" ? 18 : 23, 0, 100) / 100;
+  const blur = getNumber(shadowSettings.blur, mode === "behind" ? 38 : 22, 0, 80);
+  const offsetX = getNumber(shadowSettings.offsetX, 0, -300, 300);
+  const offsetY = getNumber(shadowSettings.offsetY, mode === "behind" ? 28 : 0, -300, 300);
+  const spread = getNumber(shadowSettings.spread, 100, 25, 200) / 100;
+  const color = /^#[0-9a-f]{6}$/i.test(getString(shadowSettings.color, "#000000")) ? getString(shadowSettings.color, "#000000") : "#000000";
+  const shadowCy = mode === "behind"
+    ? productTop + productHeight * 0.54 + offsetY
+    : Math.min(height - 100, productTop + productHeight * 0.9 + offsetY);
   const shadowSvg = `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="${width / 2}" cy="${shadowCy}" rx="${Math.max(productWidth * 0.34, width * 0.12)}" ry="${Math.max(productHeight * 0.045, height * 0.025)}" fill="rgba(0,0,0,0.23)" />
+      <ellipse cx="${width / 2 + offsetX}" cy="${shadowCy}" rx="${Math.max(productWidth * 0.34 * spread, width * 0.12)}" ry="${Math.max(productHeight * (mode === "behind" ? 0.18 : 0.045) * spread, height * 0.025)}" fill="${color}" fill-opacity="${opacity}" />
     </svg>
   `;
 
-  return sharp(Buffer.from(shadowSvg)).blur(22).png().toBuffer();
+  return sharp(Buffer.from(shadowSvg)).blur(blur).png().toBuffer();
 };
 
 const buildBrandedBackground = (background: string): Buffer => {
@@ -282,8 +317,16 @@ export const processImageForProduct = async ({
   imageUrl,
   background = "#ffffff",
   scalePercent,
-  backgroundImageUrl
+  backgroundImageUrl,
+  settings,
+  jobOverrides
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
+  const processingSettings = getObject(settings);
+  const framingSettings = getObject(processingSettings.framing);
+  const shadowSettings = getObject(processingSettings.shadow);
+  const lightingSettings = getObject(processingSettings.lighting);
+  const overrideSettings = getObject(jobOverrides);
+  const edgeToEdge = getObject(overrideSettings.edgeToEdge);
   const originalImage = await downloadImage(imageUrl);
   await validateImage(originalImage.buffer);
   const originalImageHash = getSha256(originalImage.buffer);
@@ -341,7 +384,13 @@ export const processImageForProduct = async ({
   const debugCutoutUploadedAt = new Date();
 
   const targetProductSize = Math.round(outputSize * (normalizeScalePercent(scalePercent) / 100));
-  const margin = Math.round(outputSize * 0.08);
+  const paddingPercent = getNumber(framingSettings.padding, 8, 0, 30);
+  const margin = Math.round(outputSize * (paddingPercent / 100));
+  const edgeEnabled = edgeToEdge.enabled === true;
+  const edgeLeft = edgeEnabled && edgeToEdge.left === true;
+  const edgeRight = edgeEnabled && edgeToEdge.right === true;
+  const edgeTop = edgeEnabled && edgeToEdge.top === true;
+  const edgeBottom = edgeEnabled && edgeToEdge.bottom === true;
   const productBuffer = await sharp(cutout)
     .rotate()
     .trim({
@@ -364,27 +413,34 @@ export const processImageForProduct = async ({
   const productMetadata = await sharp(productBuffer).metadata();
   const productWidth = productMetadata.width ?? targetProductSize;
   const productHeight = productMetadata.height ?? targetProductSize;
-  const left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), margin), outputSize - productWidth - margin);
-  const top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2), margin), outputSize - productHeight - margin);
-  const shadow = await buildShadow(outputSize, outputSize, productWidth, productHeight, top);
+  let left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), edgeLeft ? 0 : margin), outputSize - productWidth - (edgeRight ? 0 : margin));
+  let top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2), edgeTop ? 0 : margin), outputSize - productHeight - (edgeBottom ? 0 : margin));
+
+  if (edgeLeft && !edgeRight) left = 0;
+  if (edgeRight && !edgeLeft) left = outputSize - productWidth;
+  if (edgeTop && !edgeBottom) top = 0;
+  if (edgeBottom && !edgeTop) top = outputSize - productHeight;
+
+  const shadow = await buildShadow(outputSize, outputSize, productWidth, productHeight, top, shadowSettings);
 
   const backgroundBuffer = backgroundImageUrl
     ? await buildBackgroundFromImage(backgroundImageUrl)
     : buildBrandedBackground(background);
 
+  const composites = [
+    ...(shadow ? [{ input: shadow, top: 0, left: 0 }] : []),
+    { input: productBuffer, top, left }
+  ];
+  const lightingEnabled = lightingSettings.enabled === true;
+  const brightness = lightingEnabled ? 1 + getNumber(lightingSettings.brightness, 0, -100, 100) / 200 : 1;
+  const saturation = lightingEnabled && lightingSettings.neutralizeTint === true ? 0.98 : 1;
+
   const processedImage = await sharp(backgroundBuffer)
-    .composite([
-      {
-        input: shadow,
-        top: 0,
-        left: 0
-      },
-      {
-        input: productBuffer,
-        top,
-        left
-      }
-    ])
+    .composite(composites)
+    .modulate({
+      brightness,
+      saturation
+    })
     .webp({
       quality: 92,
       smartSubsample: true
