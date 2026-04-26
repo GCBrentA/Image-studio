@@ -40,6 +40,13 @@ export type DeductCreditOptions = {
   idempotencyKey?: string;
 };
 
+export type CreditLedgerSource =
+  | "free_trial"
+  | "stripe_invoice_payment_succeeded"
+  | "credit_purchase"
+  | "image_processing"
+  | "manual_adjustment";
+
 const noCreditsError = "No credits remaining";
 const invalidCreditAmountError = "Credit amount must be greater than zero";
 const maxSerializableRetries = 3;
@@ -75,18 +82,18 @@ const getPeriodStart = async (
 ): Promise<Date | null> => {
   const latestReset = await client.creditLedger.findFirst({
     where: {
-      user_id: userId,
+      userId,
       reason: CreditLedgerReason.reset
     },
     orderBy: {
-      created_at: "desc"
+      createdAt: "desc"
     },
     select: {
-      created_at: true
+      createdAt: true
     }
   });
 
-  return latestReset?.created_at ?? null;
+  return latestReset?.createdAt ?? null;
 };
 
 const getCreditTotals = async (
@@ -99,30 +106,30 @@ const getCreditTotals = async (
   const [remaining, positiveCredits] = await Promise.all([
     client.creditLedger.aggregate({
       where: {
-        user_id: userId,
-        ...(periodFilter ? { created_at: periodFilter } : {})
+        userId,
+        ...(periodFilter ? { createdAt: periodFilter } : {})
       },
       _sum: {
-        change_amount: true
+        changeAmount: true
       }
     }),
     client.creditLedger.aggregate({
       where: {
-        user_id: userId,
-        change_amount: {
+        userId,
+        changeAmount: {
           gt: 0
         },
-        ...(periodFilter ? { created_at: periodFilter } : {})
+        ...(periodFilter ? { createdAt: periodFilter } : {})
       },
       _sum: {
-        change_amount: true
+        changeAmount: true
       }
     })
   ]);
 
   return {
-    credits_remaining: Math.max(remaining._sum.change_amount ?? 0, 0),
-    credits_total: positiveCredits._sum.change_amount ?? 0
+    credits_remaining: Math.max(remaining._sum.changeAmount ?? 0, 0),
+    credits_total: positiveCredits._sum.changeAmount ?? 0
   };
 };
 
@@ -150,6 +157,32 @@ const syncUserCreditMirror = async (
       credits_used: Math.max(totals.credits_total - totals.credits_remaining, 0)
     }
   });
+};
+
+const assertLedgerIntegers = (amount: number, balanceAfter: number): void => {
+  if (!Number.isInteger(amount)) {
+    throw new Error("Credit ledger amount must be an integer");
+  }
+
+  if (!Number.isInteger(balanceAfter)) {
+    throw new Error("Credit ledger balanceAfter must be an integer");
+  }
+};
+
+const getCurrentBalance = async (
+  userId: string,
+  client: Prisma.TransactionClient | typeof prisma
+): Promise<number> => {
+  const user = await client.user.findUnique({
+    where: {
+      id: userId
+    },
+    select: {
+      credits_remaining: true
+    }
+  });
+
+  return Number.isInteger(user?.credits_remaining) ? user?.credits_remaining ?? 0 : 0;
 };
 
 export const getLowCreditThresholds = (
@@ -182,6 +215,9 @@ export const addCredits = async (
   reason: CreditLedgerReason,
   options: {
     idempotencyKey?: string;
+    source?: CreditLedgerSource;
+    description?: string;
+    stripeEventId?: string;
   } = {}
 ): Promise<CreditResponse> => {
   if (!Number.isInteger(amount) || amount <= 0) {
@@ -192,27 +228,35 @@ export const addCredits = async (
 
   return runSerializableTransaction(
     async (transaction) => {
-      const ledgerEntry = await transaction.creditLedger.create({
+      const currentBalance = await getCurrentBalance(userId, transaction);
+      const balanceAfter = Math.max(0, currentBalance + amount);
+      assertLedgerIntegers(amount, balanceAfter);
+
+      await transaction.user.update({
+        where: {
+          id: userId
+        },
         data: {
-          user_id: userId,
-          account_id: userId,
-          change_amount: amount,
+          credits_remaining: balanceAfter
+        }
+      });
+
+      await transaction.creditLedger.create({
+        data: {
+          userId,
+          accountId: userId,
+          changeAmount: amount,
           amount,
+          balanceAfter,
           reason,
-          source: reason,
-          idempotency_key: options.idempotencyKey
+          source: options.source ?? reason,
+          description: options.description,
+          stripeEventId: options.stripeEventId,
+          idempotencyKey: options.idempotencyKey
         }
       });
 
       const totals = await getCreditTotals(userId, transaction);
-      await transaction.creditLedger.update({
-        where: {
-          id: ledgerEntry.id
-        },
-        data: {
-          balance_after: totals.credits_remaining
-        }
-      });
       await syncUserCreditMirror(userId, totals, transaction);
 
       return toCreditResponse(totals);
@@ -233,7 +277,7 @@ export const deductCredit = async (
         if (idempotencyKey) {
           const existingDeduction = await transaction.creditLedger.findUnique({
             where: {
-              idempotency_key: idempotencyKey
+              idempotencyKey
             }
           });
 
@@ -275,21 +319,39 @@ export const deductCredit = async (
           }
         }
 
-        const totalsBeforeDeduction = await getCreditTotals(userId, transaction);
+        const currentBalance = await getCurrentBalance(userId, transaction);
 
-        if (totalsBeforeDeduction.credits_remaining < 1) {
+        if (currentBalance < 1) {
+          const totalsBeforeDeduction = await getCreditTotals(userId, transaction);
           return toCreditResponse(totalsBeforeDeduction, noCreditsError);
         }
 
-        const ledgerEntry = await transaction.creditLedger.create({
+        const balanceAfter = currentBalance - 1;
+        assertLedgerIntegers(-1, balanceAfter);
+
+        await transaction.user.update({
+          where: {
+            id: userId
+          },
           data: {
-            user_id: userId,
-            account_id: userId,
-            change_amount: -1,
+            credits_remaining: balanceAfter,
+            credits_used: {
+              increment: 1
+            }
+          }
+        });
+
+        await transaction.creditLedger.create({
+          data: {
+            userId,
+            accountId: userId,
+            changeAmount: -1,
             amount: -1,
+            balanceAfter,
             reason: CreditLedgerReason.usage,
-            source: CreditLedgerReason.usage,
-            idempotency_key: idempotencyKey
+            source: "image_processing",
+            description: "Image processing credit used",
+            idempotencyKey
           }
         });
 
@@ -305,14 +367,6 @@ export const deductCredit = async (
         }
 
         const totals = await getCreditTotals(userId, transaction);
-        await transaction.creditLedger.update({
-          where: {
-            id: ledgerEntry.id
-          },
-          data: {
-            balance_after: totals.credits_remaining
-          }
-        });
         await syncUserCreditMirror(userId, totals, transaction);
 
         return toCreditResponse(totals);
@@ -332,6 +386,10 @@ export const resetMonthlyCredits = async (
   plan: SubscriptionPlan,
   options: {
     idempotencyKey?: string;
+    source?: CreditLedgerSource;
+    description?: string;
+    stripeEventId?: string;
+    creditsResetAt?: Date;
   } = {}
 ): Promise<CreditResponse> => {
   const creditsForPlan = PLAN_CREDIT_LIMITS[plan];
@@ -341,27 +399,37 @@ export const resetMonthlyCredits = async (
   try {
     return await runSerializableTransaction(
       async (transaction) => {
-        const ledgerEntry = await transaction.creditLedger.create({
+        const balanceAfter = creditsForPlan;
+        assertLedgerIntegers(creditsForPlan, balanceAfter);
+
+        await transaction.user.update({
+          where: {
+            id: userId
+          },
           data: {
-            user_id: userId,
-            account_id: userId,
-            change_amount: creditsForPlan,
+            credits_included: creditsForPlan,
+            credits_remaining: balanceAfter,
+            credits_used: 0,
+            credits_reset_at: options.creditsResetAt
+          }
+        });
+
+        await transaction.creditLedger.create({
+          data: {
+            userId,
+            accountId: userId,
+            changeAmount: creditsForPlan,
             amount: creditsForPlan,
+            balanceAfter,
             reason: CreditLedgerReason.reset,
-            source: CreditLedgerReason.reset,
-            idempotency_key: idempotencyKey
+            source: options.source ?? "stripe_invoice_payment_succeeded",
+            description: options.description ?? "Monthly subscription credits reset",
+            stripeEventId: options.stripeEventId,
+            idempotencyKey
           }
         });
 
         const totals = await getCreditTotals(userId, transaction);
-        await transaction.creditLedger.update({
-          where: {
-            id: ledgerEntry.id
-          },
-          data: {
-            balance_after: totals.credits_remaining
-          }
-        });
         await syncUserCreditMirror(userId, totals, transaction);
 
         return toCreditResponse(totals);

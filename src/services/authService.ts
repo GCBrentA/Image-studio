@@ -72,15 +72,15 @@ export const registerUser = async (email: string, password: string): Promise<Aut
 
     await transaction.creditLedger.create({
       data: {
-        user_id: createdUser.id,
-        account_id: createdUser.id,
-        change_amount: FREE_TRIAL_CREDITS,
+        userId: createdUser.id,
+        accountId: createdUser.id,
+        changeAmount: FREE_TRIAL_CREDITS,
         amount: FREE_TRIAL_CREDITS,
-        balance_after: FREE_TRIAL_CREDITS,
+        balanceAfter: FREE_TRIAL_CREDITS,
         reason: CreditLedgerReason.trial,
-        source: CreditLedgerReason.trial,
+        source: "free_trial",
         description: "Free trial credits",
-        idempotency_key: `trial:${createdUser.id}`
+        idempotencyKey: `trial:${createdUser.id}`
       }
     });
 

@@ -428,7 +428,10 @@ const handleCheckoutSessionCompleted = async (session: StripeCheckoutSessionLike
 
     if (pack) {
       await addCredits(userId, pack.credits, CreditLedgerReason.purchase, {
-        idempotencyKey: `stripe-checkout:${session.id}:credits`
+        idempotencyKey: `stripe-checkout:${session.id}:credits`,
+        source: "credit_purchase",
+        description: "Credit pack purchase",
+        stripeEventId: session.id
       });
     }
   }
@@ -494,7 +497,11 @@ const handleInvoicePaid = async (invoice: StripeInvoiceLike): Promise<void> => {
   }
 
   const credits = await resetMonthlyCredits(localSubscription.user_id, localSubscription.plan, {
-    idempotencyKey: `stripe-invoice:${invoice.id}:monthly-reset`
+    idempotencyKey: `stripe-invoice:${invoice.id}:monthly-reset`,
+    source: "stripe_invoice_payment_succeeded",
+    description: "Monthly subscription credits reset",
+    stripeEventId: invoice.id,
+    creditsResetAt: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : undefined
   });
 
   await prisma.subscription.update({

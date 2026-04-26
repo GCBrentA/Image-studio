@@ -39,17 +39,17 @@ export const getDashboardSummary = async (userId: string) => {
     }),
     prisma.creditLedger.findMany({
       where: {
-        user_id: userId
+        userId
       },
       orderBy: {
-        created_at: "desc"
+        createdAt: "desc"
       },
       take: 20,
       select: {
         id: true,
-        change_amount: true,
+        changeAmount: true,
         reason: true,
-        created_at: true
+        createdAt: true
       }
     }),
     prisma.imageJob.findMany({
@@ -157,9 +157,9 @@ export const getDashboardSummary = async (userId: string) => {
     })),
     usage_history: creditLedger.map((entry) => ({
       id: entry.id,
-      change_amount: entry.change_amount,
+      change_amount: entry.changeAmount,
       reason: entry.reason,
-      created_at: entry.created_at.toISOString()
+      created_at: entry.createdAt.toISOString()
     })),
     image_jobs: imageJobs.map((job) => ({
       id: job.id,

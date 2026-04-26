@@ -131,25 +131,25 @@ model StripeEvent {
 }
 
 model CreditLedger {
-  id              String             @id @default(cuid())
-  user_id         String
-  account_id      String?
-  change_amount   Int
-  amount          Int?
-  balance_after   Int?
-  reason          CreditLedgerReason
-  source          String?
-  description     String?
-  stripe_event_id String?
-  idempotency_key String?            @unique
-  created_at      DateTime           @default(now())
-  user            User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id             String             @id @default(cuid())
+  userId         String             @map("user_id")
+  accountId      String             @map("account_id")
+  changeAmount   Int                @map("change_amount")
+  amount         Int                @default(0)
+  balanceAfter   Int                @default(0) @map("balance_after")
+  reason         CreditLedgerReason
+  source         String
+  description    String?
+  stripeEventId  String?            @map("stripe_event_id")
+  idempotencyKey String?            @unique @map("idempotency_key")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([user_id])
-  @@index([account_id])
+  @@index([userId])
+  @@index([accountId])
   @@index([reason])
   @@index([source])
-  @@index([stripe_event_id])
+  @@index([stripeEventId])
   @@map("credit_ledger")
 }
 
