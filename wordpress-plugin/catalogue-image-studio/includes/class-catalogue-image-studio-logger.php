@@ -53,6 +53,6 @@ class Catalogue_Image_Studio_Logger {
 			return;
 		}
 
-		error_log('Catalogue Image Studio: ' . $message . ' ' . wp_json_encode($context));
+		error_log('Optivra Image Studio: ' . $message . ' ' . wp_json_encode($context));
 	}
 }

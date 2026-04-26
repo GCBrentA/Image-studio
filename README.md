@@ -1,6 +1,6 @@
-# Image Studio
+# Optivra Image Studio
 
-Image Studio contains the Optivra image-processing SaaS backend and the standalone WooCommerce plugin, Catalogue Image Studio.
+Optivra Image Studio contains the Optivra image-processing SaaS backend and the standalone WooCommerce plugin, Optivra Image Studio for WooCommerce.
 
 ## Repository Layout
 
@@ -444,9 +444,9 @@ The plugin lives in:
 wordpress-plugin/catalogue-image-studio
 ```
 
-To install locally, copy or symlink that folder into a WordPress install under `wp-content/plugins/catalogue-image-studio`, then activate `Catalogue Image Studio` from WordPress admin.
+To install locally, copy or symlink that folder into a WordPress install under `wp-content/plugins/catalogue-image-studio`, then activate `Optivra Image Studio for WooCommerce` from WordPress admin.
 
-In WooCommerce admin, open Catalogue Image Studio, paste the Render API base URL and the site API token returned by `POST /sites/connect`, save settings, then use Test Connection to verify `/usage`.
+In WooCommerce admin, open Optivra Image Studio, paste the API base URL and the site API token returned by `POST /sites/connect`, save settings, then use Test Connection to verify `/usage`.
 
 The plugin provides reusable classes for:
 

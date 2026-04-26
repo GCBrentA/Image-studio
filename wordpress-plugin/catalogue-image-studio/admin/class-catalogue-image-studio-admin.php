@@ -64,8 +64,8 @@ class Catalogue_Image_Studio_Admin {
 
 		$this->page_hook = add_submenu_page(
 			'woocommerce',
-			__('Catalogue Image Studio', 'optivra'),
-			__('Catalogue Image Studio', 'optivra'),
+			__('Optivra Image Studio', 'optivra'),
+			__('Optivra Image Studio', 'optivra'),
 			'manage_woocommerce',
 			'optivra',
 			[$this, 'render_page']
@@ -255,7 +255,7 @@ class Catalogue_Image_Studio_Admin {
 
 		$saved = update_option($this->plugin->get_option_name(), $settings, false);
 		if (! $saved && get_option($this->plugin->get_option_name()) !== $settings) {
-			$this->plugin->logger()->error('Catalogue Image Studio settings save failed.', ['option' => $this->plugin->get_option_name()]);
+			$this->plugin->logger()->error('Optivra Image Studio settings save failed.', ['option' => $this->plugin->get_option_name()]);
 			$this->queue_notice(__('Settings could not be saved. Please try again.', 'optivra'), 'error');
 			$this->redirect_after_settings_post();
 			return;
@@ -263,7 +263,7 @@ class Catalogue_Image_Studio_Admin {
 
 		if (! empty($settings['debug_mode'])) {
 			$this->plugin->logger()->info(
-				'Catalogue Image Studio settings saved.',
+				'Optivra Image Studio settings saved.',
 				[
 					'saved_option' => $this->sanitize_settings_for_debug_log($settings),
 				]
@@ -825,7 +825,7 @@ class Catalogue_Image_Studio_Admin {
 		$tab       = $this->get_current_tab();
 		?>
 		<div class="wrap catalogue-image-studio-admin">
-			<h1><?php echo esc_html__('Catalogue Image Studio', 'optivra'); ?></h1>
+			<h1><?php echo esc_html__('Optivra Image Studio', 'optivra'); ?></h1>
 			<p class="catalogue-image-studio-page-intro"><?php echo esc_html__('Configure how Optivra optimises and writes product images back to your store.', 'optivra'); ?></p>
 			<?php $this->render_queued_notices(); ?>
 			<?php settings_errors('catalogue_image_studio_messages'); ?>
@@ -881,7 +881,7 @@ class Catalogue_Image_Studio_Admin {
 		<div class="catalogue-image-studio-panel">
 			<div class="catalogue-image-studio-dashboard-head">
 				<div>
-					<h2><?php echo esc_html__('Dashboard', 'optivra'); ?></h2>
+					<h2><?php echo esc_html__('Welcome to Optivra Image Studio', 'optivra'); ?></h2>
 					<?php $this->render_usage($usage); ?>
 				</div>
 				<div class="catalogue-image-studio-cta-buttons">
@@ -1097,7 +1097,7 @@ class Catalogue_Image_Studio_Admin {
 		$jobs = $this->plugin->jobs()->query(['status' => ['completed', 'approved', 'rejected']], 100, 0);
 		?>
 		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Review & Approve', 'optivra'); ?></h2>
+			<h2><?php echo esc_html__('Optivra Image Studio — Review & Approve', 'optivra'); ?></h2>
 			<form method="post" action="">
 				<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
 				<div class="catalogue-image-studio-toolbar">
@@ -1122,7 +1122,7 @@ class Catalogue_Image_Studio_Admin {
 		<div class="optivra-settings-page">
 			<div class="optivra-settings-header">
 				<div>
-					<h2><?php echo esc_html__('Optivra Settings', 'optivra'); ?></h2>
+					<h2><?php echo esc_html__('Optivra Image Studio Settings', 'optivra'); ?></h2>
 					<p><?php echo esc_html__('Configure how Optivra scans, processes, reviews and publishes product images.', 'optivra'); ?></p>
 				</div>
 				<span class="optivra-status-pill <?php echo is_wp_error($usage) ? 'is-disconnected' : 'is-connected'; ?>"><?php echo is_wp_error($usage) ? esc_html__('Not connected', 'optivra') : esc_html__('Connected', 'optivra'); ?></span>
@@ -1258,7 +1258,7 @@ class Catalogue_Image_Studio_Admin {
 		$failed = $this->plugin->jobs()->query(['status' => 'failed'], 50, 0);
 		?>
 		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Logs', 'optivra'); ?></h2>
+			<h2><?php echo esc_html__('Optivra Image Studio Diagnostics', 'optivra'); ?></h2>
 			<div class="catalogue-image-studio-log-grid">
 				<section><h3><?php echo esc_html__('Connection logs', 'optivra'); ?></h3><p><?php echo esc_html__('Connection attempts are recorded in WooCommerce logs under source catalogue-image-studio. Secrets are never written to logs.', 'optivra'); ?></p></section>
 				<section><h3><?php echo esc_html__('Job logs', 'optivra'); ?></h3><p><?php echo esc_html__('Recent failed job messages appear below. Full job events are available in WooCommerce logs.', 'optivra'); ?></p></section>
@@ -1343,7 +1343,7 @@ class Catalogue_Image_Studio_Admin {
 		?>
 		<div class="catalogue-image-studio-panel catalogue-image-studio-onboarding">
 			<div class="catalogue-image-studio-step">1</div>
-			<h2><?php echo esc_html__('Connect Catalogue Image Studio to Optivra', 'optivra'); ?></h2>
+			<h2><?php echo esc_html__('Connect your WooCommerce store to Optivra Image Studio', 'optivra'); ?></h2>
 			<p><?php echo esc_html__('Paste your Site API Token from your Optivra account to connect this store.', 'optivra'); ?></p>
 			<?php $this->render_external_service_disclosure(); ?>
 			<?php $this->render_connection_form($settings, $usage, false, true); ?>

@@ -1,4 +1,4 @@
-=== Optivra - AI Product Image Optimizer for WooCommerce ===
+=== Optivra Image Studio for WooCommerce ===
 Contributors: optivra
 Tags: woocommerce, product images, image optimization, ai images, seo, product photography
 Requires at least: 6.3
@@ -9,11 +9,11 @@ Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-AI product image background replacement, review workflow, and SEO metadata optimisation for WooCommerce.
+AI-powered product image optimisation, background replacement, review workflow, and SEO metadata for WooCommerce.
 
 == Description ==
 
-Optivra connects WooCommerce stores to Optivra's external SaaS image processing service for product image optimisation, AI background replacement, queue-based review workflows, and product-aware SEO metadata suggestions.
+Optivra Image Studio connects WooCommerce stores to Optivra's external SaaS image processing service for WooCommerce product image optimisation, AI product image enhancement, background replacement, queue-based review workflows, and product-aware SEO metadata suggestions.
 
 An Optivra account is required for image processing. The plugin includes store connection, scanning, queue management, review and approval workflow tools, and Media Library publishing. Image processing uses credits from your Optivra account.
 
@@ -22,7 +22,7 @@ An Optivra account is required for image processing. The plugin includes store c
 * Connect a WooCommerce store with an Optivra Site API Token.
 * Scan WooCommerce featured and gallery product images.
 * Queue selected product images for processing.
-* Apply AI background replacement and product image optimisation through Optivra.
+* Apply AI-powered background replacement and product image optimisation through Optivra Image Studio.
 * Review before approval so product images are not replaced automatically.
 * Import approved processed images into the WordPress Media Library.
 * Replace featured images and gallery images only after approval.
@@ -41,17 +41,17 @@ The plugin does not include Stripe secret keys, Supabase service role keys, or p
 
 Service links:
 
-* Terms of Service: https://optivra.com/terms
-* Privacy Policy: https://optivra.com/privacy
-* Data Processing: https://optivra.com/docs/data-processing
-* Support: https://optivra.com/support
+* Terms of Service: https://www.optivra.app/terms
+* Privacy Policy: https://www.optivra.app/privacy
+* Data Processing: https://www.optivra.app/docs/ai-image-studio
+* Support: https://www.optivra.app/support
 
 == Installation ==
 
 1. Install and activate WooCommerce.
 2. Upload the plugin folder to `/wp-content/plugins/` or install the plugin zip from Plugins > Add New.
-3. Activate "Optivra - AI Product Image Optimizer for WooCommerce".
-4. Go to WooCommerce > Catalogue Image Studio.
+3. Activate "Optivra Image Studio for WooCommerce".
+4. Go to WooCommerce > Optivra Image Studio.
 5. Paste your Optivra Site API Token and click Connect.
 6. Scan your catalogue, queue images, process selected images, then review and approve results.
 

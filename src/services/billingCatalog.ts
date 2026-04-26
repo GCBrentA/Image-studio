@@ -1,11 +1,12 @@
 import { SubscriptionPlan } from "@prisma/client";
 import { env } from "../config/env";
+import { PRODUCT_NAME } from "../config/product";
 import { HttpError } from "../utils/httpError";
 
 export const subscriptionPlans = {
   starter: {
     plan: SubscriptionPlan.starter,
-    name: "Starter",
+    name: `${PRODUCT_NAME} Starter`,
     monthly_price_usd: 19,
     credits: env.planCreditLimits.starter,
     priceId: env.stripePriceIds.starter,
@@ -13,7 +14,7 @@ export const subscriptionPlans = {
   },
   growth: {
     plan: SubscriptionPlan.growth,
-    name: "Growth",
+    name: `${PRODUCT_NAME} Growth`,
     monthly_price_usd: 69,
     credits: env.planCreditLimits.growth,
     priceId: env.stripePriceIds.growth,
@@ -21,7 +22,7 @@ export const subscriptionPlans = {
   },
   pro: {
     plan: SubscriptionPlan.pro,
-    name: "Pro",
+    name: `${PRODUCT_NAME} Pro`,
     monthly_price_usd: 159,
     credits: env.planCreditLimits.pro,
     priceId: env.stripePriceIds.pro,
@@ -29,7 +30,7 @@ export const subscriptionPlans = {
   },
   agency: {
     plan: SubscriptionPlan.agency,
-    name: "Agency",
+    name: `${PRODUCT_NAME} Agency`,
     monthly_price_usd: 429,
     credits: env.planCreditLimits.agency,
     priceId: env.stripePriceIds.agency,
@@ -40,8 +41,8 @@ export const subscriptionPlans = {
 export const creditPacks = {
   small: {
     key: "small",
-    name: "25 Credits",
-    displayName: "25 Credits",
+    name: `${PRODUCT_NAME} Credits - Small Pack`,
+    displayName: `${PRODUCT_NAME} Credits - Small Pack`,
     credits: 25,
     displayPrice: "$10 USD",
     currency: "usd",
@@ -50,8 +51,8 @@ export const creditPacks = {
   },
   medium: {
     key: "medium",
-    name: "100 Credits",
-    displayName: "100 Credits",
+    name: `${PRODUCT_NAME} Credits - Medium Pack`,
+    displayName: `${PRODUCT_NAME} Credits - Medium Pack`,
     credits: 100,
     displayPrice: "$35 USD",
     currency: "usd",
@@ -60,8 +61,8 @@ export const creditPacks = {
   },
   large: {
     key: "large",
-    name: "300 Credits",
-    displayName: "300 Credits",
+    name: `${PRODUCT_NAME} Credits - Large Pack`,
+    displayName: `${PRODUCT_NAME} Credits - Large Pack`,
     credits: 300,
     displayPrice: "$90 USD",
     currency: "usd",
@@ -70,8 +71,8 @@ export const creditPacks = {
   },
   agency: {
     key: "agency",
-    name: "1000 Credits",
-    displayName: "1000 Credits",
+    name: `${PRODUCT_NAME} Credits - Agency Pack`,
+    displayName: `${PRODUCT_NAME} Credits - Agency Pack`,
     credits: 1000,
     displayPrice: "$250 USD",
     currency: "usd",

@@ -1,6 +1,9 @@
 const pages = Array.from(document.querySelectorAll("[data-page]"));
 const navLinks = Array.from(document.querySelectorAll("[data-link]"));
 const tokenKey = "optivra_token";
+const PRODUCT_NAME = "Optivra Image Studio";
+const PRODUCT_NAME_WOOCOMMERCE = "Optivra Image Studio for WooCommerce";
+const PRODUCT_TAGLINE = "AI-powered product image optimisation for WooCommerce.";
 
 function token() {
   return localStorage.getItem(tokenKey) || "";
@@ -26,19 +29,19 @@ function routeTo(path) {
 
 function pageTitle(path) {
   const names = {
-    "/": "Optivra | Optimise your store. Increase impact.",
+    "/": `${PRODUCT_NAME} | Optivra`,
     "/plugins": "Plugins | Optivra",
-    "/catalogue-image-studio": "Catalogue Image Studio | Optivra",
+    "/catalogue-image-studio": `${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
     "/pricing": "Pricing | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
-    "/account/billing": "Billing | Optivra",
+    "/account/billing": `Billing & Credits | ${PRODUCT_NAME}`,
     "/billing/success": "Billing Success | Optivra",
     "/billing/cancel": "Billing Cancelled | Optivra",
     "/billing/credits/success": "Credit Purchase Success | Optivra",
     "/billing/credits/cancel": "Credit Purchase Cancelled | Optivra",
     "/docs": "Docs | Optivra",
-    "/docs/ai-image-studio": "Optivra AI Image Studio Guide | Optivra",
+    "/docs/ai-image-studio": `${PRODUCT_NAME} Guide | Optivra`,
     "/support": "Support | Optivra",
     "/terms": "Terms | Optivra",
     "/privacy": "Privacy | Optivra",

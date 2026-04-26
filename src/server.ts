@@ -1,10 +1,11 @@
 import { env } from "./config/env";
+import { PRODUCT_NAME } from "./config/product";
 import { app } from "./app";
 import { disconnectPrisma } from "./utils/prisma";
 import { validateBillingAtStartup } from "./services/stripeService";
 
 const server = app.listen(env.port, () => {
-  console.info(`Image Studio listening on port ${env.port}`);
+  console.info(`${PRODUCT_NAME} listening on port ${env.port}`);
   console.info("Runtime URL configuration", {
     appBaseUrl: env.appUrl || "missing",
     stripeSuccessUrlConfigured: Boolean(env.stripeSuccessUrl),
@@ -15,7 +16,7 @@ const server = app.listen(env.port, () => {
 });
 
 const shutdown = async (signal: string): Promise<void> => {
-  console.info(`${signal} received. Shutting down Image Studio.`);
+  console.info(`${signal} received. Shutting down ${PRODUCT_NAME}.`);
 
   server.close(async () => {
     await disconnectPrisma();

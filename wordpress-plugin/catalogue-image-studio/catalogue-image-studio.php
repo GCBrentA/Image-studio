@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name: Optivra - AI Product Image Optimizer for WooCommerce
- * Plugin URI:  https://optivra.com
- * Description: AI product image background replacement, review workflow, and SEO metadata optimisation for WooCommerce.
+ * Plugin Name: Optivra Image Studio for WooCommerce
+ * Plugin URI:  https://www.optivra.app
+ * Description: AI-powered product image optimisation, background replacement, review workflow, and SEO metadata for WooCommerce.
  * Version:     1.0.0
  * Author:      Optivra
- * Author URI:  https://optivra.com
+ * Author URI:  https://www.optivra.app
  * License:     GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: optivra
@@ -25,10 +25,13 @@ define('CIS_VERSION', '1.0.0');
 define('CIS_FILE', __FILE__);
 define('CIS_PATH', plugin_dir_path(__FILE__));
 define('CIS_URL', plugin_dir_url(__FILE__));
-define('CIS_TERMS_URL', 'https://optivra.com/terms');
-define('CIS_PRIVACY_URL', 'https://optivra.com/privacy');
-define('CIS_DATA_URL', 'https://optivra.com/docs/data-processing');
-define('CIS_SUPPORT_URL', 'https://optivra.com/support');
+define('OPTIVRA_PRODUCT_NAME', 'Optivra Image Studio');
+define('OPTIVRA_PLUGIN_DISPLAY_NAME', 'Optivra Image Studio for WooCommerce');
+define('OPTIVRA_PRODUCT_TAGLINE', 'AI-powered product image optimisation for WooCommerce.');
+define('CIS_TERMS_URL', 'https://www.optivra.app/terms');
+define('CIS_PRIVACY_URL', 'https://www.optivra.app/privacy');
+define('CIS_DATA_URL', 'https://www.optivra.app/docs/ai-image-studio');
+define('CIS_SUPPORT_URL', 'https://www.optivra.app/support');
 
 /**
  * Minimum supported PHP version for the plugin runtime.
@@ -63,7 +66,7 @@ function catalogue_image_studio_render_php_notice() {
 		esc_html(
 			sprintf(
 				/* translators: 1: current PHP version, 2: required PHP version */
-				__('Catalogue Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra'),
+				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra'),
 				PHP_VERSION,
 				CIS_MINIMUM_PHP_VERSION
 			)
@@ -99,7 +102,7 @@ function catalogue_image_studio_activate() {
 		esc_html(
 			sprintf(
 				/* translators: 1: current PHP version, 2: required PHP version */
-				__('Catalogue Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra'),
+				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra'),
 				PHP_VERSION,
 				CIS_MINIMUM_PHP_VERSION
 			)

@@ -1,6 +1,6 @@
 # WordPress.org Submission Notes
 
-Plugin: Optivra - AI Product Image Optimizer for WooCommerce
+Plugin: Optivra Image Studio for WooCommerce
 
 ## Package Contents
 
@@ -30,10 +30,10 @@ When a user connects, tests the connection, scans, processes, or reviews images,
 
 Service links used in the plugin/readme:
 
-- Terms: https://optivra.com/terms
-- Privacy: https://optivra.com/privacy
-- Data Processing: https://optivra.com/docs/data-processing
-- Support: https://optivra.com/support
+- Terms: https://www.optivra.app/terms
+- Privacy: https://www.optivra.app/privacy
+- Data Processing: https://www.optivra.app/docs/ai-image-studio
+- Support: https://www.optivra.app/support
 
 ## SVN Structure
 
