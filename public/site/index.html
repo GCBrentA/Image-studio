@@ -235,14 +235,321 @@
       </section>
 
       <section class="page" data-page="/docs">
-        <div class="page-band prose">
-          <h1>Docs</h1>
-          <h2>Connect WooCommerce</h2>
-          <p>Install Catalogue Image Studio, paste your API base URL and site token, then run Test Connection.</p>
-          <h2>Image workflow</h2>
-          <p>Scan images, process selected assets, edit SEO suggestions, approve the final image, or revert to original.</p>
-          <h2>API basics</h2>
-          <p>Use account JWTs for dashboard actions and site API tokens for WooCommerce processing.</p>
+        <div class="page-band docs-index">
+          <p class="eyebrow">Docs</p>
+          <h1>Guides for running Optivra</h1>
+          <p class="lead">Practical help for connecting stores, managing image workflows, and keeping your catalogue consistent.</p>
+          <div class="feature-grid">
+            <article class="feature-card doc-topic-card">
+              <span class="doc-icon" aria-hidden="true">◎</span>
+              <h2>Optivra AI Image Studio</h2>
+              <p>Learn how to connect your WooCommerce store, process product images, review results, improve SEO metadata, and manage credits.</p>
+              <a class="button primary" href="/docs/ai-image-studio" data-link>Open Guide</a>
+            </article>
+            <article class="feature-card muted-card doc-topic-card">
+              <span class="doc-icon" aria-hidden="true">↗</span>
+              <h2>API and account basics</h2>
+              <p>Use account JWTs for dashboard actions and site API tokens for WooCommerce processing.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="/docs/ai-image-studio">
+        <div class="docs-shell">
+          <div class="docs-hero">
+            <div>
+              <p class="eyebrow">WooCommerce guide</p>
+              <h1>Optivra AI Image Studio Guide</h1>
+              <p class="lead">
+                Optivra AI Image Studio helps WooCommerce stores scan product images, generate improved AI product visuals,
+                review changes before publishing, and create SEO-friendly image metadata.
+              </p>
+            </div>
+            <aside class="docs-audience">
+              <h2>Who this guide is for</h2>
+              <ul>
+                <li>WooCommerce store owners</li>
+                <li>Ecommerce managers</li>
+                <li>Product catalogue teams</li>
+                <li>Agencies managing client stores</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="docs-layout">
+            <nav class="docs-toc" aria-label="Guide sections">
+              <h2>Quick links</h2>
+              <a href="#what-it-does">What it does</a>
+              <a href="#requirements">Requirements</a>
+              <a href="#installing">Installing</a>
+              <a href="#connecting">Connecting</a>
+              <a href="#dashboard-guide">Dashboard</a>
+              <a href="#settings-guide">Image settings</a>
+              <a href="#backgrounds">Backgrounds</a>
+              <a href="#shadow-lighting">Shadow and lighting</a>
+              <a href="#scanning">Scanning</a>
+              <a href="#queue">Queue</a>
+              <a href="#framing">Framing controls</a>
+              <a href="#review">Review and approve</a>
+              <a href="#seo">SEO metadata</a>
+              <a href="#approval">Replacing images</a>
+              <a href="#credits">Credits</a>
+              <a href="#buy-credits">Buying credits</a>
+              <a href="#troubleshooting">Troubleshooting</a>
+              <a href="#best-practices">Best practices</a>
+              <a href="#faq">FAQ</a>
+            </nav>
+
+            <div class="docs-content">
+              <div class="doc-callout tip">
+                <strong>Tip</strong>
+                <p>Start with one small category before processing your full catalogue.</p>
+              </div>
+
+              <section id="what-it-does" class="doc-card">
+                <span class="doc-icon" aria-hidden="true">✦</span>
+                <h2>What Optivra AI Image Studio does</h2>
+                <p>Optivra connects your WooCommerce store to an external image optimisation service built for ecommerce catalogue work.</p>
+                <div class="step-grid">
+                  <div><strong>Scan</strong><p>Find featured, gallery, and supported category images already in WooCommerce.</p></div>
+                  <div><strong>Queue</strong><p>Select the images you want to process and keep the rest untouched.</p></div>
+                  <div><strong>Process</strong><p>Send selected images to Optivra for AI background replacement and product image optimisation.</p></div>
+                  <div><strong>Review</strong><p>Compare before and after, edit SEO metadata, approve, reject, reprocess, or revert.</p></div>
+                </div>
+                <div class="doc-callout info"><p>The plugin does not automatically replace images unless you approve them or enable an auto-approval setting.</p></div>
+              </section>
+
+              <section id="requirements" class="doc-card">
+                <h2>Requirements before you start</h2>
+                <ul class="check-list">
+                  <li>WordPress admin access</li>
+                  <li>WooCommerce installed and active</li>
+                  <li>An Optivra account and Site API Token</li>
+                  <li>Available image processing credits</li>
+                  <li>Product images uploaded to WooCommerce</li>
+                  <li>Supported images: JPG, JPEG, PNG, and WebP</li>
+                </ul>
+              </section>
+
+              <section id="installing" class="doc-card">
+                <h2>Installing the WooCommerce plugin</h2>
+                <ol class="numbered-steps">
+                  <li>Download the plugin zip from your Optivra account or download area.</li>
+                  <li>In WordPress Admin, go to Plugins → Add New → Upload Plugin.</li>
+                  <li>Upload the plugin zip and click Install Now.</li>
+                  <li>Click Activate.</li>
+                  <li>Open the Optivra or Catalogue Image Studio menu in WordPress admin.</li>
+                </ol>
+                <div class="doc-callout warning"><p>If WooCommerce is inactive, activate WooCommerce first. The plugin needs WooCommerce products and media to scan your catalogue.</p></div>
+                <div class="screenshot-placeholder">Screenshot placeholder: Plugin Settings screen</div>
+              </section>
+
+              <section id="connecting" class="doc-card">
+                <h2>How to connect Optivra to WooCommerce</h2>
+                <ol class="numbered-steps">
+                  <li>Log into the Optivra website.</li>
+                  <li>Open your account or connected sites area and copy the Site API Token.</li>
+                  <li>In WordPress, open Optivra → Settings.</li>
+                  <li>Paste the token, then click Connect or Test Connection.</li>
+                  <li>Confirm the connected domain, plan, credits, and reset date.</li>
+                </ol>
+                <div class="doc-callout warning"><p>If the token fails, check for copied spaces, an inactive account, a wrong store token, SSL issues, or a temporary API connection problem.</p></div>
+              </section>
+
+              <section id="dashboard-guide" class="doc-card">
+                <h2>Understanding the dashboard</h2>
+                <div class="mini-card-grid">
+                  <div><strong>Settings</strong><p>Connect your store and choose practical processing defaults.</p></div>
+                  <div><strong>Scan Products</strong><p>Find WooCommerce product images without using credits.</p></div>
+                  <div><strong>Queue</strong><p>Process selected images in manageable batches.</p></div>
+                  <div><strong>Review & Approve</strong><p>Compare, edit SEO fields, approve, reject, reprocess, or revert.</p></div>
+                  <div><strong>Billing / Credits</strong><p>View your plan, remaining credits, and links to buy more.</p></div>
+                  <div><strong>Logs</strong><p>Use diagnostics when support needs a job ID or error message.</p></div>
+                </div>
+              </section>
+
+              <section id="settings-guide" class="doc-card">
+                <h2>Configuring image settings</h2>
+                <p>For a first pass, keep review required before replacement enabled and test with a small product category.</p>
+                <ul class="settings-list">
+                  <li><strong>Review required</strong><span>Recommended. Prevents changes before you approve them.</span></li>
+                  <li><strong>Include featured, gallery, and category images</strong><span>Choose which image slots are discovered and queued.</span></li>
+                  <li><strong>Auto-process scanned images</strong><span>Leave off until you trust your output style.</span></li>
+                  <li><strong>Duplicate detection</strong><span>Helps avoid processing the same image repeatedly.</span></li>
+                  <li><strong>Smart product framing</strong><span>Keeps products large and safely framed.</span></li>
+                  <li><strong>Batch size and retry failed jobs</strong><span>Control how many images run at once and how failures are handled.</span></li>
+                  <li><strong>Low credit pause</strong><span>Prevents large batches from starting when credits are nearly depleted.</span></li>
+                </ul>
+              </section>
+
+              <section id="backgrounds" class="doc-card">
+                <h2>Background settings</h2>
+                <p>Use a preset background for a clean, consistent catalogue style, or upload a custom background when your brand needs a specific look.</p>
+                <div class="doc-callout info"><p>Category-specific background presets were intentionally removed from Settings to keep the workflow simple. Use global defaults and review individual results before approval.</p></div>
+                <div class="screenshot-placeholder">Screenshot placeholder: background preview and upload control</div>
+              </section>
+
+              <section id="shadow-lighting" class="doc-card">
+                <h2>Shadow and lighting settings</h2>
+                <div class="step-grid">
+                  <div><strong>Off</strong><p>No generated shadow.</p></div>
+                  <div><strong>Under product</strong><p>Creates a subtle contact shadow below the item.</p></div>
+                  <div><strong>Behind product</strong><p>Adds depth behind the product using a softer silhouette.</p></div>
+                  <div><strong>Custom</strong><p>Adjust opacity, blur, offset, spread, softness, and colour.</p></div>
+                </div>
+                <p>Lighting enhancement can run automatically or target the product/whole image. Use brightness, contrast, highlight recovery, shadow lift, and neutralise tint gently.</p>
+                <div class="doc-callout tip"><p>Use subtle shadows and lighting corrections for ecommerce. Heavy effects can make products look artificial.</p></div>
+              </section>
+
+              <section id="scanning" class="doc-card">
+                <h2>How to scan WooCommerce product images</h2>
+                <ol class="numbered-steps">
+                  <li>Open Optivra → Scan Products.</li>
+                  <li>Choose all products or a selected category.</li>
+                  <li>Select product status, product type, stock status, and image slots.</li>
+                  <li>Click Scan Product Images.</li>
+                  <li>Review found images and add selected images to the queue.</li>
+                </ol>
+                <div class="doc-callout success"><p>Scanning does not use credits. Credits are used only when images are processed.</p></div>
+                <div class="screenshot-placeholder">Screenshot placeholder: Scan Products screen</div>
+              </section>
+
+              <section id="queue" class="doc-card">
+                <h2>Queue and processing workflow</h2>
+                <p>Queued images are waiting to be sent to Optivra. Processing sends the image for AI optimisation. Completed images move to Review & Approve.</p>
+                <div class="status-grid">
+                  <span>Pending</span><span>Processing</span><span>Ready for Review</span><span>Failed</span><span>Approved</span><span>Rejected</span><span>Metadata Missing</span><span>Preview Unavailable</span>
+                </div>
+                <div class="screenshot-placeholder">Screenshot placeholder: Queue screen</div>
+              </section>
+
+              <section id="framing" class="doc-card">
+                <h2>Image framing and edge controls</h2>
+                <p>Image to edge controls are per image/job, not global settings. Use them only where a product needs to touch one or more sides of the final image.</p>
+                <ul class="settings-list">
+                  <li><strong>Bottom edge</strong><span>Useful for shoes, bottles, or products that should sit on the lower frame.</span></li>
+                  <li><strong>Left or right edge</strong><span>Useful for long horizontal products that should align to one side.</span></li>
+                  <li><strong>Top edge</strong><span>Useful for tall products where the top should anchor to the frame.</span></li>
+                  <li><strong>All edges</strong><span>Use only when the product should fill the frame.</span></li>
+                </ul>
+              </section>
+
+              <section id="review" class="doc-card">
+                <h2>How to review and approve AI product images</h2>
+                <ol class="numbered-steps">
+                  <li>Open Review & Approve.</li>
+                  <li>Compare the Before and After previews.</li>
+                  <li>Open the larger preview when you need more detail.</li>
+                  <li>Check the product name, image slot, and SEO metadata fields.</li>
+                  <li>Edit metadata if needed.</li>
+                  <li>Approve one image, approve selected images, reprocess, reject, or revert.</li>
+                </ol>
+                <div class="doc-callout warning"><p>Do not bulk approve images until you have checked the output style and SEO metadata.</p></div>
+                <div class="screenshot-placeholder">Screenshot placeholder: Review & Approve screen</div>
+              </section>
+
+              <section id="seo" class="doc-card">
+                <h2>How to generate SEO image metadata for WooCommerce</h2>
+                <p>Good image metadata helps accessibility, filenames, image titles, captions, and search engines understand the product and category context.</p>
+                <div class="mini-card-grid">
+                  <div><strong>Filename</strong><p>Clean, lowercase, hyphenated, product-specific.</p></div>
+                  <div><strong>Alt text</strong><p>Natural description for accessibility and context.</p></div>
+                  <div><strong>Title</strong><p>Concise product-focused attachment title.</p></div>
+                  <div><strong>Caption</strong><p>Optional short customer-facing image context.</p></div>
+                  <div><strong>Description</strong><p>Richer attachment description using product/category detail.</p></div>
+                </div>
+                <div class="seo-example">
+                  <h3>Example: Hi Capa Holster</h3>
+                  <p><strong>Filename:</strong> hi-capa-holster-gel-blaster-accessory.webp</p>
+                  <p><strong>Alt:</strong> Hi Capa holster for gel blaster pistols, shown as a black tactical sidearm accessory.</p>
+                  <p><strong>Title:</strong> Hi Capa Holster - Gel Blaster Accessory</p>
+                  <p><strong>Caption:</strong> Black Hi Capa holster for gel blaster pistol loadouts and tactical setups.</p>
+                  <p><strong>Description:</strong> Optimised product image for the Hi Capa Holster, a tactical gel blaster accessory available from Azraels Armoury.</p>
+                </div>
+                <div class="doc-callout warning"><p>Avoid old export names like photoroom-20251212-154642-scaled. Regenerate or edit SEO fields before approval.</p></div>
+                <div class="screenshot-placeholder">Screenshot placeholder: SEO fields screen</div>
+              </section>
+
+              <section id="approval" class="doc-card">
+                <h2>Approving and replacing images</h2>
+                <p>On approval, the processed image is imported into the WordPress Media Library, SEO metadata is applied, and the correct featured, gallery, or supported category image slot is replaced.</p>
+                <div class="doc-callout info"><p>Original images should be preserved for rollback/history. Approve a small batch first before approving larger runs.</p></div>
+              </section>
+
+              <section id="credits" class="doc-card">
+                <h2>Credits and billing</h2>
+                <p>Credits are required to process images. Scanning is free. One processed image usually uses one credit unless your account is configured differently.</p>
+                <div class="mini-card-grid">
+                  <div><strong>Credits Remaining</strong><p>Available processing capacity.</p></div>
+                  <div><strong>Credits Used</strong><p>Credits consumed by successful processing.</p></div>
+                  <div><strong>Monthly Plan Credits</strong><p>Credits included with your subscription allowance.</p></div>
+                </div>
+                <p>Billing is managed securely through Optivra and Stripe, not inside WordPress.</p>
+              </section>
+
+              <section id="buy-credits" class="doc-card">
+                <h2>Buying extra credits</h2>
+                <ol class="numbered-steps">
+                  <li>Open Billing in the Optivra website.</li>
+                  <li>Choose a credit pack.</li>
+                  <li>Click Buy Credits and complete Stripe checkout.</li>
+                  <li>Return to Optivra and refresh billing if credits are still syncing.</li>
+                </ol>
+                <div class="status-grid"><span>25 Credits</span><span>100 Credits</span><span>300 Credits</span><span>1000 Credits</span></div>
+                <a class="button primary" href="/account/billing#buy-credits" data-link>Open Billing</a>
+                <div class="screenshot-placeholder">Screenshot placeholder: Billing/Credits screen</div>
+              </section>
+
+              <section id="troubleshooting" class="doc-card">
+                <h2>Troubleshooting</h2>
+                <div class="accordion-list">
+                  <details><summary>After image is not showing</summary><p>Refresh the page, reprocess the image, or contact support with the job ID. The preview URL may be expired, missing, or not synced yet.</p></details>
+                  <details><summary>“Not Found” when opening image</summary><p>The processed URL may be wrong, expired, or missing metadata. Reprocess the job or provide the job ID to support.</p></details>
+                  <details><summary>Settings do not save</summary><p>Your WordPress session may have expired, permissions may be insufficient, or the plugin may need updating. Reload the page and try again.</p></details>
+                  <details><summary>Token invalid</summary><p>Check copied spaces, account status, store domain, and whether the token belongs to this site.</p></details>
+                  <details><summary>No images found after scanning</summary><p>Products may have no images, filters may be too narrow, or the selected image slots may be disabled.</p></details>
+                  <details><summary>Credits not updating</summary><p>Stripe checkout may still be syncing, payment may be incomplete, or the page may be cached.</p></details>
+                  <details><summary>Buy Credits button does nothing</summary><p>Log in first. If it still fails, billing may need setup or the route may be returning an error.</p></details>
+                  <details><summary>SEO fields look like old filenames</summary><p>Regenerate SEO metadata and check that the product has a title, category, tags, or attributes.</p></details>
+                </div>
+              </section>
+
+              <section id="best-practices" class="doc-card">
+                <h2>Best practices</h2>
+                <ul class="check-list">
+                  <li>Start with 5–10 products.</li>
+                  <li>Review before approving.</li>
+                  <li>Use consistent background and lighting settings.</li>
+                  <li>Avoid over-processing or heavy shadows.</li>
+                  <li>Keep filenames natural and product-specific.</li>
+                  <li>Use category context in alt text.</li>
+                  <li>Process high-value products first.</li>
+                  <li>Monitor credits before large batches.</li>
+                </ul>
+              </section>
+
+              <section id="faq" class="doc-card">
+                <h2>FAQ</h2>
+                <div class="accordion-list">
+                  <details><summary>Does scanning use credits?</summary><p>No. Scanning only finds images. Credits are used when images are processed.</p></details>
+                  <details><summary>Will Optivra replace images automatically?</summary><p>Only if configured to do so. The recommended workflow is review before approval.</p></details>
+                  <details><summary>Can I edit SEO fields before approval?</summary><p>Yes. Metadata can be reviewed and edited before final approval.</p></details>
+                  <details><summary>Are original images deleted?</summary><p>Original images should be preserved unless a specific setting says otherwise.</p></details>
+                  <details><summary>Can I reprocess an image?</summary><p>Yes. Failed or unsatisfactory images can be reprocessed.</p></details>
+                  <details><summary>Why is my processed image not displaying?</summary><p>The image may need a refreshed preview URL or the processed metadata may not have synced.</p></details>
+                  <details><summary>Can agencies use this for multiple stores?</summary><p>Yes, if the Optivra account or plan supports multiple stores.</p></details>
+                  <details><summary>Is Stripe handled in WordPress?</summary><p>No. Billing is handled securely through the Optivra website and Stripe. The plugin only shows billing and credit status.</p></details>
+                </div>
+              </section>
+
+              <div class="docs-actions">
+                <a class="button ghost" href="/docs" data-link>Back to Docs</a>
+                <a class="button ghost" href="/account/billing" data-link>Billing</a>
+                <a class="button primary" href="/support" data-link>Contact Support</a>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -14,6 +14,7 @@ const webPaths = new Set([
   "/billing/credits/success",
   "/billing/credits/cancel",
   "/docs",
+  "/docs/ai-image-studio",
   "/support",
   "/terms",
   "/privacy",

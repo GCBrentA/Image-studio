@@ -38,6 +38,7 @@ function pageTitle(path) {
     "/billing/credits/success": "Credit Purchase Success | Optivra",
     "/billing/credits/cancel": "Credit Purchase Cancelled | Optivra",
     "/docs": "Docs | Optivra",
+    "/docs/ai-image-studio": "Optivra AI Image Studio Guide | Optivra",
     "/support": "Support | Optivra",
     "/terms": "Terms | Optivra",
     "/privacy": "Privacy | Optivra",
