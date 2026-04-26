@@ -90,6 +90,29 @@ class Catalogue_Image_Studio_Job_Repository {
 	}
 
 	/**
+	 * Find an existing job for one reusable image slot.
+	 *
+	 * @param array<string,mixed> $slot Product image slot.
+	 * @return array<string,mixed>|null
+	 */
+	public function find_by_slot(array $slot): ?array {
+		global $wpdb;
+
+		$table = catalogue_image_studio_table_name();
+		$job   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE product_id = %d AND image_role = %s AND gallery_index = %d LIMIT 1",
+				(int) $slot['product_id'],
+				sanitize_key((string) $slot['image_role']),
+				(int) $slot['gallery_index']
+			),
+			ARRAY_A
+		);
+
+		return $job ?: null;
+	}
+
+	/**
 	 * @param array<string,mixed> $data Data.
 	 * @return void
 	 */

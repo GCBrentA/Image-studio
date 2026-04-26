@@ -181,6 +181,12 @@ class Catalogue_Image_Studio_Admin {
 			return;
 		}
 
+		if (isset($_POST['reset_local_data'])) {
+			$this->plugin->jobs()->delete_all();
+			$this->add_success(__('Plugin local data reset.', 'catalogue-image-studio'));
+			return;
+		}
+
 		if (isset($_POST['test_connection']) || isset($_POST['connect_store'])) {
 			$client = new Catalogue_Image_Studio_SaaSClient(
 				(string) $settings['api_base_url'],
@@ -367,12 +373,15 @@ class Catalogue_Image_Studio_Admin {
 	 * @return array<string,mixed>
 	 */
 	private function get_scan_filters_from_request(): array {
+		$settings = $this->plugin->get_settings();
+		$include_featured_default = ! empty($settings['process_featured_images']);
+		$include_gallery_default  = ! empty($settings['process_gallery_images']);
 		$filters = [
 			'category'         => isset($_POST['filter_category']) ? absint($_POST['filter_category']) : 0,
 			'product_type'     => isset($_POST['filter_product_type']) ? sanitize_key(wp_unslash($_POST['filter_product_type'])) : '',
 			'stock_status'     => isset($_POST['filter_stock_status']) ? sanitize_key(wp_unslash($_POST['filter_stock_status'])) : '',
-			'include_featured' => ! isset($_POST['filter_image_gallery_only']),
-			'include_gallery'  => ! isset($_POST['filter_image_featured_only']),
+			'include_featured' => isset($_POST['filter_image_gallery_only']) ? false : $include_featured_default,
+			'include_gallery'  => isset($_POST['filter_image_featured_only']) ? false : $include_gallery_default,
 		];
 
 		if (! empty($_POST['filter_product_status'])) {
@@ -593,12 +602,15 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	private function get_scan_filters_from_query(): array {
+		$settings = $this->plugin->get_settings();
+		$include_featured_default = ! empty($settings['process_featured_images']);
+		$include_gallery_default  = ! empty($settings['process_gallery_images']);
 		$filters = [
 			'category'         => isset($_GET['filter_category']) ? absint($_GET['filter_category']) : 0,
 			'product_type'     => isset($_GET['filter_product_type']) ? sanitize_key(wp_unslash($_GET['filter_product_type'])) : '',
 			'stock_status'     => isset($_GET['filter_stock_status']) ? sanitize_key(wp_unslash($_GET['filter_stock_status'])) : '',
-			'include_featured' => ! isset($_GET['filter_image_gallery_only']),
-			'include_gallery'  => ! isset($_GET['filter_image_featured_only']),
+			'include_featured' => isset($_GET['filter_image_gallery_only']) ? false : $include_featured_default,
+			'include_gallery'  => isset($_GET['filter_image_featured_only']) ? false : $include_gallery_default,
 		];
 
 		if (! empty($_GET['filter_product_status'])) {
@@ -662,13 +674,11 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		return array_values(array_filter($slots, function (array $slot) use ($state): bool {
-			$existing = $this->plugin->jobs()->query(['product_id' => (int) $slot['product_id']], 100, 0);
+			$job = $this->plugin->jobs()->find_by_slot($slot);
 
-			foreach ($existing as $job) {
-				if ((int) $job['attachment_id'] === (int) $slot['attachment_id']) {
-					$is_processed = in_array((string) $job['status'], ['completed', 'approved'], true);
-					return 'processed' === $state ? $is_processed : ! $is_processed;
-				}
+			if ($job) {
+				$is_processed = in_array((string) $job['status'], ['completed', 'approved'], true);
+				return 'processed' === $state ? $is_processed : ! $is_processed;
 			}
 
 			return 'unprocessed' === $state;
@@ -679,13 +689,15 @@ class Catalogue_Image_Studio_Admin {
 		$product_id    = (int) $slot['product_id'];
 		$attachment_id = (int) $slot['attachment_id'];
 		$value         = implode(':', [$product_id, $attachment_id, sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]);
+		$job           = $this->plugin->jobs()->find_by_slot($slot);
+		$status        = $job ? $this->format_status((string) $job['status']) : __('Ready to queue', 'catalogue-image-studio');
 		?>
 		<tr>
 			<th scope="row" class="check-column"><input type="checkbox" class="catalogue-image-studio-job-check" name="slots[]" value="<?php echo esc_attr($value); ?>" /></th>
 			<td><?php $this->render_thumbnail((string) wp_get_attachment_image_url($attachment_id, 'thumbnail'), __('Product image', 'catalogue-image-studio')); ?></td>
 			<td><strong><?php echo esc_html(get_the_title($product_id)); ?></strong><br /><a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'catalogue-image-studio'); ?></a></td>
 			<td><?php echo esc_html((string) $slot['image_role']); ?> <?php echo 'gallery' === (string) $slot['image_role'] ? esc_html('#' . ((int) $slot['gallery_index'] + 1)) : ''; ?></td>
-			<td><?php echo esc_html__('Ready to queue', 'catalogue-image-studio'); ?></td>
+			<td><?php echo esc_html($status); ?></td>
 		</tr>
 		<?php
 	}
@@ -809,6 +821,9 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	private function render_jobs_table(array $jobs, bool $selectable): void {
+		$empty_message = $selectable
+			? __('Run your first scan to find WooCommerce product images.', 'catalogue-image-studio')
+			: __('No failed jobs to show.', 'catalogue-image-studio');
 		?>
 		<table class="widefat fixed striped catalogue-image-studio-jobs">
 			<thead>
@@ -819,7 +834,7 @@ class Catalogue_Image_Studio_Admin {
 			</thead>
 			<tbody>
 				<?php if (empty($jobs)) : ?>
-					<tr><td colspan="<?php echo $selectable ? '8' : '7'; ?>"><?php echo esc_html__('No jobs to show.', 'catalogue-image-studio'); ?></td></tr>
+					<tr><td colspan="<?php echo $selectable ? '8' : '7'; ?>"><?php echo esc_html($empty_message); ?></td></tr>
 				<?php else : ?>
 					<?php foreach ($jobs as $job) : ?>
 						<?php $this->render_job_row($job, $selectable); ?>
@@ -934,7 +949,7 @@ class Catalogue_Image_Studio_Admin {
 				<label><input type="checkbox" name="debug_mode" value="1" <?php checked(! empty($settings['debug_mode'])); ?> /> <?php echo esc_html__('Debug mode', 'catalogue-image-studio'); ?></label>
 			</div>
 			<button type="submit" name="clear_local_cache" value="1" class="button"><?php echo esc_html__('Clear local cache', 'catalogue-image-studio'); ?></button>
-			<button type="submit" name="clear_local_cache" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Reset plugin local data', 'catalogue-image-studio'); ?></button>
+			<button type="submit" name="reset_local_data" value="1" class="button catalogue-image-studio-danger-link"><?php echo esc_html__('Reset plugin local data', 'catalogue-image-studio'); ?></button>
 		</details>
 		<?php
 	}
@@ -1219,7 +1234,7 @@ class Catalogue_Image_Studio_Admin {
 			<td><?php $this->render_thumbnail($before_url, __('Before', 'catalogue-image-studio')); ?></td>
 			<td><?php $this->render_thumbnail($processed_source, __('After', 'catalogue-image-studio')); ?></td>
 			<td><?php echo esc_html((string) $job['image_role']); ?> <?php echo 'gallery' === (string) $job['image_role'] ? esc_html('#' . ((int) $job['gallery_index'] + 1)) : ''; ?></td>
-			<td><span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html((string) $job['status']); ?></span><?php echo ! empty($job['error_message']) ? '<br /><small>' . esc_html((string) $job['error_message']) . '</small>' : ''; ?></td>
+			<td><span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html($this->format_status((string) $job['status'])); ?></span><?php echo ! empty($job['error_message']) ? '<br /><small>' . esc_html((string) $job['error_message']) . '</small>' : ''; ?></td>
 			<td><?php $this->render_seo_fields($job); ?></td>
 			<td>
 				<?php echo ! empty($job['error_message']) ? esc_html((string) $job['error_message']) : esc_html((string) ($job['updated_at'] ?? '')); ?>
@@ -1275,5 +1290,9 @@ class Catalogue_Image_Studio_Admin {
 			<img src="<?php echo esc_url($url); ?>" alt="<?php echo esc_attr($label); ?>" class="catalogue-image-studio-thumb" />
 		</a>
 		<?php
+	}
+
+	private function format_status(string $status): string {
+		return ucwords(str_replace('_', ' ', sanitize_key($status)));
 	}
 }
