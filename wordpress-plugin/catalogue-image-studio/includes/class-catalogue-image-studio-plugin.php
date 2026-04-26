@@ -60,6 +60,13 @@ class Catalogue_Image_Studio_Plugin {
 	private $media;
 
 	/**
+	 * SEO metadata generator.
+	 *
+	 * @var Catalogue_Image_Studio_SEO_Metadata_Generator
+	 */
+	private $seo_generator;
+
+	/**
 	 * Approval manager.
 	 *
 	 * @var Catalogue_Image_Studio_ApprovalManager
@@ -130,6 +137,11 @@ class Catalogue_Image_Studio_Plugin {
 			processed_attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			original_file_path text NULL,
 			processed_url text NULL,
+			processed_storage_bucket varchar(100) NULL,
+			processed_storage_path text NULL,
+			processed_mime_type varchar(100) NULL,
+			processed_width int(11) NOT NULL DEFAULT 0,
+			processed_height int(11) NOT NULL DEFAULT 0,
 			seo_filename text NULL,
 			seo_alt_text text NULL,
 			seo_title text NULL,
@@ -142,6 +154,7 @@ class Catalogue_Image_Studio_Plugin {
 			edge_to_edge_bottom tinyint(1) NOT NULL DEFAULT 0,
 			status varchar(20) NOT NULL DEFAULT 'unprocessed',
 			error_message longtext NULL,
+			approval_error longtext NULL,
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
 			scanned_at datetime NULL,
@@ -157,6 +170,31 @@ class Catalogue_Image_Studio_Plugin {
 		) {$charset_collate};";
 
 		dbDelta($sql);
+		self::ensure_job_table_columns($table);
+	}
+
+	private static function ensure_job_table_columns(string $table): void {
+		global $wpdb;
+
+		$columns = (array) $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+		$columns = array_map('strval', $columns);
+
+		$required = [
+			'processed_storage_bucket' => 'varchar(100) NULL',
+			'processed_storage_path'   => 'text NULL',
+			'processed_mime_type'      => 'varchar(100) NULL',
+			'processed_width'          => 'int(11) NOT NULL DEFAULT 0',
+			'processed_height'         => 'int(11) NOT NULL DEFAULT 0',
+			'approval_error'           => 'longtext NULL',
+		];
+
+		foreach ($required as $column => $definition) {
+			if (in_array($column, $columns, true)) {
+				continue;
+			}
+
+			$wpdb->query("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+		}
 	}
 
 	/**
@@ -173,9 +211,10 @@ class Catalogue_Image_Studio_Plugin {
 			(string) $settings['api_token'],
 			$this->logger
 		);
-		$this->media     = new Catalogue_Image_Studio_MediaManager($this->logger);
-		$this->approval  = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $settings, $this->logger);
-		$this->processor = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->logger);
+		$this->media         = new Catalogue_Image_Studio_MediaManager($this->logger);
+		$this->seo_generator = new Catalogue_Image_Studio_SEO_Metadata_Generator();
+		$this->approval      = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $settings, $this->logger);
+		$this->processor     = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->media, $this->seo_generator, $settings, $this->logger);
 	}
 
 	/**
@@ -337,6 +376,10 @@ class Catalogue_Image_Studio_Plugin {
 
 	public function media(): Catalogue_Image_Studio_MediaManager {
 		return $this->media;
+	}
+
+	public function seo_generator(): Catalogue_Image_Studio_SEO_Metadata_Generator {
+		return $this->seo_generator;
 	}
 
 	public function approval(): Catalogue_Image_Studio_ApprovalManager {

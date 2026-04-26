@@ -95,6 +95,7 @@ require_once CIS_PATH . 'includes/class-catalogue-image-studio-job-repository.ph
 require_once CIS_PATH . 'includes/class-catalogue-image-studio-saas-client.php';
 require_once CIS_PATH . 'includes/class-catalogue-image-studio-product-scanner.php';
 require_once CIS_PATH . 'includes/class-catalogue-image-studio-media-manager.php';
+require_once CIS_PATH . 'includes/class-catalogue-image-studio-seo-metadata-generator.php';
 require_once CIS_PATH . 'includes/class-catalogue-image-studio-approval-manager.php';
 require_once CIS_PATH . 'includes/class-catalogue-image-studio-image-processor.php';
 require_once CIS_PATH . 'includes/class-catalogue-image-studio-plugin.php';

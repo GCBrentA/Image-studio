@@ -32,7 +32,15 @@ class Catalogue_Image_Studio_MediaManager {
 		$tmp = download_url($processed_url, 60);
 
 		if (is_wp_error($tmp)) {
-			return $tmp;
+			$this->logger->error('Processed image download failed.', ['message' => $tmp->get_error_message()]);
+			return new WP_Error(
+				'catalogue_image_studio_processed_download_failed',
+				sprintf(
+					/* translators: %s: download error */
+					__('Processed image could not be found or downloaded. Reprocess this image. Details: %s', 'catalogue-image-studio'),
+					$tmp->get_error_message()
+				)
+			);
 		}
 
 		$source_post = $source_attachment_id ? get_post($source_attachment_id) : null;
@@ -53,7 +61,15 @@ class Catalogue_Image_Studio_MediaManager {
 
 		if (is_wp_error($attachment_id)) {
 			@unlink($tmp);
-			return $attachment_id;
+			$this->logger->error('Processed image media import failed.', ['message' => $attachment_id->get_error_message()]);
+			return new WP_Error(
+				'catalogue_image_studio_processed_import_failed',
+				sprintf(
+					/* translators: %s: import error */
+					__('Processed image could not be saved to the Media Library. Details: %s', 'catalogue-image-studio'),
+					$attachment_id->get_error_message()
+				)
+			);
 		}
 
 		if ($source_attachment_id) {
@@ -83,9 +99,10 @@ class Catalogue_Image_Studio_MediaManager {
 	 * @param array<string,string> $seo SEO metadata.
 	 * @param array<string,mixed>  $settings Settings.
 	 */
-	private function apply_seo_metadata(int $attachment_id, array $seo, array $settings): void {
+	public function apply_seo_metadata(int $attachment_id, array $seo, array $settings): void {
 		$only_fill_missing = ! empty($settings['only_fill_missing']);
 		$overwrite         = ! empty($settings['overwrite_existing_meta']);
+		$managed_attachment = '' !== (string) get_post_meta($attachment_id, '_catalogue_image_studio_original_attachment_id', true);
 
 		$post = get_post($attachment_id);
 
@@ -97,15 +114,15 @@ class Catalogue_Image_Studio_MediaManager {
 			'ID' => $attachment_id,
 		];
 
-		if (! empty($settings['generate_image_title']) && ! empty($seo['title']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_title))) {
+		if (! empty($settings['generate_image_title']) && ! empty($seo['title']) && ($managed_attachment || $overwrite || ! $only_fill_missing || '' === trim((string) $post->post_title))) {
 			$post_update['post_title'] = sanitize_text_field((string) $seo['title']);
 		}
 
-		if (! empty($seo['caption']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_excerpt))) {
+		if (! empty($settings['generate_caption']) && ! empty($seo['caption']) && ($managed_attachment || $overwrite || ! $only_fill_missing || '' === trim((string) $post->post_excerpt))) {
 			$post_update['post_excerpt'] = sanitize_text_field((string) $seo['caption']);
 		}
 
-		if (! empty($seo['description']) && ($overwrite || ! $only_fill_missing || '' === trim((string) $post->post_content))) {
+		if (! empty($settings['generate_description']) && ! empty($seo['description']) && ($managed_attachment || $overwrite || ! $only_fill_missing || '' === trim((string) $post->post_content))) {
 			$post_update['post_content'] = wp_kses_post((string) $seo['description']);
 		}
 
@@ -119,7 +136,7 @@ class Catalogue_Image_Studio_MediaManager {
 
 		$current_alt = get_post_meta($attachment_id, '_wp_attachment_image_alt', true);
 
-		if ($overwrite || ! $only_fill_missing || '' === trim((string) $current_alt)) {
+		if ($managed_attachment || $overwrite || ! $only_fill_missing || '' === trim((string) $current_alt)) {
 			update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field((string) $seo['alt_text']));
 		}
 	}

@@ -490,7 +490,7 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		if (empty($job_ids)) {
-			$this->add_error(__('Select at least one image.', 'catalogue-image-studio'));
+			$this->add_error('approve' === $action ? __('Select at least one image to approve.', 'catalogue-image-studio') : __('Select at least one image.', 'catalogue-image-studio'));
 			return;
 		}
 
@@ -537,6 +537,19 @@ class Catalogue_Image_Studio_Admin {
 				$this->add_error($result->get_error_message());
 			} else {
 				$success++;
+			}
+		}
+
+		if ($success > 0) {
+			if ('approve' === $action) {
+				$this->add_success(
+					sprintf(
+						/* translators: %d: approved images */
+						_n('%d image approved and applied.', '%d images approved and applied.', $success, 'catalogue-image-studio'),
+						$success
+					)
+				);
+				$success = 0;
 			}
 		}
 
@@ -672,6 +685,8 @@ class Catalogue_Image_Studio_Admin {
 				return $this->plugin->processor()->process($job_id, $this->get_processing_options_for_job($job_id));
 			case 'approve':
 				return $this->plugin->approval()->approve($job_id);
+			case 'regenerate_seo':
+				return $this->regenerate_job_seo($job_id);
 			case 'reject':
 				return $this->plugin->approval()->reject($job_id);
 			case 'revert':
@@ -679,6 +694,42 @@ class Catalogue_Image_Studio_Admin {
 			default:
 				return new WP_Error('catalogue_image_studio_unknown_action', __('Unknown action.', 'catalogue-image-studio'));
 		}
+	}
+
+	/**
+	 * @return true|\WP_Error
+	 */
+	private function regenerate_job_seo(int $job_id) {
+		$job = $this->plugin->jobs()->find($job_id);
+
+		if (! $job) {
+			return new WP_Error('catalogue_image_studio_missing_job', __('Job not found.', 'catalogue-image-studio'));
+		}
+
+		$processed_url = (string) ($job['processed_url'] ?? '');
+		$processed_filename = '' !== $processed_url ? (string) wp_basename((string) wp_parse_url($processed_url, PHP_URL_PATH)) : '';
+		$original_filename = (string) wp_basename((string) get_attached_file((int) ($job['attachment_id'] ?? 0)));
+		$seo = $this->plugin->seo_generator()->generate(
+			(int) ($job['product_id'] ?? 0),
+			(int) ($job['attachment_id'] ?? 0),
+			(string) ($job['image_role'] ?? 'featured'),
+			$original_filename,
+			$processed_filename,
+			$this->plugin->get_settings()
+		);
+
+		$this->plugin->jobs()->update(
+			$job_id,
+			[
+				'seo_filename'    => $seo['filename'],
+				'seo_alt_text'    => $seo['alt_text'],
+				'seo_title'       => $seo['title'],
+				'seo_caption'     => $seo['caption'],
+				'seo_description' => $seo['description'],
+			]
+		);
+
+		return true;
 	}
 
 	private function add_success(string $message): void {
@@ -1049,6 +1100,7 @@ class Catalogue_Image_Studio_Admin {
 						<option value="approve"><?php echo esc_html__('Approve all selected', 'catalogue-image-studio'); ?></option>
 						<option value="reject"><?php echo esc_html__('Reject selected', 'catalogue-image-studio'); ?></option>
 						<option value="retry"><?php echo esc_html__('Retry selected', 'catalogue-image-studio'); ?></option>
+						<option value="regenerate_seo"><?php echo esc_html__('Regenerate SEO selected', 'catalogue-image-studio'); ?></option>
 						<option value="revert"><?php echo esc_html__('Revert selected', 'catalogue-image-studio'); ?></option>
 					</select>
 					<button type="submit" class="button button-primary"><?php echo esc_html__('Apply', 'catalogue-image-studio'); ?></button>
@@ -2029,9 +2081,8 @@ class Catalogue_Image_Studio_Admin {
 	private function render_job_row(array $job, bool $selectable = true): void {
 		$product_id       = (int) ($job['product_id'] ?? 0);
 		$attachment_id    = (int) ($job['attachment_id'] ?? 0);
-		$processed_id     = (int) ($job['processed_attachment_id'] ?? 0);
 		$before_url       = $attachment_id ? wp_get_attachment_image_url($attachment_id, 'thumbnail') : '';
-		$processed_source = $processed_id ? wp_get_attachment_image_url($processed_id, 'thumbnail') : (string) ($job['processed_url'] ?? '');
+		$processed_links  = $this->get_processed_image_links($job);
 		$product_title    = $product_id ? get_the_title($product_id) : __('Unknown product', 'catalogue-image-studio');
 		?>
 		<tr>
@@ -2045,13 +2096,14 @@ class Catalogue_Image_Studio_Admin {
 				<a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'catalogue-image-studio'); ?></a>
 			</td>
 			<td><?php $this->render_thumbnail($before_url, __('Before', 'catalogue-image-studio')); ?></td>
-			<td><?php $this->render_thumbnail($processed_source, __('After', 'catalogue-image-studio')); ?></td>
+			<td><?php $this->render_after_thumbnail($processed_links, $job); ?></td>
 			<td><?php echo esc_html((string) $job['image_role']); ?> <?php echo 'gallery' === (string) $job['image_role'] ? esc_html('#' . ((int) $job['gallery_index'] + 1)) : ''; ?></td>
 			<td>
 				<span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html($this->format_status((string) $job['status'])); ?></span><?php echo ! empty($job['error_message']) ? '<br /><small>' . esc_html((string) $job['error_message']) . '</small>' : ''; ?>
 				<?php if (in_array((string) ($job['status'] ?? ''), ['queued', 'processing', 'failed', 'completed', 'rejected'], true)) : ?>
 					<?php $this->render_job_edge_controls($job); ?>
 				<?php endif; ?>
+				<?php $this->render_job_diagnostics($job); ?>
 			</td>
 			<td><?php $this->render_seo_fields($job); ?></td>
 			<td>
@@ -2129,6 +2181,98 @@ class Catalogue_Image_Studio_Admin {
 		<a href="<?php echo esc_url($url); ?>" target="_blank" rel="noopener noreferrer">
 			<img src="<?php echo esc_url($url); ?>" alt="<?php echo esc_attr($label); ?>" class="catalogue-image-studio-thumb" />
 		</a>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 * @return array{preview:string,full:string,source:string}
+	 */
+	private function get_processed_image_links(array $job): array {
+		$attachment_id = (int) ($job['processed_attachment_id'] ?? 0);
+
+		if ($attachment_id > 0 && get_post($attachment_id)) {
+			$preview = (string) wp_get_attachment_image_url($attachment_id, 'thumbnail');
+			$full    = (string) wp_get_attachment_url($attachment_id);
+
+			if ('' !== $preview && '' !== $full) {
+				return [
+					'preview' => $preview,
+					'full'    => $full,
+					'source'  => 'attachment',
+				];
+			}
+		}
+
+		$url = isset($job['processed_url']) ? trim((string) $job['processed_url']) : '';
+		if ('' !== $url && wp_http_validate_url($url)) {
+			return [
+				'preview' => esc_url_raw($url),
+				'full'    => esc_url_raw($url),
+				'source'  => 'remote',
+			];
+		}
+
+		return [
+			'preview' => '',
+			'full'    => '',
+			'source'  => 'missing',
+		];
+	}
+
+	/**
+	 * @param array{preview:string,full:string,source:string} $links Processed image links.
+	 * @param array<string,mixed>                             $job Job.
+	 */
+	private function render_after_thumbnail(array $links, array $job): void {
+		if ('' === $links['preview'] || '' === $links['full']) {
+			echo '<div class="catalogue-image-studio-missing-after">';
+			echo '<span>' . esc_html__('Processed image file missing', 'catalogue-image-studio') . '</span>';
+			echo '<small>' . esc_html__('Reprocess this image before approving.', 'catalogue-image-studio') . '</small>';
+			echo '<button type="submit" class="button button-small" name="catalogue_image_studio_action" value="retry" onclick="var box=this.closest(\'tr\').querySelector(\'.catalogue-image-studio-job-check\'); if (box) { box.checked = true; }">' . esc_html__('Reprocess', 'catalogue-image-studio') . '</button>';
+			echo '</div>';
+			return;
+		}
+
+		?>
+		<a href="<?php echo esc_url($links['full']); ?>" target="_blank" rel="noopener noreferrer" class="catalogue-image-studio-after-link">
+			<img src="<?php echo esc_url($links['preview']); ?>" alt="<?php echo esc_attr__('After', 'catalogue-image-studio'); ?>" class="catalogue-image-studio-thumb" onerror="this.closest('a').style.display='none'; var n=this.parentNode.parentNode.querySelector('.catalogue-image-studio-after-error'); if(n){n.hidden=false;}" />
+		</a>
+		<div class="catalogue-image-studio-missing-after catalogue-image-studio-after-error" hidden>
+			<span><?php echo esc_html__('Processed image could not be found', 'catalogue-image-studio'); ?></span>
+			<small><?php echo esc_html__('Reprocess this image before approving.', 'catalogue-image-studio'); ?></small>
+		</div>
+		<?php if ('remote' === $links['source']) : ?>
+			<small class="catalogue-image-studio-help"><?php echo esc_html__('Remote preview. Approving will import this file into Media Library.', 'catalogue-image-studio'); ?></small>
+		<?php endif; ?>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 */
+	private function render_job_diagnostics(array $job): void {
+		$rows = [
+			__('Job ID', 'catalogue-image-studio')                  => (string) ($job['id'] ?? ''),
+			__('Product ID', 'catalogue-image-studio')              => (string) ($job['product_id'] ?? ''),
+			__('Original attachment ID', 'catalogue-image-studio')  => (string) ($job['original_attachment_id'] ?? $job['attachment_id'] ?? ''),
+			__('Processed attachment ID', 'catalogue-image-studio') => (string) ($job['processed_attachment_id'] ?? ''),
+			__('Processed URL', 'catalogue-image-studio')           => (string) ($job['processed_url'] ?? ''),
+			__('Storage bucket', 'catalogue-image-studio')          => (string) ($job['processed_storage_bucket'] ?? ''),
+			__('Storage path', 'catalogue-image-studio')            => (string) ($job['processed_storage_path'] ?? ''),
+			__('Last processing error', 'catalogue-image-studio')   => (string) ($job['error_message'] ?? ''),
+			__('Last approval error', 'catalogue-image-studio')     => (string) ($job['approval_error'] ?? ''),
+		];
+		?>
+		<details class="optivra-job-diagnostics">
+			<summary><?php echo esc_html__('Technical details', 'catalogue-image-studio'); ?></summary>
+			<dl>
+				<?php foreach ($rows as $label => $value) : ?>
+					<dt><?php echo esc_html($label); ?></dt>
+					<dd><?php echo '' !== trim($value) ? esc_html($value) : esc_html__('Not stored', 'catalogue-image-studio'); ?></dd>
+				<?php endforeach; ?>
+			</dl>
+		</details>
 		<?php
 	}
 
