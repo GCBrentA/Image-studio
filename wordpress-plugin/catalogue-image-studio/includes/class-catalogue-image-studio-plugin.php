@@ -199,8 +199,15 @@ class Catalogue_Image_Studio_Plugin {
 				continue;
 			}
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Safe versioned migration for allowlisted custom table columns.
-			$wpdb->query($wpdb->prepare("ALTER TABLE %i ADD COLUMN {$column} {$definition}", $table));
+			$sql = sprintf(
+				'ALTER TABLE %%i ADD COLUMN `%s` %s',
+				esc_sql($column),
+				$definition
+			);
+			$prepared_sql = $wpdb->prepare($sql, $table);
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Column names and definitions are hardcoded allowlisted schema values, not user input.
+			$wpdb->query($prepared_sql);
 		}
 	}
 

@@ -583,21 +583,23 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by the calling admin action handler.
-		$seo_rows = wp_unslash($_POST['seo']);
+		$seo_rows = map_deep(wp_unslash($_POST['seo']), 'sanitize_text_field');
 
 		foreach ((array) $seo_rows as $job_id => $seo) {
+			$job_id = absint($job_id);
+
 			if (! is_array($seo)) {
 				continue;
 			}
 
 			$this->plugin->jobs()->update(
-				absint($job_id),
+				$job_id,
 				[
 					'seo_filename'    => isset($seo['filename']) ? sanitize_file_name((string) $seo['filename']) : '',
 					'seo_alt_text'    => isset($seo['alt_text']) ? sanitize_text_field((string) $seo['alt_text']) : '',
 					'seo_title'       => isset($seo['title']) ? sanitize_text_field((string) $seo['title']) : '',
 					'seo_caption'     => isset($seo['caption']) ? sanitize_text_field((string) $seo['caption']) : '',
-					'seo_description' => isset($seo['description']) ? wp_kses_post((string) $seo['description']) : '',
+					'seo_description' => isset($seo['description']) ? sanitize_textarea_field((string) $seo['description']) : '',
 				]
 			);
 		}
@@ -611,10 +613,12 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by the calling admin action handler.
-		$posted = wp_unslash($_POST['edge_overrides']);
+		$posted = map_deep(wp_unslash($_POST['edge_overrides']), 'sanitize_text_field');
 		$overrides = [];
 
 		foreach ((array) $posted as $job_id => $override) {
+			$job_id = absint($job_id);
+
 			if (! is_array($override)) {
 				continue;
 			}
@@ -624,7 +628,7 @@ class Catalogue_Image_Studio_Admin {
 			$top     = ! empty($override['top']);
 			$bottom  = ! empty($override['bottom']);
 
-			$overrides[absint($job_id)] = [
+			$overrides[$job_id] = [
 				'enabled' => ! empty($override['enabled']) || $left || $right || $top || $bottom,
 				'left'    => $left,
 				'right'   => $right,
@@ -669,7 +673,7 @@ class Catalogue_Image_Studio_Admin {
 	private function queue_selected_slots(): array {
 		// This helper is called only from handle_workflow_post(), after check_admin_referer() and manage_woocommerce checks.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by the calling admin action handler.
-		$slots   = isset($_POST['slots']) ? (array) wp_unslash($_POST['slots']) : [];
+		$slots   = isset($_POST['slots']) ? array_map('sanitize_text_field', (array) wp_unslash($_POST['slots'])) : [];
 		$job_ids = [];
 		$allowed_roles = ['featured', 'gallery', 'category'];
 

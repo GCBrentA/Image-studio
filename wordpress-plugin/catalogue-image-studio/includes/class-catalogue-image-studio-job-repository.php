@@ -37,18 +37,25 @@ class Catalogue_Image_Studio_Job_Repository {
 
 		$table = catalogue_image_studio_table_name();
 		$now   = current_time('mysql', true);
+		$cache_key = 'slot_' . md5(wp_json_encode([(int) $slot['product_id'], sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]));
+		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table query, safely prepared.
-		$existing = $wpdb->get_row(
-			$wpdb->prepare(
+		if (false !== $cached) {
+			$existing = is_array($cached) ? $cached : null;
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin queue table query, safely prepared and cached.
+			$existing = $wpdb->get_row(
+				$wpdb->prepare(
 				'SELECT * FROM %i WHERE product_id = %d AND image_role = %s AND gallery_index = %d LIMIT 1',
 				$table,
 				(int) $slot['product_id'],
 				(string) $slot['image_role'],
 				(int) $slot['gallery_index']
-			),
-			ARRAY_A
-		);
+				),
+				ARRAY_A
+			);
+			wp_cache_set($cache_key, $existing ?: [], 'optivra_image_studio_jobs', 300);
+		}
 
 		$data = [
 			'product_id'             => (int) $slot['product_id'],
@@ -66,7 +73,7 @@ class Catalogue_Image_Studio_Job_Repository {
 				$data['original_attachment_id'] = (int) $slot['attachment_id'];
 			}
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table update.
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin queue table update; cache invalidated immediately after.
 			$wpdb->update($table, $data, ['id' => (int) $existing['id']]);
 			$this->flush_cache();
 			return (int) $existing['id'];
@@ -81,7 +88,7 @@ class Catalogue_Image_Studio_Job_Repository {
 		$data['edge_to_edge_bottom']    = 0;
 		$data['created_at']             = $now;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table insert.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin queue table insert; cache invalidated immediately after.
 		$wpdb->insert($table, $data);
 		$this->flush_cache();
 
@@ -120,7 +127,14 @@ class Catalogue_Image_Studio_Job_Repository {
 		global $wpdb;
 
 		$table = catalogue_image_studio_table_name();
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table query, safely prepared.
+		$cache_key = 'slot_' . md5(wp_json_encode([(int) $slot['product_id'], sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]));
+		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
+
+		if (false !== $cached) {
+			return is_array($cached) ? $cached : null;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin queue table query, safely prepared and cached.
 		$job   = $wpdb->get_row(
 			$wpdb->prepare(
 				'SELECT * FROM %i WHERE product_id = %d AND image_role = %s AND gallery_index = %d LIMIT 1',
@@ -131,6 +145,7 @@ class Catalogue_Image_Studio_Job_Repository {
 			),
 			ARRAY_A
 		);
+		wp_cache_set($cache_key, $job ?: [], 'optivra_image_studio_jobs', 300);
 
 		return $job ?: null;
 	}
@@ -143,7 +158,7 @@ class Catalogue_Image_Studio_Job_Repository {
 		global $wpdb;
 
 		$data['updated_at'] = current_time('mysql', true);
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table update.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin queue table update; cache invalidated immediately after.
 		$wpdb->update(catalogue_image_studio_table_name(), $data, ['id' => $job_id]);
 		wp_cache_delete('job_' . absint($job_id), 'optivra_image_studio_jobs');
 		$this->flush_cache();
@@ -206,11 +221,14 @@ class Catalogue_Image_Studio_Job_Repository {
 			return is_array($cached) ? $cached : [];
 		}
 
+		// The dynamic WHERE list is composed only of fixed strings defined above; values are passed through prepare.
 		$sql = 'SELECT * FROM %i WHERE ' . implode(' AND ', $where) . ' ORDER BY updated_at DESC LIMIT %d OFFSET %d';
 		array_unshift($params, $table);
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- SQL fragments are fixed allowlisted WHERE clauses; values are prepared in $params.
+		$prepared_sql = $wpdb->prepare($sql, $params);
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table query, cached above.
-		$results = (array) $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.PreparedSQL.NotPrepared -- Custom plugin queue table query uses prepared SQL built immediately above and is cached.
+		$results = (array) $wpdb->get_results($prepared_sql, ARRAY_A);
 		wp_cache_set($cache_key, $results, 'optivra_image_studio_jobs', 300);
 
 		return $results;
@@ -262,9 +280,12 @@ class Catalogue_Image_Studio_Job_Repository {
 		$table        = catalogue_image_studio_table_name();
 		$placeholders = implode(',', array_fill(0, count($job_ids), '%d'));
 		$params       = array_merge([$table, sanitize_key($status), current_time('mysql', true)], $job_ids);
+		$query        = "UPDATE %i SET status = %s, updated_at = %s WHERE id IN ({$placeholders})";
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $placeholders is generated only from count($job_ids) and contains only %d placeholders; values are passed in $params.
+		$prepared_sql = $wpdb->prepare($query, $params);
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table bulk status update.
-		$updated = (int) $wpdb->query($wpdb->prepare("UPDATE %i SET status = %s, updated_at = %s WHERE id IN ({$placeholders})", $params));
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom plugin queue table bulk status update uses prepared SQL built immediately above; cache invalidated immediately after.
+		$updated = (int) $wpdb->query($prepared_sql);
 		$this->flush_cache();
 
 		return $updated;
@@ -278,7 +299,7 @@ class Catalogue_Image_Studio_Job_Repository {
 	public function delete_all(): void {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Support action for clearing the plugin's local queue table only.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Support action for clearing the plugin's local queue table only; cache flushed immediately after.
 		$wpdb->query($wpdb->prepare('DELETE FROM %i', catalogue_image_studio_table_name()));
 		$this->flush_cache();
 	}
