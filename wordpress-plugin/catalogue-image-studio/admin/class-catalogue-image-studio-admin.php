@@ -970,7 +970,7 @@ class Catalogue_Image_Studio_Admin {
 		$categories = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
 		?>
 		<form method="get" action="" class="catalogue-image-studio-filters">
-			<input type="hidden" name="page" value="catalogue-image-studio" />
+			<input type="hidden" name="page" value="optivra" />
 			<input type="hidden" name="cis_tab" value="scan" />
 			<label><span><?php echo esc_html__('Category', 'optivra'); ?></span><select name="filter_category"><option value="0"><?php echo esc_html__('All categories', 'optivra'); ?></option><?php if (! is_wp_error($categories)) : foreach ($categories as $category) : ?><option value="<?php echo esc_attr((string) $category->term_id); ?>" <?php selected((int) ($filters['category'] ?? 0), (int) $category->term_id); ?>><?php echo esc_html($category->name); ?></option><?php endforeach; endif; ?></select></label>
 			<label><span><?php echo esc_html__('Product status', 'optivra'); ?></span><select name="filter_product_status"><option value="publish" <?php selected('publish', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Published', 'optivra'); ?></option><option value="draft" <?php selected('draft', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Draft', 'optivra'); ?></option><option value="private" <?php selected('private', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Private', 'optivra'); ?></option><option value="all" <?php selected('all', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('All', 'optivra'); ?></option></select></label>
@@ -2277,12 +2277,8 @@ class Catalogue_Image_Studio_Admin {
 
 		?>
 		<a href="<?php echo esc_url($links['full']); ?>" target="_blank" rel="noopener noreferrer" class="catalogue-image-studio-after-link">
-			<img src="<?php echo esc_url($links['preview']); ?>" alt="<?php echo esc_attr__('After', 'optivra'); ?>" class="catalogue-image-studio-thumb" onerror="this.closest('a').style.display='none'; var n=this.parentNode.parentNode.querySelector('.catalogue-image-studio-after-error'); if(n){n.hidden=false;}" />
+			<img src="<?php echo esc_url($links['preview']); ?>" alt="<?php echo esc_attr__('After', 'optivra'); ?>" class="catalogue-image-studio-thumb" />
 		</a>
-		<div class="catalogue-image-studio-missing-after catalogue-image-studio-after-error" hidden>
-			<span><?php echo esc_html__('Processed image could not be found', 'optivra'); ?></span>
-			<small><?php echo esc_html__('Reprocess this image before approving.', 'optivra'); ?></small>
-		</div>
 		<?php if ('remote' === $links['source']) : ?>
 			<small class="catalogue-image-studio-help"><?php echo esc_html__('Remote preview. Approving will import this file into Media Library.', 'optivra'); ?></small>
 		<?php endif; ?>
