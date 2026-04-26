@@ -50,14 +50,15 @@ class Catalogue_Image_Studio_ApprovalManager {
 		}
 
 		if (! $processed_attachment_id) {
-			if (empty($job['processed_url']) || ! wp_http_validate_url((string) $job['processed_url'])) {
+			$processed_url = $this->normalize_supabase_storage_url((string) ($job['processed_url'] ?? ''));
+			if ('' === $processed_url || ! wp_http_validate_url($processed_url)) {
 				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image missing. Reprocess before approving.', 'optivra'));
 				$this->mark_approval_error((int) $job_id, $error);
 				return $error;
 			}
 
 			$processed_attachment_id = $this->media->sideload_processed_image(
-				(string) $job['processed_url'],
+				$processed_url,
 				(int) $job['product_id'],
 				(int) $job['attachment_id'],
 				$this->get_seo_from_job($job),
@@ -229,5 +230,19 @@ class Catalogue_Image_Studio_ApprovalManager {
 				'message' => $error->get_error_message(),
 			]
 		);
+	}
+
+	private function normalize_supabase_storage_url(string $url): string {
+		$url = html_entity_decode(trim($url), ENT_QUOTES, 'UTF-8');
+
+		if (false !== strpos($url, '.supabase.co/object/sign/')) {
+			$url = str_replace('.supabase.co/object/sign/', '.supabase.co/storage/v1/object/sign/', $url);
+		}
+
+		if (false !== strpos($url, '.supabase.co/object/public/')) {
+			$url = str_replace('.supabase.co/object/public/', '.supabase.co/storage/v1/object/public/', $url);
+		}
+
+		return $url;
 	}
 }

@@ -180,12 +180,27 @@ class Catalogue_Image_Studio_ImageProcessor {
 	 */
 	private function get_processed_url(array $processed): string {
 		$url = isset($processed['processed_url']) && is_string($processed['processed_url']) ? trim($processed['processed_url']) : '';
+		$url = $this->normalize_supabase_storage_url($url);
 
 		if ('' === $url || ! wp_http_validate_url($url)) {
 			return '';
 		}
 
 		return esc_url_raw($url);
+	}
+
+	private function normalize_supabase_storage_url(string $url): string {
+		$url = html_entity_decode(trim($url), ENT_QUOTES, 'UTF-8');
+
+		if (false !== strpos($url, '.supabase.co/object/sign/')) {
+			$url = str_replace('.supabase.co/object/sign/', '.supabase.co/storage/v1/object/sign/', $url);
+		}
+
+		if (false !== strpos($url, '.supabase.co/object/public/')) {
+			$url = str_replace('.supabase.co/object/public/', '.supabase.co/storage/v1/object/public/', $url);
+		}
+
+		return $url;
 	}
 
 	/**

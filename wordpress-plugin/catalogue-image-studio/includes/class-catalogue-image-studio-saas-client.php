@@ -95,7 +95,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		if (! empty($decoded['processed_url']) && is_string($decoded['processed_url'])) {
-			$decoded['processed_url'] = html_entity_decode($decoded['processed_url'], ENT_QUOTES, 'UTF-8');
+			$decoded['processed_url'] = $this->normalize_processed_url($decoded['processed_url']);
 		}
 
 		return $decoded;
@@ -167,5 +167,19 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		return $fallback;
+	}
+
+	private function normalize_processed_url(string $url): string {
+		$url = html_entity_decode(trim($url), ENT_QUOTES, 'UTF-8');
+
+		if (false !== strpos($url, '.supabase.co/object/sign/')) {
+			$url = str_replace('.supabase.co/object/sign/', '.supabase.co/storage/v1/object/sign/', $url);
+		}
+
+		if (false !== strpos($url, '.supabase.co/object/public/')) {
+			$url = str_replace('.supabase.co/object/public/', '.supabase.co/storage/v1/object/public/', $url);
+		}
+
+		return esc_url_raw($url);
 	}
 }

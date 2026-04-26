@@ -271,7 +271,14 @@ export const createStorageSignedUrl = async ({
     throw new Error(`Supabase Storage signed URL failed for ${safeBucket}/${objectPath}: No URL returned`);
   }
 
-  return signedPath.startsWith("http")
-    ? signedPath
-    : `${getSupabaseStorageBaseUrl()}${signedPath.startsWith("/") ? signedPath : `/${signedPath}`}`;
+  if (signedPath.startsWith("http")) {
+    return signedPath;
+  }
+
+  const normalizedSignedPath = signedPath.startsWith("/") ? signedPath : `/${signedPath}`;
+  const storagePath = normalizedSignedPath.startsWith("/storage/v1/")
+    ? normalizedSignedPath
+    : `/storage/v1${normalizedSignedPath}`;
+
+  return `${getSupabaseStorageBaseUrl()}${storagePath}`;
 };
