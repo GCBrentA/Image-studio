@@ -196,28 +196,38 @@ document.addEventListener("click", async (event) => {
   const planButton = event.target.closest("[data-plan]");
   const packButton = event.target.closest("[data-pack]");
   if (planButton) {
-    await checkout({ type: "subscription", plan: planButton.dataset.plan });
+    event.preventDefault();
+    await checkout({ type: "subscription", plan: planButton.dataset.plan }, planButton);
+    return;
   }
   if (packButton) {
+    event.preventDefault();
     await creditCheckout(packButton.dataset.pack, packButton);
   }
 });
 
-async function checkout(payload) {
-  if (!token()) {
-    history.pushState({}, "", "/login");
-    routeTo("/login");
-    return;
-  }
-  const body = await api("/api/billing/create-checkout-session", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-  location.href = body.url;
+function checkoutMessageNode(button) {
+  return document.getElementById("billing-message")
+    || document.getElementById("pricing-message")
+    || button?.closest(".dash-panel, .page-band")?.querySelector(".form-message")
+    || null;
 }
 
-async function creditCheckout(pack, button) {
+function showCheckoutMessage(button, message) {
+  const node = checkoutMessageNode(button);
+  if (node) {
+    node.textContent = message;
+    return;
+  }
+
+  if (message) {
+    alert(message);
+  }
+}
+
+async function checkout(payload, button) {
   if (!token()) {
+    showCheckoutMessage(button, "Login or create an account before opening checkout.");
     history.pushState({}, "", "/login");
     routeTo("/login");
     return;
@@ -229,17 +239,44 @@ async function creditCheckout(pack, button) {
       button.disabled = true;
       button.textContent = "Opening checkout...";
     }
-    setText("billing-message", "");
+    showCheckoutMessage(button, "");
+    const body = await api("/api/billing/create-checkout-session", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    location.href = body.url;
+  } catch (error) {
+    showCheckoutMessage(button, error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+async function creditCheckout(pack, button) {
+  if (!token()) {
+    showCheckoutMessage(button, "Login or create an account before buying credits.");
+    history.pushState({}, "", "/login");
+    routeTo("/login");
+    return;
+  }
+
+  const originalText = button?.textContent;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Opening checkout...";
+    }
+    showCheckoutMessage(button, "");
     const body = await api("/api/billing/create-credit-checkout-session", {
       method: "POST",
       body: JSON.stringify({ pack })
     });
     location.href = body.url;
   } catch (error) {
-    setText("billing-message", error.message);
-    if (!document.getElementById("billing-message")) {
-      alert(error.message);
-    }
+    showCheckoutMessage(button, error.message);
   } finally {
     if (button) {
       button.disabled = false;

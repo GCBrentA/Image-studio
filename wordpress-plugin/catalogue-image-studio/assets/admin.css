@@ -589,6 +589,10 @@
 	color: var(--cis-danger);
 }
 
+.catalogue-image-studio-admin [hidden] {
+	display: none !important;
+}
+
 .catalogue-image-studio-admin .catalogue-image-studio-after-pending {
 	display: grid;
 	gap: 6px;
