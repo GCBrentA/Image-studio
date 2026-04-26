@@ -199,12 +199,15 @@ class Catalogue_Image_Studio_Plugin {
 				continue;
 			}
 
-			$sql = sprintf(
-				'ALTER TABLE %%i ADD COLUMN `%s` %s',
-				esc_sql($column),
-				$definition
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Column names and definitions are hardcoded allowlisted schema values, not user input.
+			$prepared_sql = $wpdb->prepare(
+				sprintf(
+					'ALTER TABLE %%i ADD COLUMN `%s` %s',
+					esc_sql($column),
+					$definition
+				),
+				$table
 			);
-			$prepared_sql = $wpdb->prepare($sql, $table);
 
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Column names and definitions are hardcoded allowlisted schema values, not user input.
 			$wpdb->query($prepared_sql);

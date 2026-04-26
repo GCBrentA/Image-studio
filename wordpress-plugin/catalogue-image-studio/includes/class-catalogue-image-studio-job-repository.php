@@ -280,11 +280,11 @@ class Catalogue_Image_Studio_Job_Repository {
 		$table        = catalogue_image_studio_table_name();
 		$placeholders = implode(',', array_fill(0, count($job_ids), '%d'));
 		$params       = array_merge([$table, sanitize_key($status), current_time('mysql', true)], $job_ids);
-		$query        = "UPDATE %i SET status = %s, updated_at = %s WHERE id IN ({$placeholders})";
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $placeholders is generated only from count($job_ids) and contains only %d placeholders; values are passed in $params.
-		$prepared_sql = $wpdb->prepare($query, $params);
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom plugin queue table bulk status update uses prepared SQL built immediately above; cache invalidated immediately after.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $placeholders is generated only from count($job_ids) and contains only %d placeholders; values are passed in $params.
+		$prepared_sql = $wpdb->prepare("UPDATE %i SET status = %s, updated_at = %s WHERE id IN ({$placeholders})", $params);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Custom plugin queue table bulk status update uses prepared SQL built immediately above; cache invalidated immediately after.
 		$updated = (int) $wpdb->query($prepared_sql);
 		$this->flush_cache();
 

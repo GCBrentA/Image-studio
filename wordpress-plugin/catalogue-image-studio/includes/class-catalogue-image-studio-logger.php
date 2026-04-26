@@ -52,7 +52,5 @@ class Catalogue_Image_Studio_Logger {
 			);
 			return;
 		}
-
-		do_action('optivra_image_studio_for_woocommerce_log', $level, $message, $context);
 	}
 }
