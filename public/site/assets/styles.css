@@ -95,21 +95,13 @@ a { color: inherit; }
 .hero-image {
   display: block;
   width: 100%;
-  height: auto;
   min-height: calc(100vh - 72px);
+  height: auto;
   object-fit: cover;
   object-position: center top;
 }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.visually-hidden {
+  display: none !important;
 }
 .hero-content {
   position: relative;
@@ -577,5 +569,13 @@ pre {
   .docs-toc {
     position: static;
     max-height: none;
+  }
+}
+@media (min-aspect-ratio: 3 / 2) {
+  .hero-page {
+    height: calc(100vh - 72px);
+  }
+  .hero-image {
+    height: 100%;
   }
 }
