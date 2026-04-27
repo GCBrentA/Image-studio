@@ -171,47 +171,6 @@ class Catalogue_Image_Studio_Plugin {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- dbDelta is required for the plugin's custom queue table.
 		dbDelta($sql);
-		self::ensure_job_table_columns($table);
-	}
-
-	private static function ensure_job_table_columns(string $table): void {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Schema introspection for custom table migration.
-		$columns = (array) $wpdb->get_col($wpdb->prepare('SHOW COLUMNS FROM %i', $table), 0);
-		$columns = array_map('strval', $columns);
-
-		$required = [
-			'processed_storage_bucket' => 'varchar(100) NULL',
-			'processed_storage_path'   => 'text NULL',
-			'processed_mime_type'      => 'varchar(100) NULL',
-			'processed_width'          => 'int(11) NOT NULL DEFAULT 0',
-			'processed_height'         => 'int(11) NOT NULL DEFAULT 0',
-			'approval_error'           => 'longtext NULL',
-		];
-
-		foreach ($required as $column => $definition) {
-			if (in_array($column, $columns, true)) {
-				continue;
-			}
-
-			if (! isset($required[$column]) ) {
-				continue;
-			}
-
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Column names and definitions are hardcoded allowlisted schema values, not user input.
-			$prepared_sql = $wpdb->prepare(
-				sprintf(
-					'ALTER TABLE %%i ADD COLUMN `%s` %s',
-					esc_sql($column),
-					$definition
-				),
-				$table
-			);
-
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Column names and definitions are hardcoded allowlisted schema values, not user input.
-			$wpdb->query($prepared_sql);
-		}
 	}
 
 	/**
