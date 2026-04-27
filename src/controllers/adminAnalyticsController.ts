@@ -5,16 +5,30 @@ import {
   getPluginAnalyticsOverview,
   getPluginAnalyticsSeries,
   getPluginAnalyticsStoreDetail,
-  getPluginAnalyticsStores
+  getPluginAnalyticsStores,
+  getPluginAnalyticsTrends
 } from "../services/adminAnalyticsService";
+
+const parseRangeDays = (value: unknown, fallback = 7): number => {
+  const parsed = Number(value);
+  if ([7, 30, 90].includes(parsed)) {
+    return parsed;
+  }
+  if (String(value) === "all") {
+    return 0;
+  }
+  return fallback;
+};
 
 export const getAdminPluginAnalyticsOverview = async (
   _request: InternalAdminRequest,
   response: Response
 ): Promise<void> => {
+  const days = parseRangeDays(_request.query.range, 7);
   response.status(200).json({
-    overview: await getPluginAnalyticsOverview(),
-    event_counts_30d: await getPluginAnalyticsSeries()
+    overview: await getPluginAnalyticsOverview(days),
+    event_counts_30d: await getPluginAnalyticsSeries(days),
+    trends: await getPluginAnalyticsTrends(days)
   });
 };
 

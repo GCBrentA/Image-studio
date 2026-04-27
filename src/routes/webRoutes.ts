@@ -144,15 +144,24 @@ const blogTitles: Record<string, string> = {
   "ai-product-photography-for-woocommerce-stores": "AI Product Photography for WooCommerce Stores"
 };
 
+const blogDescriptions: Record<string, string> = {
+  "how-to-optimise-woocommerce-product-images-for-seo": "Learn how to optimise WooCommerce product images with better filenames, alt text, image sizes, backgrounds, compression, and metadata.",
+  "woocommerce-product-image-seo-checklist": "Use this WooCommerce product image SEO checklist before publishing product images in your store.",
+  "how-to-write-alt-text-for-woocommerce-product-images": "Write useful WooCommerce product image alt text that supports accessibility, product context, and search relevance.",
+  "how-to-replace-product-image-backgrounds-in-woocommerce": "Compare background replacement options for WooCommerce product images and learn how to review changes safely.",
+  "ai-product-photography-for-woocommerce-stores": "Learn how AI product photography tools can help WooCommerce stores improve product images, backgrounds, metadata, and catalogue consistency."
+};
+
 const metaForPath = (requestPath: string): PageMeta => {
   const normalizedPath = requestPath === "/catalogue-image-studio" ? "/optivra-image-studio" : requestPath;
   const blogSlug = normalizedPath.startsWith("/blog/") ? normalizedPath.replace("/blog/", "") : "";
 
   if (blogSlug && blogTitles[blogSlug]) {
     const title = `${blogTitles[blogSlug]} | Optivra`;
+    const description = blogDescriptions[blogSlug];
     return {
       title,
-      description: `${blogTitles[blogSlug]} with practical WooCommerce image SEO guidance and links to Optivra Image Studio.`,
+      description,
       canonicalPath: `/blog/${blogSlug}`,
       type: "article",
       jsonLd: [
@@ -160,7 +169,7 @@ const metaForPath = (requestPath: string): PageMeta => {
           "@context": "https://schema.org",
           "@type": "Article",
           headline: blogTitles[blogSlug],
-          description: `${blogTitles[blogSlug]} for WooCommerce store owners.`,
+          description,
           author: {
             "@type": "Organization",
             name: "Optivra"
@@ -232,8 +241,8 @@ const metaForPath = (requestPath: string): PageMeta => {
       type: "article"
     },
     "/blog": {
-      title: "WooCommerce Image SEO Blog | Optivra",
-      description: "Guides for WooCommerce product image SEO, background replacement, alt text, metadata, and AI product photography.",
+      title: "WooCommerce Product Image Optimisation Blog | Optivra",
+      description: "Practical guides for improving WooCommerce product photography, image SEO, backgrounds, metadata, and catalogue workflows.",
       canonicalPath: "/blog"
     },
     "/support": {

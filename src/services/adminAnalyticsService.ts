@@ -9,6 +9,13 @@ const sinceDays = (days: number): Date => {
   return date;
 };
 
+const rangeToSince = (days = 7): Date | undefined => {
+  if (!Number.isFinite(days) || days <= 0) {
+    return undefined;
+  }
+  return sinceDays(days);
+};
+
 const planMrr: Record<string, number> = {
   starter: 19,
   growth: 69,
@@ -20,59 +27,57 @@ const mrrForPlan = (plan?: string | null): number => (plan ? planMrr[plan] ?? 0 
 
 const asIso = (value?: Date | null): string | null => value?.toISOString() ?? null;
 
-export const getPluginAnalyticsOverview = async () => {
-  const last7 = sinceDays(7);
+export const getPluginAnalyticsOverview = async (days = 7) => {
+  const since = rangeToSince(days);
+  const whereDate = since ? { gte: since } : undefined;
 
   const [
     connectedStores,
-    activeStores7d,
-    newStores7d,
-    processedEvents7d,
-    failedEvents7d,
-    approvedEvents7d,
-    creditsUsed7d,
+    activeStores,
+    newStores,
+    processedImages,
+    completedJobs,
+    attemptedJobs,
+    failedJobs,
+    approvedEvents,
+    creditsUsed,
     activeSubscriptions,
     subscriptions
   ] = await Promise.all([
     prisma.connectedSite.count(),
     prisma.connectedSite.count({
-      where: {
-        last_seen_at: {
-          gte: last7
-        }
-      }
+      where: whereDate ? { last_seen_at: whereDate } : {}
     }),
     prisma.connectedSite.count({
+      where: whereDate ? { first_connected_at: whereDate } : {}
+    }),
+    prisma.processedImage.count({
+      where: whereDate ? { created_at: whereDate } : {}
+    }),
+    prisma.imageJob.count({
       where: {
-        first_connected_at: {
-          gte: last7
-        }
+        status: ImageJobStatus.completed,
+        ...(whereDate ? { updated_at: whereDate } : {})
       }
     }),
-    prisma.pluginEvent.count({
+    prisma.imageJob.count({
       where: {
-        event_type: "processing_completed",
-        created_at: {
-          gte: last7
-        }
-      }
-    }),
-    prisma.pluginEvent.count({
-      where: {
-        event_type: {
-          in: ["processing_failed", "preview_failed"]
+        status: {
+          in: [ImageJobStatus.processing, ImageJobStatus.completed, ImageJobStatus.failed]
         },
-        created_at: {
-          gte: last7
-        }
+        ...(whereDate ? { updated_at: whereDate } : {})
+      }
+    }),
+    prisma.imageJob.count({
+      where: {
+        status: ImageJobStatus.failed,
+        ...(whereDate ? { updated_at: whereDate } : {})
       }
     }),
     prisma.pluginEvent.count({
       where: {
         event_type: "image_approved",
-        created_at: {
-          gte: last7
-        }
+        ...(whereDate ? { created_at: whereDate } : {})
       }
     }),
     prisma.creditLedger.aggregate({
@@ -80,9 +85,7 @@ export const getPluginAnalyticsOverview = async () => {
         amount: {
           lt: 0
         },
-        createdAt: {
-          gte: last7
-        }
+        ...(whereDate ? { createdAt: whereDate } : {})
       },
       _sum: {
         amount: true
@@ -90,47 +93,57 @@ export const getPluginAnalyticsOverview = async () => {
     }),
     prisma.subscription.count({
       where: {
-        status: SubscriptionStatus.active
+        status: {
+          in: [SubscriptionStatus.active, SubscriptionStatus.trialing]
+        }
       }
     }),
     prisma.subscription.findMany({
       where: {
-        status: SubscriptionStatus.active
+        status: {
+          in: [SubscriptionStatus.active, SubscriptionStatus.trialing]
+        }
       },
       select: {
-        plan: true
+        plan: true,
+        cancel_at_period_end: true
       }
     })
   ]);
 
-  const totalAttempts7d = processedEvents7d + failedEvents7d;
+  const imagesProcessed = Math.max(processedImages, completedJobs);
   const mrr = subscriptions.reduce((total, subscription) => total + mrrForPlan(subscription.plan), 0);
 
   return {
     cards: {
       connected_stores: connectedStores,
-      active_stores_7d: activeStores7d,
-      new_stores_7d: newStores7d,
-      images_processed_7d: processedEvents7d,
-      credits_consumed_7d: Math.abs(creditsUsed7d._sum.amount ?? 0),
-      processing_failure_rate: totalAttempts7d > 0 ? failedEvents7d / totalAttempts7d : 0,
-      approval_rate: processedEvents7d > 0 ? approvedEvents7d / processedEvents7d : 0,
+      active_stores: activeStores,
+      new_stores: newStores,
+      images_processed: imagesProcessed,
+      credits_consumed: Math.abs(creditsUsed._sum.amount ?? 0),
+      processing_failure_rate: attemptedJobs > 0 ? failedJobs / attemptedJobs : 0,
+      processing_attempts: attemptedJobs,
+      approval_rate: imagesProcessed > 0 ? approvedEvents / imagesProcessed : 0,
+      approved_images: approvedEvents,
       active_subscriptions: activeSubscriptions,
       mrr_usd: mrr
+    },
+    range_days: days,
+    empty_states: {
+      images_processed: imagesProcessed === 0 ? "No processed images in this period." : null,
+      processing_failure_rate: attemptedJobs === 0 ? "No processing attempts in this period." : null,
+      approval_rate: imagesProcessed === 0 ? "No processed images approved yet." : null,
+      active_subscriptions: activeSubscriptions === 0 ? "No active paid subscriptions yet." : null
     },
     app_base_url: env.publicBaseUrl
   };
 };
 
-export const getPluginAnalyticsSeries = async () => {
-  const last30 = sinceDays(30);
+export const getPluginAnalyticsSeries = async (days = 30) => {
+  const since = rangeToSince(days);
   const events = await prisma.pluginEvent.groupBy({
     by: ["event_type"],
-    where: {
-      created_at: {
-        gte: last30
-      }
-    },
+    where: since ? { created_at: { gte: since } } : {},
     _count: {
       _all: true
     }
@@ -140,6 +153,62 @@ export const getPluginAnalyticsSeries = async () => {
     event_type: event.event_type,
     count: event._count._all
   }));
+};
+
+export const getPluginAnalyticsTrends = async (days = 30) => {
+  const since = rangeToSince(days);
+  const [processed, approved, failed, credits] = await Promise.all([
+    prisma.processedImage.groupBy({
+      by: ["created_at"],
+      where: since ? { created_at: { gte: since } } : {},
+      _count: { _all: true }
+    }),
+    prisma.pluginEvent.findMany({
+      where: {
+        event_type: "image_approved",
+        ...(since ? { created_at: { gte: since } } : {})
+      },
+      select: { created_at: true }
+    }),
+    prisma.imageJob.findMany({
+      where: {
+        status: ImageJobStatus.failed,
+        ...(since ? { updated_at: { gte: since } } : {})
+      },
+      select: { updated_at: true }
+    }),
+    prisma.creditLedger.findMany({
+      where: since ? { createdAt: { gte: since } } : {},
+      select: { createdAt: true, amount: true, source: true }
+    })
+  ]);
+
+  type TrendRow = {
+    date: string;
+    processed: number;
+    approved: number;
+    failed: number;
+    credits_consumed: number;
+    credits_added: number;
+  };
+  const bucket = new Map<string, TrendRow>();
+  const dayKey = (date: Date) => date.toISOString().slice(0, 10);
+  const add = (date: Date, key: keyof Omit<TrendRow, "date">, amount = 1) => {
+    const day = dayKey(date);
+    const row = bucket.get(day) ?? { date: day, processed: 0, approved: 0, failed: 0, credits_consumed: 0, credits_added: 0 };
+    row[key] = (row[key] ?? 0) + amount;
+    bucket.set(day, row);
+  };
+
+  processed.forEach((row) => add(row.created_at, "processed", row._count._all));
+  approved.forEach((row) => add(row.created_at, "approved"));
+  failed.forEach((row) => add(row.updated_at, "failed"));
+  credits.forEach((row) => {
+    if (row.amount < 0) add(row.createdAt, "credits_consumed", Math.abs(row.amount));
+    if (row.amount > 0) add(row.createdAt, "credits_added", row.amount);
+  });
+
+  return Array.from(bucket.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 };
 
 export const getPluginAnalyticsStores = async () => {

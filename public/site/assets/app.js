@@ -13,6 +13,109 @@ const pluginRelease = {
   wordpressOrgStatus: "WordPress.org review pending",
   updatedAt: "2026-04-27"
 };
+const blogArticles = [
+  {
+    slug: "how-to-optimise-woocommerce-product-images-for-seo",
+    title: "How to Optimise WooCommerce Product Images for SEO",
+    tag: "WooCommerce image SEO",
+    date: "Guide",
+    readTime: "8 min read",
+    excerpt: "Learn how better filenames, alt text, backgrounds, compression, dimensions, and review workflows improve WooCommerce product image SEO.",
+    meta: "Learn how to optimise WooCommerce product images with better filenames, alt text, image sizes, backgrounds, compression, and metadata.",
+    sections: [
+      ["Why product image SEO matters for WooCommerce", "Product images do more than make a product page look good. They help shoppers understand the item, support accessibility, influence page speed, and give search engines extra context about what you sell. In WooCommerce, weak image metadata often comes from exported camera names, repeated alt text, inconsistent backgrounds, and images uploaded quickly without a review step."],
+      ["Use descriptive image filenames", "Rename files before publishing or approval. A useful filename should describe the product and category in plain language. Bad filename: photoroom-20251212-154642-scaled.webp. Good filename: hi-capa-holster-gel-blaster-accessory.webp. Keep filenames lowercase, hyphen-separated, and focused on the product rather than the editing app."],
+      ["Write helpful alt text", "Alt text should describe the product naturally. Avoid generic text such as Product image. A stronger example is: Hi Capa holster for gel blaster pistols shown as a black tactical sidearm accessory. Include the product name where it helps, but do not stuff keywords."],
+      ["Use consistent image backgrounds", "Consistent backgrounds make catalogue pages easier to scan and compare. White and soft grey backgrounds work well for marketplaces and clean ecommerce layouts. Branded backgrounds can work for specialist stores, but they should not overpower the product."],
+      ["Compress images without ruining quality", "Large image files slow product pages. Use WebP where possible, keep a high-quality master image, and compress the final image for web delivery. Aim for clear product detail without oversized files."],
+      ["Use the right image dimensions", "Square images are common for catalogue grids, but the product should not be shrunk too far. Keep enough padding for normal products and use intentional edge-to-edge framing only where the product shape needs it."],
+      ["Add useful titles, captions, and descriptions", "Attachment titles and captions should be product-specific. Use categories, tags, SKU, colour, material, size, compatibility, or brand when they genuinely help shoppers understand the product."],
+      ["Keep metadata connected to product data", "The best image SEO comes from the WooCommerce product itself: title, category, tags, attributes, SKU, and brand. Metadata based only on old filenames rarely helps search or accessibility."],
+      ["Create a review workflow before publishing", "Before replacing a featured or gallery image, compare the before and after result, review generated SEO metadata, and approve only when the image is correct. This avoids accidental overwrites and keeps the catalogue trustworthy."],
+      ["How Optivra Image Studio helps", "Optivra Image Studio scans WooCommerce product images, queues selected images, generates improved product visuals, suggests product-aware metadata, and lets store owners review before approving replacements."]
+    ],
+    checklist: ["Use product-specific filenames", "Write natural alt text", "Keep backgrounds consistent", "Compress final images", "Review before publishing"]
+  },
+  {
+    slug: "woocommerce-product-image-seo-checklist",
+    title: "WooCommerce Product Image SEO Checklist",
+    tag: "Checklist",
+    date: "Guide",
+    readTime: "7 min read",
+    excerpt: "A practical checklist for WooCommerce product image filenames, alt text, compression, backgrounds, accessibility, and review.",
+    meta: "Use this WooCommerce product image SEO checklist before publishing product images in your store.",
+    sections: [
+      ["Before uploading product images", "Start with a clear product photo, a sensible crop, and enough resolution for zoom or large product views. Avoid uploading duplicates, screenshots, or exports with random names."],
+      ["Filename checklist", "Use lowercase words separated by hyphens. Include the product name and useful category context. Remove dates, camera names, editing app names, and random numeric strings unless they are part of the product model."],
+      ["Alt text checklist", "Describe the product for someone who cannot see the image. Mention colour, product type, angle, or key visible detail when useful. Do not repeat the same phrase on every gallery image."],
+      ["Image size and compression checklist", "Use WebP where suitable, keep dimensions consistent, and compress images enough for fast loading without making product detail blurry."],
+      ["Background consistency checklist", "Use the same background style across related products. Check cutout edges, shadows, and lighting so the image does not look artificial."],
+      ["Product gallery checklist", "Featured images should identify the product quickly. Gallery images can show angles, scale, packaging, compatibility, or detail shots."],
+      ["Accessibility checklist", "Alt text should support accessibility first. Do not hide important product information in the image only; include key details in visible product copy as well."],
+      ["Review before publishing", "Compare before and after images, check metadata, confirm the correct product image slot, and approve a small batch before bulk changes."]
+    ],
+    checklist: ["Filename is descriptive", "Alt text is useful", "Image is compressed", "Background is consistent", "Metadata reviewed"]
+  },
+  {
+    slug: "how-to-write-alt-text-for-woocommerce-product-images",
+    title: "How to Write Alt Text for WooCommerce Product Images",
+    tag: "Alt text",
+    date: "Guide",
+    readTime: "6 min read",
+    excerpt: "Write WooCommerce product image alt text that supports accessibility, product context, and search relevance without keyword stuffing.",
+    meta: "Write useful WooCommerce product image alt text that supports accessibility, product context, and search relevance.",
+    sections: [
+      ["What alt text is", "Alt text is a short text alternative for an image. It helps screen readers, can appear when images fail to load, and gives search engines context about the visual content."],
+      ["Why alt text matters for ecommerce", "Product images carry important information: colour, type, orientation, material, compatibility, and detail. Good alt text helps shoppers understand what is pictured."],
+      ["What product alt text should describe", "Describe the product and the most important visible context. A bad example is: image of product. A better example is: Black Hi Capa holster for gel blaster pistols, shown from the front with tactical belt clip detail."],
+      ["Use product names naturally", "Including the product name is useful when it reads naturally. Avoid repeating long product titles exactly across every gallery image."],
+      ["Use categories and attributes without stuffing", "Category and attribute context can help. Use terms like gel blaster accessory, leather wallet, stainless watch, or spare part when they describe what is visible."],
+      ["Featured images versus gallery images", "The featured image alt text should identify the product clearly. Gallery image alt text can describe the angle, close-up detail, packaging, or compatibility shown."],
+      ["Common mistakes", "Avoid raw filenames, dates, vague phrases, repeated keyword lists, and promotional claims that are not visible in the image."],
+      ["How Optivra Image Studio helps", "Optivra Image Studio can generate product-aware alt text from WooCommerce product data, then let admins edit it before approval."]
+    ],
+    checklist: ["Describe the product", "Include visible detail", "Use product/category context", "Avoid keyword stuffing"]
+  },
+  {
+    slug: "how-to-replace-product-image-backgrounds-in-woocommerce",
+    title: "How to Replace Product Image Backgrounds in WooCommerce",
+    tag: "Background replacement",
+    date: "Guide",
+    readTime: "7 min read",
+    excerpt: "Compare background replacement options and learn how to review WooCommerce image changes safely before publishing.",
+    meta: "Compare background replacement options for WooCommerce product images and learn how to review changes safely.",
+    sections: [
+      ["Why product backgrounds matter", "Backgrounds influence trust and comparison. A messy or inconsistent background can make a catalogue feel unfinished even when the product itself is strong."],
+      ["When to use white backgrounds", "White backgrounds are ideal for clean product pages, marketplaces, and stores that want maximum consistency across many categories."],
+      ["When to use grey or branded backgrounds", "Soft grey or subtle branded backgrounds can add depth and identity. They work best when they stay quiet and keep the product as the focus."],
+      ["Manual editing versus automated replacement", "Manual editing gives precise control but takes time. Automated background replacement can scale faster, but it still needs review for cutout edges, shadows, and product accuracy."],
+      ["Common mistakes", "Watch for clipped products, over-dark shadows, halos around transparent edges, backgrounds that overpower the product, and framing that makes items look smaller than the original."],
+      ["Why approval workflows matter", "Never silently overwrite product images. Preserve the original, review the generated version, edit metadata, then approve the replacement."],
+      ["How Optivra Image Studio handles it", "Optivra Image Studio uses a queue and Review & Approve workflow so WooCommerce admins can process images at scale without losing control."]
+    ],
+    checklist: ["Choose a background style", "Check cutout edges", "Review shadows", "Preserve originals", "Approve before replacement"]
+  },
+  {
+    slug: "ai-product-photography-for-woocommerce-stores",
+    title: "AI Product Photography for WooCommerce Stores",
+    tag: "AI product photography",
+    date: "Guide",
+    readTime: "8 min read",
+    excerpt: "Learn how AI product photography tools can improve WooCommerce backgrounds, framing, lighting, metadata, and catalogue consistency.",
+    meta: "Learn how AI product photography tools can help WooCommerce stores improve product images, backgrounds, metadata, and catalogue consistency.",
+    sections: [
+      ["What AI product photography means", "AI product photography for WooCommerce usually means improving existing product images: background replacement, cutouts, framing, lighting corrections, and metadata suggestions."],
+      ["Where AI helps ecommerce images", "AI is useful for repetitive catalogue work. It can standardise image backgrounds, crop products consistently, create cleaner product visuals, and suggest SEO metadata based on product context."],
+      ["Where human review is still important", "Store owners should still review product accuracy. AI should not change the product, invent details, remove important parts, or publish automatically without approval."],
+      ["Background replacement and smart framing", "A strong workflow keeps the product recognisable and uses framing that matches the original unless a specific override is selected."],
+      ["Lighting enhancement", "Subtle brightness, contrast, highlight recovery, and shadow lift can improve product clarity. Heavy effects can make products look artificial."],
+      ["SEO metadata generation", "AI can draft filenames, alt text, titles, captions, and descriptions, but the best results use WooCommerce product names, categories, tags, SKU, and attributes."],
+      ["Best workflow for WooCommerce stores", "Start with a small category, scan products, queue a few images, process, review, edit metadata, approve, then expand to larger batches."],
+      ["How Optivra Image Studio fits", "Optivra Image Studio gives WooCommerce teams a practical scan, queue, process, review, and publish workflow for AI-powered product image optimisation."]
+    ],
+    checklist: ["Start small", "Review every output", "Keep products accurate", "Use subtle enhancements", "Track credits"]
+  }
+];
 let currentUser = null;
 let currentUserLoaded = false;
 
@@ -67,6 +170,9 @@ function routeTo(path) {
   }
   if (normalized === "/downloads") {
     loadDownloads();
+  }
+  if (normalized === "/blog" || normalized.startsWith("/blog/")) {
+    renderBlog(normalized);
   }
   if (normalized === "/admin/plugin-analytics") {
     loadAdminAnalytics();
@@ -150,6 +256,75 @@ function updateMetadata(path) {
   document.querySelector('meta[property="og:url"]')?.setAttribute("content", canonicalUrl);
   document.querySelector('meta[name="twitter:title"]')?.setAttribute("content", title);
   document.querySelector('meta[name="twitter:description"]')?.setAttribute("content", desc);
+}
+
+function renderBlog(path) {
+  if (path === "/blog") {
+    const page = document.querySelector('[data-page="/blog"] .resources-page');
+    if (!page) return;
+    page.innerHTML = `
+      <p class="eyebrow">Resources</p>
+      <h1>WooCommerce Product Image Optimisation Blog</h1>
+      <p class="lead">Practical guides for improving WooCommerce product photography, image SEO, backgrounds, metadata, and catalogue workflows.</p>
+      <div class="resource-grid blog-card-grid">
+        ${blogArticles.map((article) => `
+          <article class="resource-card blog-card">
+            <p class="eyebrow">${escapeHtml(article.tag)}</p>
+            <h2>${escapeHtml(article.title)}</h2>
+            <p>${escapeHtml(article.excerpt)}</p>
+            <div class="blog-meta"><span>${escapeHtml(article.date)}</span><span>${escapeHtml(article.readTime)}</span></div>
+            <a class="button ghost" href="/blog/${escapeHtml(article.slug)}" data-link>Read guide</a>
+          </article>
+        `).join("")}
+      </div>
+    `;
+    return;
+  }
+
+  const slug = path.replace("/blog/", "");
+  const article = blogArticles.find((item) => item.slug === slug);
+  const page = document.querySelector(`[data-page="${path}"] .article-content`);
+  if (!article || !page) return;
+  const related = blogArticles.filter((item) => item.slug !== article.slug).slice(0, 3);
+  page.innerHTML = `
+    <p class="eyebrow">${escapeHtml(article.tag)}</p>
+    <h1>${escapeHtml(article.title)}</h1>
+    <p class="lead">${escapeHtml(article.excerpt)}</p>
+    <div class="article-meta"><span>${escapeHtml(article.date)}</span><span>${escapeHtml(article.readTime)}</span></div>
+    <nav class="article-toc" aria-label="Article contents">
+      <strong>In this guide</strong>
+      ${article.sections.map(([heading]) => `<a href="#${slugify(heading)}">${escapeHtml(heading)}</a>`).join("")}
+    </nav>
+    ${article.sections.map(([heading, body]) => `
+      <section id="${slugify(heading)}">
+        <h2>${escapeHtml(heading)}</h2>
+        <p>${escapeHtml(body)}</p>
+      </section>
+    `).join("")}
+    <section class="checklist-box">
+      <h2>Quick checklist</h2>
+      <ul>${article.checklist.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </section>
+    <section class="doc-callout tip">
+      <strong>Try Optivra Image Studio for WooCommerce</strong>
+      <p>Scan product images, queue improvements, review before and after results, edit SEO metadata, and approve replacements from a practical WooCommerce workflow.</p>
+      <div class="docs-actions">
+        <a class="button primary" href="/downloads" data-link data-analytics="download_plugin_clicked">Download Plugin</a>
+        <a class="button ghost" href="/docs/ai-image-studio" data-link data-analytics="docs_opened">Read setup guide</a>
+        <a class="button ghost" href="/pricing" data-link data-analytics="pricing_plan_clicked">View pricing</a>
+      </div>
+    </section>
+    <section>
+      <h2>Related guides</h2>
+      <div class="resource-grid related-grid">
+        ${related.map((item) => `<article class="resource-card"><p class="eyebrow">${escapeHtml(item.tag)}</p><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.excerpt)}</p><a href="/blog/${escapeHtml(item.slug)}" data-link>Read guide</a></article>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function slugify(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 document.addEventListener("click", (event) => {
@@ -379,23 +554,31 @@ async function loadAdminAnalytics() {
   }
 
   try {
+    ensureAdminRangeControl();
+    const range = document.getElementById("admin-range")?.value || "7";
     const [overviewBody, storesBody, eventsBody] = await Promise.all([
-      api("/api/admin/plugin-analytics/overview"),
+      api(`/api/admin/plugin-analytics/overview?range=${encodeURIComponent(range)}`),
       api("/api/admin/plugin-analytics/stores"),
       api("/api/admin/plugin-analytics/events")
     ]);
     const cards = overviewBody.overview?.cards || {};
+    const emptyStates = overviewBody.overview?.empty_states || {};
     setText("admin-connected-stores", cards.connected_stores ?? "-");
-    setText("admin-active-stores", cards.active_stores_7d ?? "-");
-    setText("admin-new-stores", cards.new_stores_7d ?? "-");
-    setText("admin-processed", cards.images_processed_7d ?? "-");
-    setText("admin-credits", cards.credits_consumed_7d ?? "-");
+    setText("admin-active-stores", cards.active_stores ?? cards.active_stores_7d ?? "-");
+    setText("admin-new-stores", cards.new_stores ?? cards.new_stores_7d ?? "-");
+    setText("admin-processed", cards.images_processed ?? cards.images_processed_7d ?? "-");
+    setText("admin-credits", cards.credits_consumed ?? cards.credits_consumed_7d ?? "-");
     setText("admin-failure-rate", formatPercent(cards.processing_failure_rate));
     setText("admin-approval-rate", formatPercent(cards.approval_rate));
     setText("admin-subscriptions", cards.active_subscriptions ?? "-");
     setText("admin-mrr", `$${Number(cards.mrr_usd || 0).toLocaleString()} USD`);
+    setHelper("admin-processed", emptyStates.images_processed);
+    setHelper("admin-failure-rate", emptyStates.processing_failure_rate);
+    setHelper("admin-approval-rate", emptyStates.approval_rate);
+    setHelper("admin-subscriptions", emptyStates.active_subscriptions);
 
-    renderList("admin-event-counts", overviewBody.event_counts_30d || [], (item) => `${escapeHtml(item.event_type)}<br><small>${escapeHtml(item.count)}</small>`);
+    renderEventMix(overviewBody.event_counts_30d || []);
+    renderAdminTrends(overviewBody.trends || []);
 
     const storeRows = document.getElementById("admin-store-rows");
     if (storeRows) {
@@ -429,6 +612,76 @@ async function loadAdminAnalytics() {
       if (message) message.textContent = error.message;
     }
   }
+}
+
+function ensureAdminRangeControl() {
+  const content = document.getElementById("admin-analytics-content");
+  if (!content || document.getElementById("admin-range")) return;
+  const control = document.createElement("div");
+  control.className = "admin-range-control";
+  control.innerHTML = `
+    <label for="admin-range">Date range</label>
+    <select id="admin-range">
+      <option value="7">Last 7 days</option>
+      <option value="30">Last 30 days</option>
+      <option value="90">Last 90 days</option>
+      <option value="all">All time</option>
+    </select>
+  `;
+  content.prepend(control);
+  control.querySelector("select")?.addEventListener("change", loadAdminAnalytics);
+}
+
+function setHelper(metricId, message) {
+  const metric = document.getElementById(metricId);
+  if (!metric) return;
+  let helper = metric.parentElement?.querySelector(".metric-helper");
+  if (!helper && metric.parentElement) {
+    helper = document.createElement("small");
+    helper.className = "metric-helper";
+    metric.parentElement.appendChild(helper);
+  }
+  if (helper) helper.textContent = message || "";
+}
+
+function renderEventMix(items) {
+  const node = document.getElementById("admin-event-counts");
+  if (!node) return;
+  if (!items.length) {
+    node.innerHTML = `<p>No plugin events have been recorded yet. Events start after connected stores perform actions.</p>`;
+    return;
+  }
+  const max = Math.max(...items.map((item) => Number(item.count || 0)), 1);
+  node.innerHTML = items.map((item) => `
+    <div class="event-bar-row">
+      <span>${escapeHtml(item.event_type)}</span>
+      <strong>${escapeHtml(item.count)}</strong>
+      <div class="event-bar"><div style="width:${Math.round((Number(item.count || 0) / max) * 100)}%"></div></div>
+    </div>
+  `).join("");
+}
+
+function renderAdminTrends(rows) {
+  let node = document.getElementById("admin-trends");
+  const anchor = document.getElementById("admin-event-counts")?.closest(".dash-panel");
+  if (!node && anchor) {
+    const panel = document.createElement("section");
+    panel.className = "dash-panel wide admin-table-panel";
+    panel.innerHTML = `<h2>Usage and credits trend</h2><div id="admin-trends" class="dash-list"></div>`;
+    anchor.after(panel);
+    node = panel.querySelector("#admin-trends");
+  }
+  if (!node) return;
+  if (!rows.length) {
+    node.innerHTML = `<p>No trend data yet for this period.</p>`;
+    return;
+  }
+  node.innerHTML = rows.slice(-14).map((row) => `
+    <div class="dash-item">
+      <strong>${escapeHtml(row.date)}</strong><br>
+      <small>Processed: ${escapeHtml(row.processed || 0)} · Approved: ${escapeHtml(row.approved || 0)} · Failed: ${escapeHtml(row.failed || 0)} · Credits used: ${escapeHtml(row.credits_consumed || 0)} · Credits added: ${escapeHtml(row.credits_added || 0)}</small>
+    </div>
+  `).join("");
 }
 
 document.getElementById("site-form")?.addEventListener("submit", async (event) => {
