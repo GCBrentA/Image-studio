@@ -339,8 +339,8 @@ const buildShadow = async (
   const color = /^#[0-9a-f]{6}$/i.test(getString(shadowSettings.color, "#000000")) ? getString(shadowSettings.color, "#000000") : "#000000";
 
   if (effectiveMode === "behind") {
-    const shadowWidth = Math.max(1, Math.round(productWidth * spread));
-    const shadowHeight = Math.max(1, Math.round(productHeight * spread));
+    const shadowWidth = Math.min(width, Math.max(1, Math.round(productWidth * spread)));
+    const shadowHeight = Math.min(height, Math.max(1, Math.round(productHeight * spread)));
     const alpha = await sharp(productBuffer)
       .ensureAlpha()
       .extractChannel("alpha")
@@ -537,7 +537,7 @@ export const processImageForProduct = async ({
   const resizeHeight = Math.max(1, Math.min(targetProductSize, verticalLimit));
   const edgeResizeWidth = edgeLeft && edgeRight ? horizontalLimit : resizeWidth;
   const edgeResizeHeight = edgeTop && edgeBottom ? verticalLimit : resizeHeight;
-  const productBuffer = await sharp(cutout)
+  let productBuffer = await sharp(cutout)
     .rotate()
     .ensureAlpha()
     .trim({
@@ -558,9 +558,19 @@ export const processImageForProduct = async ({
     .png()
     .toBuffer();
 
-  const productMetadata = await sharp(productBuffer).metadata();
-  const productWidth = productMetadata.width ?? targetProductSize;
-  const productHeight = productMetadata.height ?? targetProductSize;
+  let productMetadata = await sharp(productBuffer).metadata();
+  if ((productMetadata.width ?? 0) > outputSize || (productMetadata.height ?? 0) > outputSize) {
+    productBuffer = await sharp(productBuffer)
+      .resize(outputSize, outputSize, {
+        fit: "inside",
+        withoutEnlargement: true
+      })
+      .png()
+      .toBuffer();
+    productMetadata = await sharp(productBuffer).metadata();
+  }
+  const productWidth = Math.min(outputSize, productMetadata.width ?? targetProductSize);
+  const productHeight = Math.min(outputSize, productMetadata.height ?? targetProductSize);
   let left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), edgeLeft ? 0 : margin), outputSize - productWidth - (edgeRight ? 0 : margin));
   let top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2), edgeTop ? 0 : margin), outputSize - productHeight - (edgeBottom ? 0 : margin));
 
