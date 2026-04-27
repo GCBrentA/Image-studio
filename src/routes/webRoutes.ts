@@ -10,14 +10,21 @@ const blogSlugs = [
   "woocommerce-product-image-seo-checklist",
   "how-to-write-alt-text-for-woocommerce-product-images",
   "how-to-replace-product-image-backgrounds-in-woocommerce",
-  "ai-product-photography-for-woocommerce-stores"
+  "ai-product-photography-for-woocommerce-stores",
+  "how-to-control-woocommerce-payment-gateways-by-country",
+  "how-to-hide-cash-on-delivery-for-international-woocommerce-orders",
+  "how-to-show-different-woocommerce-payment-methods-by-cart-value",
+  "why-woocommerce-checkout-payment-rules-matter",
+  "how-to-test-woocommerce-payment-gateway-rules-safely"
 ];
 
 const webPaths = new Set([
   "/",
   "/plugins",
+  "/woocommerce-plugins",
   "/catalogue-image-studio",
   "/optivra-image-studio",
+  "/payment-gateway-rules-for-woocommerce",
   "/pricing",
   "/downloads",
   "/resources",
@@ -36,6 +43,7 @@ const webPaths = new Set([
   "/docs",
   "/docs/ai-image-studio",
   "/docs/optivra-image-studio",
+  "/docs/payment-gateway-rules-for-woocommerce",
   "/support",
   "/terms",
   "/privacy",
@@ -125,6 +133,55 @@ const imageStudioJsonLd = [
   faqJsonLd
 ];
 
+const gatewayRulesFaqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "Does Payment Gateway Rules for WooCommerce process payments?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "No. It controls payment gateway visibility. Payments are still processed by the WooCommerce payment gateways installed on the store."
+      }
+    },
+    {
+      "@type": "Question",
+      name: "Does the plugin store card details?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "No. The plugin does not store card details or payment credentials."
+      }
+    },
+    {
+      "@type": "Question",
+      name: "What happens if all gateways are hidden?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "By default, the plugin restores all gateways to protect checkout. Store owners can change this safety fallback."
+      }
+    }
+  ]
+};
+
+const gatewayRulesJsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Payment Gateway Rules for WooCommerce",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "WordPress, WooCommerce",
+    description: "WooCommerce payment gateway visibility rules for billing country, shipping country, active currency, and cart total conditions.",
+    url: `${siteBaseUrl}/payment-gateway-rules-for-woocommerce`,
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "USD",
+      price: "0"
+    }
+  },
+  gatewayRulesFaqJsonLd
+];
+
 const breadcrumb = (items: Array<{ name: string; path: string }>) => ({
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
@@ -141,7 +198,12 @@ const blogTitles: Record<string, string> = {
   "woocommerce-product-image-seo-checklist": "WooCommerce Product Image SEO Checklist",
   "how-to-write-alt-text-for-woocommerce-product-images": "How to Write Alt Text for WooCommerce Product Images",
   "how-to-replace-product-image-backgrounds-in-woocommerce": "How to Replace Product Image Backgrounds in WooCommerce",
-  "ai-product-photography-for-woocommerce-stores": "AI Product Photography for WooCommerce Stores"
+  "ai-product-photography-for-woocommerce-stores": "AI Product Photography for WooCommerce Stores",
+  "how-to-control-woocommerce-payment-gateways-by-country": "How to Control WooCommerce Payment Gateways by Country",
+  "how-to-hide-cash-on-delivery-for-international-woocommerce-orders": "How to Hide Cash on Delivery for International WooCommerce Orders",
+  "how-to-show-different-woocommerce-payment-methods-by-cart-value": "How to Show Different WooCommerce Payment Methods by Cart Value",
+  "why-woocommerce-checkout-payment-rules-matter": "Why WooCommerce Checkout Payment Rules Matter",
+  "how-to-test-woocommerce-payment-gateway-rules-safely": "How to Test WooCommerce Payment Gateway Rules Safely"
 };
 
 const blogDescriptions: Record<string, string> = {
@@ -149,7 +211,12 @@ const blogDescriptions: Record<string, string> = {
   "woocommerce-product-image-seo-checklist": "Use this WooCommerce product image SEO checklist before publishing product images in your store.",
   "how-to-write-alt-text-for-woocommerce-product-images": "Write useful WooCommerce product image alt text that supports accessibility, product context, and search relevance.",
   "how-to-replace-product-image-backgrounds-in-woocommerce": "Compare background replacement options for WooCommerce product images and learn how to review changes safely.",
-  "ai-product-photography-for-woocommerce-stores": "Learn how AI product photography tools can help WooCommerce stores improve product images, backgrounds, metadata, and catalogue consistency."
+  "ai-product-photography-for-woocommerce-stores": "Learn how AI product photography tools can help WooCommerce stores improve product images, backgrounds, metadata, and catalogue consistency.",
+  "how-to-control-woocommerce-payment-gateways-by-country": "Learn how to control WooCommerce payment gateways by billing country and shipping country with safe checkout rules.",
+  "how-to-hide-cash-on-delivery-for-international-woocommerce-orders": "Hide Cash on Delivery for international WooCommerce orders using payment gateway rules based on shipping country.",
+  "how-to-show-different-woocommerce-payment-methods-by-cart-value": "Use WooCommerce cart total rules to show or hide payment gateways based on checkout order value.",
+  "why-woocommerce-checkout-payment-rules-matter": "Learn why WooCommerce checkout payment rules matter for international stores, high-value orders, and operational control.",
+  "how-to-test-woocommerce-payment-gateway-rules-safely": "Test WooCommerce payment gateway rules safely with checkout scenarios, cache checks, and rule priority review."
 };
 
 const metaForPath = (requestPath: string): PageMeta => {
@@ -193,15 +260,32 @@ const metaForPath = (requestPath: string): PageMeta => {
       canonicalPath: "/",
       jsonLd: [organizationJsonLd, websiteJsonLd]
     },
+    "/woocommerce-plugins": {
+      title: "WooCommerce Plugins by Optivra | Checkout Rules and Image Optimisation",
+      description: "Download WooCommerce plugins from Optivra, including Payment Gateway Rules for WooCommerce and Optivra Image Studio for product image optimisation and SEO metadata.",
+      canonicalPath: "/woocommerce-plugins",
+      jsonLd: [
+        breadcrumb([
+          { name: "Home", path: "/" },
+          { name: "WooCommerce Plugins", path: "/woocommerce-plugins" }
+        ])
+      ]
+    },
     "/optivra-image-studio": {
       title: "Optivra Image Studio | WooCommerce Product Image Optimisation",
       description: "Optimise WooCommerce product images with AI-powered background replacement, review workflows, smart framing, and SEO-friendly image metadata.",
       canonicalPath: "/optivra-image-studio",
       jsonLd: imageStudioJsonLd
     },
+    "/payment-gateway-rules-for-woocommerce": {
+      title: "Payment Gateway Rules for WooCommerce | Control Checkout Payment Methods",
+      description: "Create WooCommerce payment gateway rules to show or hide checkout payment methods based on country, shipping location, cart conditions, and store rules.",
+      canonicalPath: "/payment-gateway-rules-for-woocommerce",
+      jsonLd: gatewayRulesJsonLd
+    },
     "/downloads": {
-      title: "Download Optivra Image Studio for WooCommerce",
-      description: "Download the Optivra Image Studio WooCommerce plugin and connect your store to AI-powered product image optimisation and SEO metadata tools.",
+      title: "Download WooCommerce Plugins | Optivra",
+      description: "Download Optivra WooCommerce plugins, including Optivra Image Studio and Payment Gateway Rules for WooCommerce.",
       canonicalPath: "/downloads"
     },
     "/pricing": {
@@ -239,6 +323,31 @@ const metaForPath = (requestPath: string): PageMeta => {
       description: "Learn how to install, connect, scan, process, review, approve, and optimise WooCommerce product images with Optivra Image Studio.",
       canonicalPath: "/docs/optivra-image-studio",
       type: "article"
+    },
+    "/docs/payment-gateway-rules-for-woocommerce": {
+      title: "Payment Gateway Rules for WooCommerce Guide | Setup and Rule Examples",
+      description: "Learn how to install Payment Gateway Rules for WooCommerce, create checkout gateway rules, test payment method visibility, and troubleshoot common issues.",
+      canonicalPath: "/docs/payment-gateway-rules-for-woocommerce",
+      type: "article",
+      jsonLd: [
+        {
+          "@context": "https://schema.org",
+          "@type": "Article",
+          headline: "Payment Gateway Rules for WooCommerce Guide",
+          description: "Setup and rule examples for controlling WooCommerce payment gateway visibility.",
+          author: {
+            "@type": "Organization",
+            name: "Optivra"
+          },
+          mainEntityOfPage: `${siteBaseUrl}/docs/payment-gateway-rules-for-woocommerce`
+        },
+        breadcrumb([
+          { name: "Home", path: "/" },
+          { name: "Docs", path: "/docs" },
+          { name: "Payment Gateway Rules for WooCommerce Guide", path: "/docs/payment-gateway-rules-for-woocommerce" }
+        ]),
+        gatewayRulesFaqJsonLd
+      ]
     },
     "/blog": {
       title: "WooCommerce Product Image Optimisation Blog | Optivra",

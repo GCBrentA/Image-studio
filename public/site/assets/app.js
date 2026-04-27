@@ -13,6 +13,15 @@ const pluginRelease = {
   wordpressOrgStatus: "WordPress.org review pending",
   updatedAt: "2026-04-27"
 };
+const gatewayRulesRelease = {
+  name: "Payment Gateway Rules for WooCommerce",
+  version: "1.0.0",
+  zipPath: "/downloads/payment-gateway-rules-for-woocommerce-1.0.0.zip",
+  fileSize: "177.7 KB",
+  sha256: "6832544AE3E9FAF3359E1AC154004C8D44DD838CE85C8B5DDA43C5CB4FA4D8F4",
+  status: "Early access",
+  updatedAt: "2026-04-27"
+};
 const blogArticles = [
   {
     slug: "how-to-optimise-woocommerce-product-images-for-seo",
@@ -114,6 +123,86 @@ const blogArticles = [
       ["How Optivra Image Studio fits", "Optivra Image Studio gives WooCommerce teams a practical scan, queue, process, review, and publish workflow for AI-powered product image optimisation."]
     ],
     checklist: ["Start small", "Review every output", "Keep products accurate", "Use subtle enhancements", "Track credits"]
+  },
+  {
+    slug: "how-to-control-woocommerce-payment-gateways-by-country",
+    title: "How to Control WooCommerce Payment Gateways by Country",
+    tag: "Payment gateway rules",
+    date: "Guide",
+    readTime: "6 min read",
+    excerpt: "Learn how billing and shipping country rules can show or hide WooCommerce payment methods for different regions.",
+    meta: "Learn how to control WooCommerce payment gateways by billing country and shipping country with safe checkout rules.",
+    sections: [
+      ["Why country-based gateway rules matter", "International stores often need different checkout options by region. Cash on Delivery, local bank transfer, or regional gateways may only make sense for specific countries."],
+      ["Billing country versus shipping country", "Billing country describes the customer's billing address. Shipping country describes where the order is going. Payment Gateway Rules for WooCommerce supports both conditions so you can choose the checkout context that matches your policy."],
+      ["A safe setup workflow", "Create one rule at a time, keep the default all-hidden fallback enabled, and test checkout with different country combinations before relying on the rule."],
+      ["How the plugin helps", "The plugin lets you target installed WooCommerce gateways, choose show or hide actions, and order rules by priority without custom code."]
+    ],
+    checklist: ["Choose billing or shipping country", "Target gateways", "Set show or hide action", "Test checkout"]
+  },
+  {
+    slug: "how-to-hide-cash-on-delivery-for-international-woocommerce-orders",
+    title: "How to Hide Cash on Delivery for International WooCommerce Orders",
+    tag: "Cash on Delivery",
+    date: "Guide",
+    readTime: "5 min read",
+    excerpt: "A practical guide to hiding Cash on Delivery when WooCommerce orders ship outside your local region.",
+    meta: "Hide Cash on Delivery for international WooCommerce orders using payment gateway rules based on shipping country.",
+    sections: [
+      ["Why hide Cash on Delivery internationally", "COD can create risk and operational friction for international orders. Many stores only want it for local delivery zones or selected countries."],
+      ["Use shipping country rules", "Create a shipping country rule, select the Cash on Delivery gateway, and hide the gateway for destinations where COD is not supported."],
+      ["Test before publishing", "Use a private browser session, enter domestic and international shipping addresses, and confirm the debug panel shows the expected country and matched rule."],
+      ["Keep a fallback", "Keep another payment method visible so customers can still complete checkout."]
+    ],
+    checklist: ["Select COD", "Use shipping country", "Hide where unsupported", "Confirm alternatives remain"]
+  },
+  {
+    slug: "how-to-show-different-woocommerce-payment-methods-by-cart-value",
+    title: "How to Show Different WooCommerce Payment Methods by Cart Value",
+    tag: "Cart total rules",
+    date: "Guide",
+    readTime: "5 min read",
+    excerpt: "Use cart total rules to control checkout payment methods for low-value and high-value WooCommerce orders.",
+    meta: "Use WooCommerce cart total rules to show or hide payment gateways based on checkout order value.",
+    sections: [
+      ["Why cart value affects payment options", "High-value orders may need safer payment methods. Low-value orders may not suit manual bank transfer or invoice-style workflows."],
+      ["Supported cart conditions", "Payment Gateway Rules for WooCommerce supports cart total conditions including greater than, less than, and between."],
+      ["Example setup", "Hide bank transfer below a minimum order value, or hide a high-risk gateway above a specific order value."],
+      ["Test totals carefully", "Add products until the cart crosses the rule threshold and confirm the visible gateways update as expected."]
+    ],
+    checklist: ["Choose cart total", "Set threshold", "Select gateway", "Test below and above"]
+  },
+  {
+    slug: "why-woocommerce-checkout-payment-rules-matter",
+    title: "Why WooCommerce Checkout Payment Rules Matter",
+    tag: "Checkout operations",
+    date: "Guide",
+    readTime: "6 min read",
+    excerpt: "Understand how checkout payment method rules can reduce friction, risk, and manual support for WooCommerce stores.",
+    meta: "Learn why WooCommerce checkout payment rules matter for international stores, high-value orders, and operational control.",
+    sections: [
+      ["Checkout rules reduce confusion", "Customers should only see payment methods that are relevant and available for their order context."],
+      ["Rules reduce operational risk", "Stores can avoid showing COD, manual bank transfer, or regional gateways where they are not practical."],
+      ["Rules should be tested", "Payment visibility directly affects checkout conversion, so every rule should be tested before launch."],
+      ["How the plugin fits", "Payment Gateway Rules for WooCommerce provides a focused admin tool for gateway visibility without external services or payment processing."]
+    ],
+    checklist: ["Keep choices relevant", "Avoid unsupported gateways", "Preserve checkout fallback", "Test before launch"]
+  },
+  {
+    slug: "how-to-test-woocommerce-payment-gateway-rules-safely",
+    title: "How to Test WooCommerce Payment Gateway Rules Safely",
+    tag: "Testing",
+    date: "Guide",
+    readTime: "5 min read",
+    excerpt: "A safe testing checklist for WooCommerce stores using payment gateway visibility rules.",
+    meta: "Test WooCommerce payment gateway rules safely with checkout scenarios, cache checks, and rule priority review.",
+    sections: [
+      ["Use realistic checkout scenarios", "Test guest and logged-in checkout with the countries, currencies, cart totals, and gateways your real customers use."],
+      ["Avoid checkout caching", "Cart and checkout pages should not be cached. Clear caches after changing gateway rules."],
+      ["Check rule priority", "Rules run by priority, so a later rule may change the result of an earlier one."],
+      ["Use the debug panel", "The plugin's debug/test panel shows detected billing country, shipping country, currency, cart total, matched rules, and final visible gateways."]
+    ],
+    checklist: ["Test incognito", "Try multiple countries", "Change cart totals", "Check debug panel"]
   }
 ];
 let currentUser = null;
@@ -180,19 +269,30 @@ function routeTo(path) {
 }
 
 function pageTitle(path) {
+  if (path.startsWith("/blog/")) {
+    const article = blogArticles.find((item) => `/blog/${item.slug}` === path);
+    if (article) return `${article.title} | Optivra`;
+  }
   const names = {
     "/": `${PRODUCT_NAME} | Optivra`,
     "/plugins": "Plugins | Optivra",
+    "/woocommerce-plugins": "WooCommerce Plugins by Optivra | Checkout Rules and Image Optimisation",
     "/optivra-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
+    "/payment-gateway-rules-for-woocommerce": "Payment Gateway Rules for WooCommerce | Control Checkout Payment Methods",
     "/catalogue-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
     "/pricing": "Pricing | Optivra",
-    "/downloads": `Download ${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
+    "/downloads": "Download WooCommerce Plugins | Optivra",
     "/blog": "WooCommerce Image SEO Blog | Optivra",
     "/blog/how-to-optimise-woocommerce-product-images-for-seo": "How to Optimise WooCommerce Product Images for SEO | Optivra",
     "/blog/woocommerce-product-image-seo-checklist": "WooCommerce Product Image SEO Checklist | Optivra",
     "/blog/how-to-write-alt-text-for-woocommerce-product-images": "How to Write Alt Text for WooCommerce Product Images | Optivra",
     "/blog/how-to-replace-product-image-backgrounds-in-woocommerce": "How to Replace Product Image Backgrounds in WooCommerce | Optivra",
     "/blog/ai-product-photography-for-woocommerce-stores": "AI Product Photography for WooCommerce Stores | Optivra",
+    "/blog/how-to-control-woocommerce-payment-gateways-by-country": "How to Control WooCommerce Payment Gateways by Country | Optivra",
+    "/blog/how-to-hide-cash-on-delivery-for-international-woocommerce-orders": "How to Hide Cash on Delivery for International WooCommerce Orders | Optivra",
+    "/blog/how-to-show-different-woocommerce-payment-methods-by-cart-value": "How to Show Different WooCommerce Payment Methods by Cart Value | Optivra",
+    "/blog/why-woocommerce-checkout-payment-rules-matter": "Why WooCommerce Checkout Payment Rules Matter | Optivra",
+    "/blog/how-to-test-woocommerce-payment-gateway-rules-safely": "How to Test WooCommerce Payment Gateway Rules Safely | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
     "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
@@ -203,6 +303,7 @@ function pageTitle(path) {
     "/billing/credits/cancel": "Credit Purchase Cancelled | Optivra",
     "/docs": "Docs | Optivra",
     "/docs/ai-image-studio": `${PRODUCT_NAME} Guide | Optivra`,
+    "/docs/payment-gateway-rules-for-woocommerce": "Payment Gateway Rules for WooCommerce Guide | Optivra",
     "/support": "Support | Optivra",
     "/terms": "Terms | Optivra",
     "/privacy": "Privacy | Optivra",
@@ -212,12 +313,19 @@ function pageTitle(path) {
 }
 
 function pageDescription(path) {
+  if (path.startsWith("/blog/")) {
+    const article = blogArticles.find((item) => `/blog/${item.slug}` === path);
+    if (article) return article.meta;
+  }
   const descriptions = {
     "/": "AI-powered ecommerce tools for WooCommerce stores, starting with Optivra Image Studio for product image optimisation.",
+    "/woocommerce-plugins": "Download WooCommerce plugins from Optivra, including Payment Gateway Rules for WooCommerce and Optivra Image Studio for product image optimisation and SEO metadata.",
     "/optivra-image-studio": "Optimise WooCommerce product images with AI-powered background replacement, review workflows, and SEO-friendly image metadata.",
+    "/payment-gateway-rules-for-woocommerce": "Create WooCommerce payment gateway rules to show or hide checkout payment methods based on country, shipping location, cart conditions, and store rules.",
     "/pricing": "Compare Optivra Image Studio plans, monthly credits, and credit packs for WooCommerce product image optimisation.",
-    "/downloads": "Download Optivra Image Studio for WooCommerce and install the plugin manually while WordPress.org review is pending.",
+    "/downloads": "Download Optivra WooCommerce plugins, including Optivra Image Studio and Payment Gateway Rules for WooCommerce.",
     "/docs/ai-image-studio": "Learn how to use Optivra Image Studio to scan, process, review, approve, and optimise WooCommerce product images.",
+    "/docs/payment-gateway-rules-for-woocommerce": "Learn how to install Payment Gateway Rules for WooCommerce, create checkout gateway rules, test payment method visibility, and troubleshoot common issues.",
     "/blog": "WooCommerce image SEO guides covering alt text, product image metadata, background replacement, and AI product photography.",
     "/blog/how-to-optimise-woocommerce-product-images-for-seo": "Learn how to optimise WooCommerce product images with better filenames, alt text, backgrounds, review workflows, and metadata.",
     "/blog/woocommerce-product-image-seo-checklist": "Use this WooCommerce product image SEO checklist before publishing product images in your store.",
