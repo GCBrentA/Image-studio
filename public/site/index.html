@@ -21,6 +21,7 @@
         <a href="/plugins" data-link>Plugins</a>
         <a href="/catalogue-image-studio" data-link>Optivra Image Studio</a>
         <a href="/pricing" data-link>Pricing</a>
+        <a href="/downloads" data-link>Download</a>
         <a href="/docs" data-link>Docs</a>
         <a href="/support" data-link>Support</a>
         <a href="/admin/plugin-analytics" data-link data-admin-only hidden>Admin</a>
@@ -118,6 +119,78 @@
         </div>
       </section>
 
+      <section class="page" data-page="/downloads">
+        <div class="page-band downloads-page">
+          <div class="download-hero">
+            <div>
+              <p class="eyebrow">Download Plugin</p>
+              <h1>Download Optivra Image Studio for WooCommerce</h1>
+              <p class="lead">Install the WooCommerce plugin manually while the WordPress.org listing is being reviewed.</p>
+            </div>
+            <span class="status-pill pending" id="download-plugin-status">WordPress.org review pending</span>
+          </div>
+
+          <div class="download-layout">
+            <article class="download-card">
+              <div>
+                <p class="eyebrow">Current release</p>
+                <h2 id="download-plugin-name">Optivra Image Studio for WooCommerce</h2>
+              </div>
+              <dl class="release-meta">
+                <div><dt>Version</dt><dd id="download-plugin-version">1.0.0</dd></div>
+                <div><dt>File size</dt><dd id="download-plugin-size">60.9 KB</dd></div>
+                <div><dt>Last updated</dt><dd id="download-plugin-updated">2026-04-27</dd></div>
+              </dl>
+              <div class="download-actions">
+                <a class="button primary" href="/downloads/optivra-image-studio-for-woocommerce-1.0.0.zip" data-download-zip download>Download ZIP</a>
+                <a class="button ghost" href="/docs/ai-image-studio#installing" data-link>Setup guide</a>
+                <a class="button ghost" href="/docs/ai-image-studio" data-link>Documentation</a>
+              </div>
+              <div class="checksum-box">
+                <strong>SHA256</strong>
+                <code id="download-plugin-sha">0BA7953FF2F17DBF411A51E5BBE6FA670B28D816332D49AA00E02783E89D4D97</code>
+              </div>
+              <p>Need help? Email <a href="mailto:support@optivra.app">support@optivra.app</a> or visit <a href="/support" data-link>Support</a>.</p>
+            </article>
+
+            <article class="download-card muted-card">
+              <h2>WordPress.org review status</h2>
+              <p>Optivra Image Studio for WooCommerce has been submitted to the WordPress.org Plugin Directory and is currently awaiting review. Until the public listing is approved, you can install the plugin manually using the ZIP download.</p>
+              <p>This page does not claim WordPress.org approval, listing, marketplace availability, or verification.</p>
+            </article>
+          </div>
+
+          <section class="download-section">
+            <h2>Manual install steps</h2>
+            <ol class="numbered-steps install-steps">
+              <li>Download the plugin ZIP.</li>
+              <li>Log in to your WordPress admin.</li>
+              <li>Go to Plugins &rarr; Add New.</li>
+              <li>Click Upload Plugin.</li>
+              <li>Choose the downloaded ZIP.</li>
+              <li>Click Install Now.</li>
+              <li>Click Activate.</li>
+              <li>Go to Optivra in the WordPress admin menu.</li>
+              <li>Paste your Site API Token.</li>
+              <li>Click Test Connection.</li>
+            </ol>
+            <div class="doc-callout warning"><p>Do not unzip the file before uploading it to WordPress.</p></div>
+          </section>
+
+          <section class="download-section trust-grid">
+            <article class="feature-card"><h2>No backend secrets</h2><p>No Stripe or Supabase secret keys are stored in the plugin.</p></article>
+            <article class="feature-card"><h2>Token-based connection</h2><p>The plugin connects using a Site API Token from your Optivra account.</p></article>
+            <article class="feature-card"><h2>You control processing</h2><p>Product and image data is sent only after you connect your store and start scanning or processing.</p></article>
+            <article class="feature-card"><h2>Hosted billing</h2><p>Billing is handled through Optivra and Stripe, not directly inside WordPress.</p></article>
+          </section>
+
+          <section class="download-section">
+            <h2>Manual updates before approval</h2>
+            <p>Do not add a custom updater. To update before the WordPress.org listing is live, download the latest ZIP and upload it again through WordPress Admin &rarr; Plugins &rarr; Add New &rarr; Upload Plugin.</p>
+          </section>
+        </div>
+      </section>
+
       <section class="page" data-page="/login">
         <div class="auth-layout">
           <div>
@@ -153,6 +226,14 @@
           <div class="dashboard-grid">
             <section class="dash-panel"><h2>Plan</h2><div id="dash-plan">Login required</div></section>
             <section class="dash-panel"><h2>Credits remaining</h2><div id="dash-credits">-</div><div class="meter"><div id="dash-meter"></div></div></section>
+            <section class="dash-panel">
+              <h2>Install the WooCommerce Plugin</h2>
+              <p>Download the current ZIP, follow the setup guide, then connect your store with a Site API Token.</p>
+              <div class="pack-row">
+                <a class="button primary" href="/downloads" data-link>Download Plugin</a>
+                <a class="button ghost" href="/docs/ai-image-studio#installing" data-link>View Setup Guide</a>
+              </div>
+            </section>
             <section class="dash-panel wide"><h2>Connected sites</h2><form id="site-form" class="inline-form"><input name="domain" placeholder="store.example.com" /><button>Add site</button></form><div id="dash-sites"></div></section>
             <section class="dash-panel"><h2>API tokens</h2><div id="dash-tokens">Tokens are shown once when a site is connected.</div><pre id="new-token"></pre></section>
             <section class="dash-panel wide"><h2>Usage history</h2><div id="dash-history"></div></section>
@@ -406,6 +487,7 @@
                   <li>Click Activate.</li>
                   <li>Open the Optivra Image Studio menu in WordPress admin.</li>
                 </ol>
+                <div class="doc-callout info"><p>WordPress.org review is pending. Download the plugin ZIP directly from Optivra and install it manually.</p><a class="button primary" href="/downloads" data-link>Download Plugin</a></div>
                 <div class="doc-callout warning"><p>If WooCommerce is inactive, activate WooCommerce first. The plugin needs WooCommerce products and media to scan your catalogue.</p></div>
                 <figure class="docs-screenshot">
                   <img src="/assets/docs/plugin-settings.jpg" alt="Optivra Image Studio settings screen showing connection status, saved Site API Token, plan, credits, and reset date." loading="lazy" />

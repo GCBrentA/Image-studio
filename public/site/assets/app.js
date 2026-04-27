@@ -4,6 +4,15 @@ const tokenKey = "optivra_token";
 const PRODUCT_NAME = "Optivra Image Studio";
 const PRODUCT_NAME_WOOCOMMERCE = "Optivra Image Studio for WooCommerce";
 const PRODUCT_TAGLINE = "AI-powered product image optimisation for WooCommerce.";
+const pluginRelease = {
+  name: "Optivra Image Studio for WooCommerce",
+  version: "1.0.0",
+  zipPath: "/downloads/optivra-image-studio-for-woocommerce-1.0.0.zip",
+  fileSize: "60.9 KB",
+  sha256: "0BA7953FF2F17DBF411A51E5BBE6FA670B28D816332D49AA00E02783E89D4D97",
+  wordpressOrgStatus: "WordPress.org review pending",
+  updatedAt: "2026-04-27"
+};
 let currentUser = null;
 let currentUserLoaded = false;
 
@@ -39,6 +48,9 @@ function routeTo(path) {
   if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
     loadBilling();
   }
+  if (normalized === "/downloads") {
+    loadDownloads();
+  }
   if (normalized === "/admin/plugin-analytics") {
     loadAdminAnalytics();
   }
@@ -50,6 +62,7 @@ function pageTitle(path) {
     "/plugins": "Plugins | Optivra",
     "/catalogue-image-studio": `${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
     "/pricing": "Pricing | Optivra",
+    "/downloads": `Download ${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
     "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
@@ -238,6 +251,18 @@ function updateAdminVisibility() {
 
 function formatPercent(value) {
   return `${Math.round(Number(value || 0) * 100)}%`;
+}
+
+function loadDownloads() {
+  setText("download-plugin-name", pluginRelease.name);
+  setText("download-plugin-version", pluginRelease.version);
+  setText("download-plugin-size", pluginRelease.fileSize);
+  setText("download-plugin-updated", pluginRelease.updatedAt);
+  setText("download-plugin-status", pluginRelease.wordpressOrgStatus);
+  setText("download-plugin-sha", pluginRelease.sha256);
+  document.querySelectorAll("[data-download-zip]").forEach((node) => {
+    node.setAttribute("href", pluginRelease.zipPath);
+  });
 }
 
 async function loadAdminAnalytics() {

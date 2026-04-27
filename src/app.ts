@@ -54,6 +54,7 @@ app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), billin
 app.use(express.json({ limit: "60mb" }));
 app.use(logger);
 app.use("/assets", express.static(path.resolve(process.cwd(), "public", "site", "assets")));
+app.use("/downloads", express.static(path.resolve(process.cwd(), "public", "site", "downloads")));
 app.use("/processed-images", express.static(path.resolve(process.cwd(), "storage", "processed-images")));
 
 app.get("/account/dashboard", (request, response, next) => {

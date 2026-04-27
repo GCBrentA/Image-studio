@@ -6,6 +6,7 @@ const webPaths = new Set([
   "/plugins",
   "/catalogue-image-studio",
   "/pricing",
+  "/downloads",
   "/login",
   "/dashboard",
   "/admin",
