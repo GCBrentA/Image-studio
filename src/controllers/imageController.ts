@@ -7,11 +7,43 @@ import type { AuthenticatedRequest } from "../middleware/apiTokenAuth";
 
 type ProcessImageBody = {
   image_url?: unknown;
+  image_data?: unknown;
+  image_filename?: unknown;
+  image_mime_type?: unknown;
   background?: unknown;
   scale_percent?: unknown;
   background_image_url?: unknown;
+  background_image_data?: unknown;
+  background_image_filename?: unknown;
+  background_image_mime_type?: unknown;
   settings?: unknown;
   jobOverrides?: unknown;
+};
+
+const maxInlineImageBytes = 15 * 1024 * 1024;
+
+const decodeInlineImage = (
+  data: unknown,
+  mimeType: unknown
+): { buffer: Buffer; contentType: string } | null => {
+  if (typeof data !== "string" || !data.trim()) {
+    return null;
+  }
+
+  const contentType = typeof mimeType === "string" && mimeType.startsWith("image/")
+    ? mimeType
+    : "application/octet-stream";
+  const base64 = data.includes(",") ? data.split(",").pop() ?? "" : data;
+  const buffer = Buffer.from(base64, "base64");
+
+  if (buffer.byteLength <= 0 || buffer.byteLength > maxInlineImageBytes) {
+    throw new Error("Uploaded image is missing or too large");
+  }
+
+  return {
+    buffer,
+    contentType
+  };
 };
 
 export const processImage = async (
@@ -32,15 +64,35 @@ export const processImage = async (
 
   const body = request.body as ProcessImageBody;
 
-  if (typeof body.image_url !== "string" || !body.image_url.trim()) {
+  let inlineImage: { buffer: Buffer; contentType: string } | null = null;
+  let inlineBackground: { buffer: Buffer; contentType: string } | null = null;
+
+  try {
+    inlineImage = decodeInlineImage(body.image_data, body.image_mime_type);
+    inlineBackground = decodeInlineImage(body.background_image_data, body.background_image_mime_type);
+  } catch (error) {
     response.status(400).json({
       status: "error",
       processed_url: null,
       credits_remaining: null,
-      error: "image_url is required"
+      error: error instanceof Error ? error.message : "Invalid uploaded image"
     });
     return;
   }
+
+  if (!inlineImage && (typeof body.image_url !== "string" || !body.image_url.trim())) {
+    response.status(400).json({
+      status: "error",
+      processed_url: null,
+      credits_remaining: null,
+      error: "image_url or image_data is required"
+    });
+    return;
+  }
+
+  const sourceImageUrl = typeof body.image_url === "string" && body.image_url.trim()
+    ? body.image_url.trim()
+    : `uploaded://${typeof body.image_filename === "string" && body.image_filename.trim() ? body.image_filename.trim() : "wordpress-media"}`;
 
   const credits = await getUserCredits(auth.userId);
 
@@ -58,7 +110,7 @@ export const processImage = async (
   const imageJob = await prisma.imageJob.create({
     data: {
       user_id: auth.userId,
-      original_url: body.image_url,
+      original_url: sourceImageUrl,
       status: ImageJobStatus.processing
     }
   });
@@ -67,11 +119,17 @@ export const processImage = async (
     const result = await processImageForProduct({
       imageJobId: imageJob.id,
       userId: auth.userId,
-      imageUrl: body.image_url,
+      imageUrl: sourceImageUrl,
+      imageBuffer: inlineImage?.buffer,
+      imageContentType: inlineImage?.contentType,
+      imageFileName: typeof body.image_filename === "string" ? body.image_filename : undefined,
       background: typeof body.background === "string" ? body.background : undefined,
       scalePercent: typeof body.scale_percent === "number" ? body.scale_percent : undefined,
       backgroundImageUrl:
         typeof body.background_image_url === "string" ? body.background_image_url : undefined,
+      backgroundImageBuffer: inlineBackground?.buffer,
+      backgroundImageContentType: inlineBackground?.contentType,
+      backgroundImageFileName: typeof body.background_image_filename === "string" ? body.background_image_filename : undefined,
       settings: typeof body.settings === "object" && body.settings !== null ? body.settings : undefined,
       jobOverrides: typeof body.jobOverrides === "object" && body.jobOverrides !== null ? body.jobOverrides : undefined
     });
@@ -140,7 +198,7 @@ export const processImage = async (
     console.error("Image processing failed", {
       imageJobId: imageJob.id,
       userId: auth.userId,
-      imageUrl: body.image_url,
+      imageUrl: sourceImageUrl,
       error
     });
 

@@ -1968,6 +1968,7 @@ class Catalogue_Image_Studio_Admin {
 			$custom_background_url = (string) wp_get_attachment_url(absint($settings['custom_background_attachment_id'] ?? 0));
 			if ($custom_background_url) {
 				$options['background_image_url'] = $custom_background_url;
+				$options['background_attachment_id'] = absint($settings['custom_background_attachment_id'] ?? 0);
 			}
 		}
 

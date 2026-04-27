@@ -13,9 +13,15 @@ export type ProcessImageInput = {
   imageJobId: string;
   userId: string;
   imageUrl: string;
+  imageBuffer?: Buffer;
+  imageContentType?: string;
+  imageFileName?: string;
   background?: string;
   scalePercent?: number;
   backgroundImageUrl?: string;
+  backgroundImageBuffer?: Buffer;
+  backgroundImageContentType?: string;
+  backgroundImageFileName?: string;
   settings?: unknown;
   jobOverrides?: unknown;
 };
@@ -169,11 +175,17 @@ const findDuplicateJob = async (userId: string, imageJobId: string, imageHash: s
 const downloadImage = async (imageUrl: string): Promise<DownloadedImage> => {
   assertValidImageUrl(imageUrl);
 
-  const response = await fetch(imageUrl, {
-    headers: {
-      accept: "image/*"
-    }
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(imageUrl, {
+      headers: {
+        accept: "image/*"
+      }
+    });
+  } catch {
+    throw new Error("Optivra could not download the image URL. If this is a local, private, or staging WordPress site, update the plugin so it can upload the image file directly.");
+  }
 
   if (!response.ok) {
     throw new Error(`Image download failed with ${response.status}`);
@@ -199,6 +211,22 @@ const downloadImage = async (imageUrl: string): Promise<DownloadedImage> => {
 
   return {
     buffer: imageBuffer,
+    contentType,
+    extension: getImageExtension(contentType)
+  };
+};
+
+const getUploadedImage = (buffer: Buffer, contentType: string): DownloadedImage => {
+  if (!contentType.toLowerCase().startsWith("image/")) {
+    throw new Error("Uploaded file was not an image");
+  }
+
+  if (buffer.byteLength > maxImageBytes) {
+    throw new Error("Image is too large");
+  }
+
+  return {
+    buffer,
     contentType,
     extension: getImageExtension(contentType)
   };
@@ -384,8 +412,14 @@ const buildBrandedBackground = (background: string): Buffer => {
   return Buffer.from(backgroundSvg);
 };
 
-const buildBackgroundFromImage = async (backgroundImageUrl: string): Promise<Buffer> => {
-  const backgroundImage = await downloadImage(backgroundImageUrl);
+const buildBackgroundFromImage = async (
+  backgroundImageUrl: string | undefined,
+  backgroundImageBuffer: Buffer | undefined,
+  backgroundImageContentType: string | undefined
+): Promise<Buffer> => {
+  const backgroundImage = backgroundImageBuffer
+    ? getUploadedImage(backgroundImageBuffer, backgroundImageContentType ?? "application/octet-stream")
+    : await downloadImage(backgroundImageUrl ?? "");
   await validateImage(backgroundImage.buffer);
 
   return sharp(backgroundImage.buffer)
@@ -405,6 +439,10 @@ export const processImageForProduct = async ({
   background = "#ffffff",
   scalePercent,
   backgroundImageUrl,
+  imageBuffer,
+  imageContentType,
+  backgroundImageBuffer,
+  backgroundImageContentType,
   settings,
   jobOverrides
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
@@ -414,7 +452,9 @@ export const processImageForProduct = async ({
   const lightingSettings = getObject(processingSettings.lighting);
   const overrideSettings = getObject(jobOverrides);
   const edgeToEdge = getObject(overrideSettings.edgeToEdge);
-  const originalImage = await downloadImage(imageUrl);
+  const originalImage = imageBuffer
+    ? getUploadedImage(imageBuffer, imageContentType ?? "application/octet-stream")
+    : await downloadImage(imageUrl);
   await validateImage(originalImage.buffer);
   const originalImageHash = getSha256(originalImage.buffer);
   const seoMetadata = getSuggestedSeoMetadata(imageUrl, originalImageHash);
@@ -520,8 +560,8 @@ export const processImageForProduct = async ({
 
   const shadow = await buildShadow(outputSize, outputSize, productBuffer, productWidth, productHeight, left, top, shadowSettings);
 
-  const backgroundBuffer = backgroundImageUrl
-    ? await buildBackgroundFromImage(backgroundImageUrl)
+  const backgroundBuffer = backgroundImageUrl || backgroundImageBuffer
+    ? await buildBackgroundFromImage(backgroundImageUrl, backgroundImageBuffer, backgroundImageContentType)
     : buildBrandedBackground(background);
 
   const composites = [

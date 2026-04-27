@@ -64,6 +64,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 		}
 
 		$image_url = wp_get_attachment_url((int) ($job['attachment_id'] ?? 0));
+		$source_payload = $this->get_attachment_upload_payload((int) ($job['attachment_id'] ?? 0));
 
 		if (! $image_url) {
 			$error = new WP_Error('catalogue_image_studio_missing_source_url', __('The source image URL could not be resolved.', 'optivra-image-studio-for-woocommerce'));
@@ -79,7 +80,13 @@ class Catalogue_Image_Studio_ImageProcessor {
 			]
 		);
 
-		$processed = $this->client->process_image($image_url, $options);
+		$background_payload = [];
+		if (! empty($options['background_attachment_id'])) {
+			$background_payload = $this->get_attachment_upload_payload((int) $options['background_attachment_id'], 'background');
+			unset($options['background_attachment_id']);
+		}
+
+		$processed = $this->client->process_image($image_url, array_merge($options, $source_payload, $background_payload));
 
 		if (is_wp_error($processed)) {
 			$this->mark_failed($job_id, $processed);
@@ -173,6 +180,58 @@ class Catalogue_Image_Studio_ImageProcessor {
 				'message' => $error->get_error_message(),
 			]
 		);
+	}
+
+	/**
+	 * Build a direct upload payload for local/private WordPress media.
+	 *
+	 * @return array<string,string>
+	 */
+	private function get_attachment_upload_payload(int $attachment_id, string $prefix = ''): array {
+		$file = (string) get_attached_file($attachment_id);
+
+		if ('' === $file || ! is_file($file) || ! is_readable($file)) {
+			return [];
+		}
+
+		$max_bytes = 15 * 1024 * 1024;
+		$file_size = (int) filesize($file);
+
+		if ($file_size <= 0 || $file_size > $max_bytes) {
+			return [];
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		WP_Filesystem();
+		global $wp_filesystem;
+
+		if (! $wp_filesystem) {
+			return [];
+		}
+
+		$contents = $wp_filesystem->get_contents($file);
+
+		if (! is_string($contents) || '' === $contents) {
+			return [];
+		}
+
+		$mime_type = (string) get_post_mime_type($attachment_id);
+		if ('' === $mime_type) {
+			$file_type = wp_check_filetype($file);
+			$mime_type = (string) ($file_type['type'] ?? '');
+		}
+
+		if (0 !== strpos($mime_type, 'image/')) {
+			return [];
+		}
+
+		$key_prefix = '' === $prefix ? '' : $prefix . '_';
+
+		return [
+			$key_prefix . 'image_data'      => base64_encode($contents),
+			$key_prefix . 'image_filename'  => sanitize_file_name(wp_basename($file)),
+			$key_prefix . 'image_mime_type' => sanitize_mime_type($mime_type),
+		];
 	}
 
 	/**

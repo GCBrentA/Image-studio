@@ -50,9 +50,15 @@ class Catalogue_Image_Studio_SaaSClient {
 					array_filter(
 						[
 							'image_url'      => $image_url,
+							'image_data'     => $options['image_data'] ?? null,
+							'image_filename' => $options['image_filename'] ?? null,
+							'image_mime_type' => $options['image_mime_type'] ?? null,
 							'background'     => $options['background'] ?? null,
 							'scale_percent'  => $options['scale_percent'] ?? null,
 							'background_image_url' => $options['background_image_url'] ?? null,
+							'background_image_data' => $options['background_image_data'] ?? null,
+							'background_image_filename' => $options['background_image_filename'] ?? null,
+							'background_image_mime_type' => $options['background_image_mime_type'] ?? null,
 							'settings'       => $options['settings'] ?? null,
 							'jobOverrides'   => $options['job_overrides'] ?? null,
 						],
