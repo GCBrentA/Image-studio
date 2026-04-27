@@ -1,5 +1,7 @@
 const pages = Array.from(document.querySelectorAll("[data-page]"));
 const navLinks = Array.from(document.querySelectorAll("[data-link]"));
+const menuToggle = document.querySelector(".mobile-menu-toggle");
+const primaryNav = document.getElementById("primary-navigation");
 const tokenKey = "optivra_token";
 const PRODUCT_NAME = "Optivra Image Studio";
 const PRODUCT_NAME_WOOCOMMERCE = "Optivra Image Studio for WooCommerce";
@@ -217,6 +219,7 @@ function setToken(value) {
 }
 
 function routeTo(path) {
+  closeMobileMenu();
   let normalized = path === "" ? "/" : path;
   if (normalized === "/catalogue-image-studio") {
     normalized = "/optivra-image-studio";
@@ -265,6 +268,25 @@ function routeTo(path) {
   }
   if (normalized === "/admin/plugin-analytics") {
     loadAdminAnalytics();
+  }
+}
+
+function closeMobileMenu() {
+  document.body.classList.remove("mobile-menu-open");
+  if (primaryNav) primaryNav.classList.remove("open");
+  if (menuToggle) {
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.setAttribute("aria-label", "Open navigation menu");
+  }
+}
+
+function toggleMobileMenu() {
+  const isOpen = !document.body.classList.contains("mobile-menu-open");
+  document.body.classList.toggle("mobile-menu-open", isOpen);
+  if (primaryNav) primaryNav.classList.toggle("open", isOpen);
+  if (menuToggle) {
+    menuToggle.setAttribute("aria-expanded", String(isOpen));
+    menuToggle.setAttribute("aria-label", isOpen ? "Close navigation menu" : "Open navigation menu");
   }
 }
 
@@ -443,6 +465,23 @@ document.addEventListener("click", (event) => {
   event.preventDefault();
   history.pushState({}, "", href);
   routeTo(location.pathname);
+});
+
+menuToggle?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleMobileMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeMobileMenu();
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!document.body.classList.contains("mobile-menu-open")) return;
+  if (event.target.closest(".site-header")) return;
+  closeMobileMenu();
 });
 
 function trackConversion(eventName, properties = {}) {
