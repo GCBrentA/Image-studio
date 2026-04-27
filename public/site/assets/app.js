@@ -269,6 +269,7 @@ function routeTo(path) {
   if (normalized === "/admin/plugin-analytics") {
     loadAdminAnalytics();
   }
+  return normalized;
 }
 
 function closeMobileMenu() {
@@ -464,7 +465,15 @@ document.addEventListener("click", (event) => {
   if (!href || href.startsWith("http")) return;
   event.preventDefault();
   history.pushState({}, "", href);
-  routeTo(location.pathname);
+  const normalized = routeTo(location.pathname);
+  trackPageView(normalized);
+  if (!link.dataset.analytics) {
+    if (normalized === "/pricing") trackConversion("pricing_clicked", { path: normalized });
+    if (normalized === "/support") trackConversion("support_clicked", { path: normalized });
+    if (normalized === "/login") trackConversion("login_clicked", { path: normalized });
+    if (normalized === "/docs" || normalized.startsWith("/docs/")) trackConversion("view_docs_clicked", { path: normalized });
+    if (normalized === "/blog" || normalized.startsWith("/blog/")) trackConversion("blog_cta_clicked", { path: normalized });
+  }
 });
 
 menuToggle?.addEventListener("click", (event) => {
@@ -484,15 +493,60 @@ document.addEventListener("click", (event) => {
   closeMobileMenu();
 });
 
+const analyticsParamKeys = new Set(["path", "plugin", "location", "plan", "pack", "source", "cta"]);
+
+function isPublicAnalyticsPath(path = location.pathname) {
+  return !(
+    path.startsWith("/admin") ||
+    path.startsWith("/api") ||
+    path.startsWith("/account") ||
+    path.startsWith("/dashboard") ||
+    path.startsWith("/billing/")
+  );
+}
+
+function analyticsReady(path = location.pathname) {
+  return Boolean(
+    window.optivraAnalytics?.enabled &&
+    window.optivraAnalytics?.measurementId &&
+    typeof window.gtag === "function" &&
+    isPublicAnalyticsPath(path)
+  );
+}
+
+function sanitizeAnalyticsParams(properties = {}) {
+  const safe = {};
+  Object.entries(properties).forEach(([key, value]) => {
+    if (!analyticsParamKeys.has(key)) return;
+    if (value === undefined || value === null) return;
+    safe[key] = String(value).replace(/[^\w\-./# ]/g, "").slice(0, 90);
+  });
+  return safe;
+}
+
+function pluginFromTarget(target) {
+  const href = target?.getAttribute?.("href") || "";
+  const path = location.pathname;
+  if (href.includes("payment-gateway-rules") || path.includes("payment-gateway-rules")) return "payment_gateway_rules";
+  if (href.includes("optivra-image-studio") || path.includes("optivra-image-studio")) return "optivra_image_studio";
+  return "woocommerce_plugins";
+}
+
+function trackPageView(path = location.pathname) {
+  if (!analyticsReady(path)) return;
+  window.gtag("config", window.optivraAnalytics.measurementId, {
+    page_path: path,
+    anonymize_ip: true
+  });
+}
+
+function trackEvent(eventName, properties = {}) {
+  if (!analyticsReady()) return;
+  window.gtag("event", eventName, sanitizeAnalyticsParams(properties));
+}
+
 function trackConversion(eventName, properties = {}) {
-  window.dataLayer = window.dataLayer || [];
-  window.dataLayer.push({ event: eventName, ...properties });
-  if (typeof window.gtag === "function") {
-    window.gtag("event", eventName, properties);
-  }
-  if (typeof window.plausible === "function") {
-    window.plausible(eventName, { props: properties });
-  }
+  trackEvent(eventName, properties);
 }
 
 document.addEventListener("click", (event) => {
@@ -501,20 +555,42 @@ document.addEventListener("click", (event) => {
 
   const explicitEvent = target.dataset.analytics;
   if (explicitEvent) {
-    trackConversion(explicitEvent, { path: location.pathname });
+    const plugin = pluginFromTarget(target);
+    const props = { path: location.pathname, plugin, location: location.pathname };
+    trackConversion(explicitEvent, props);
+    if (explicitEvent === "signup_clicked") {
+      trackConversion("create_account_clicked", props);
+      trackConversion("signup_started", props);
+    }
+    if (explicitEvent === "download_plugin_clicked") {
+      trackConversion(plugin === "payment_gateway_rules" ? "download_payment_rules_clicked" : "download_image_studio_clicked", props);
+    }
+    if (explicitEvent === "docs_opened") {
+      trackConversion("view_docs_clicked", props);
+      trackConversion(plugin === "payment_gateway_rules" ? "payment_rules_docs_clicked" : "image_studio_docs_clicked", props);
+    }
+    if (explicitEvent === "pricing_plan_clicked") {
+      trackConversion("pricing_clicked", props);
+    }
     return;
   }
 
   if (target.matches("[data-download-zip]")) {
-    trackConversion("download_plugin_clicked", { path: location.pathname });
+    const plugin = pluginFromTarget(target);
+    const props = { path: location.pathname, plugin, location: "downloads_page" };
+    trackConversion("download_plugin_clicked", props);
+    trackConversion(plugin === "payment_gateway_rules" ? "download_payment_rules_clicked" : "download_image_studio_clicked", props);
   } else if (target.matches("[data-plan]")) {
-    trackConversion("pricing_plan_clicked", { plan: target.dataset.plan, path: location.pathname });
+    trackConversion("pricing_clicked", { plan: target.dataset.plan, path: location.pathname });
   } else if (target.matches("[data-pack]")) {
     trackConversion("buy_credits_clicked", { pack: target.dataset.pack, path: location.pathname });
   }
 });
 
-window.addEventListener("popstate", () => routeTo(location.pathname));
+window.addEventListener("popstate", () => {
+  const normalized = routeTo(location.pathname);
+  trackPageView(normalized);
+});
 
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
@@ -531,9 +607,11 @@ const authForm = document.getElementById("auth-form");
 const authMessage = document.getElementById("auth-message");
 authForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  trackConversion("login_clicked", { path: location.pathname });
   await submitAuth("/auth/login");
 });
 document.getElementById("register-button")?.addEventListener("click", async () => {
+  trackConversion("signup_started", { path: location.pathname });
   await submitAuth("/auth/register");
 });
 
@@ -552,6 +630,9 @@ async function submitAuth(path) {
     currentUser = body.user || null;
     currentUserLoaded = true;
     updateAdminVisibility();
+    if (path === "/auth/register") {
+      trackConversion("signup_completed", { path: location.pathname });
+    }
     authMessage.textContent = "Signed in.";
     history.pushState({}, "", "/dashboard");
     routeTo("/dashboard");

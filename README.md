@@ -95,6 +95,8 @@ In Render, add the same variables from `.env.example` under the service Environm
 
 Set `INTERNAL_ADMIN_EMAILS` to a comma-separated list of Optivra staff account emails that should see internal admin analytics, for example `admin@example.com,ops@example.com`. This value stays server-side and is never exposed to the frontend.
 
+Set `GA_MEASUREMENT_ID` to the Google Analytics 4 Measurement ID for production, for example `G-XXXXXXXXXX`. The public website is Express-rendered HTML, so this app uses `GA_MEASUREMENT_ID` rather than `NEXT_PUBLIC_GA_MEASUREMENT_ID` or `VITE_GA_MEASUREMENT_ID`. The GA tag is injected only when `NODE_ENV=production`, the measurement ID is present, and the requested page is public. Admin, API, account, dashboard, and checkout result pages are excluded.
+
 Build Command:
 
 ```bash
@@ -189,6 +191,40 @@ Checkout and portal redirects are generated from `APP_BASE_URL` at runtime:
 - Subscription cancel: `https://www.optivra.app/billing/cancel`
 - Credit purchase success: `https://www.optivra.app/billing/credits/success?session_id={CHECKOUT_SESSION_ID}`
 - Credit purchase cancel and Customer Portal return: `https://www.optivra.app/account/billing`
+
+## Google Analytics 4
+
+GA4 tracks public marketing/docs/blog pages only:
+
+- `/`
+- `/optivra-image-studio`
+- `/payment-gateway-rules-for-woocommerce`
+- `/woocommerce-plugins`
+- `/downloads`
+- `/pricing`
+- `/docs/*`
+- `/blog/*`
+- `/support`
+
+Excluded paths:
+
+- `/admin/*`
+- `/api/*`
+- `/account/*`
+- `/dashboard`
+- `/billing/*`
+
+The client helper records route changes in the single-page website router and conversion events such as `create_account_clicked`, `download_plugin_clicked`, `download_image_studio_clicked`, `download_payment_rules_clicked`, `view_docs_clicked`, `pricing_clicked`, `support_clicked`, `blog_cta_clicked`, `signup_started`, `signup_completed`, and `login_clicked`. Event parameters are limited to generic values such as page path, plugin key, plan, pack, and CTA location. Do not send emails, account IDs, API tokens, product/customer data, signed URLs, or billing details to GA.
+
+To test:
+
+1. Deploy with `NODE_ENV=production` and `GA_MEASUREMENT_ID` set.
+2. Open Google Analytics, then Reports, then Realtime.
+3. Visit `https://www.optivra.app/downloads`.
+4. Click a plugin download button.
+5. Confirm a realtime page view and download event appear.
+6. In browser devtools Network, filter for `gtag` or `collect`.
+7. Confirm no email, token, signed URL, or private data appears in GA requests.
 
 ## Database Migrations
 

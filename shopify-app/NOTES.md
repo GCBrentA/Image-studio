@@ -24,6 +24,9 @@ Original Shopify product media is not deleted in v1.
 
 - Shopify access tokens are encrypted with AES-256-GCM.
 - Webhooks validate `X-Shopify-Hmac-Sha256`.
+- Production app URL is `https://shopify.optivra.app`; OAuth callback is `https://shopify.optivra.app/auth/callback`.
+- Embedded responses set `Content-Security-Policy: frame-ancestors https://admin.shopify.com https://*.myshopify.com https://shopify.optivra.app`.
+- Session cookies are `SameSite=None` and become `Secure` when `NODE_ENV=production`.
 - Worker does not process jobs for uninstalled shops.
 - Compliance webhooks acknowledge customer data requests/redaction. The app does not store customer/order data.
 

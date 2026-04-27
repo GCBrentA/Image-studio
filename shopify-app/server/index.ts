@@ -15,6 +15,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.resolve(process.cwd(), "dist/client");
 
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "frame-ancestors https://admin.shopify.com https://*.myshopify.com https://shopify.optivra.app"
+  );
+  next();
+});
 app.use(webhookRouter);
 app.use(express.json({ limit: "2mb" }));
 app.use(authRouter);

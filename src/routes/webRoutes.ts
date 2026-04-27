@@ -61,6 +61,39 @@ type PageMeta = {
 
 const privateRobots = "noindex,nofollow";
 const socialImage = `${siteBaseUrl}/assets/hero-optivra-image-studio-desktop.webp`;
+const gaMeasurementId = process.env.GA_MEASUREMENT_ID || "";
+const gaEnabled = process.env.NODE_ENV === "production" && /^G-[A-Z0-9-]+$/i.test(gaMeasurementId);
+
+const isPublicAnalyticsPath = (requestPath: string): boolean => {
+  const normalizedPath = requestPath === "/catalogue-image-studio" ? "/optivra-image-studio" : requestPath;
+  if (
+    normalizedPath.startsWith("/admin") ||
+    normalizedPath.startsWith("/api") ||
+    normalizedPath.startsWith("/account") ||
+    normalizedPath.startsWith("/dashboard") ||
+    normalizedPath.startsWith("/billing/")
+  ) {
+    return false;
+  }
+
+  return (
+    normalizedPath === "/" ||
+    normalizedPath === "/login" ||
+    normalizedPath === "/optivra-image-studio" ||
+    normalizedPath === "/payment-gateway-rules-for-woocommerce" ||
+    normalizedPath === "/woocommerce-plugins" ||
+    normalizedPath === "/downloads" ||
+    normalizedPath === "/pricing" ||
+    normalizedPath === "/support" ||
+    normalizedPath === "/privacy" ||
+    normalizedPath === "/terms" ||
+    normalizedPath === "/refund-policy" ||
+    normalizedPath === "/docs" ||
+    normalizedPath === "/blog" ||
+    normalizedPath.startsWith("/docs/") ||
+    normalizedPath.startsWith("/blog/")
+  );
+};
 
 const faqJsonLd = {
   "@context": "https://schema.org",
@@ -433,6 +466,35 @@ const escapeHtml = (value: string): string =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+const renderAnalyticsSnippet = (requestPath: string): string => {
+  if (!gaEnabled || !isPublicAnalyticsPath(requestPath)) return "";
+
+  const measurementId = escapeHtml(gaMeasurementId);
+  return `
+    <script>
+      window.optivraAnalytics = { enabled: true, measurementId: "${measurementId}" };
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){window.dataLayer.push(arguments);}
+      (function(){
+        try {
+          if (window.localStorage && window.localStorage.getItem("optivra_analytics_consent") === "denied") {
+            window.optivraAnalytics.enabled = false;
+            return;
+          }
+          var tag = document.createElement("script");
+          tag.async = true;
+          tag.src = "https://www.googletagmanager.com/gtag/js?id=${measurementId}";
+          document.head.appendChild(tag);
+          gtag("js", new Date());
+          gtag("config", "${measurementId}", { page_path: window.location.pathname, anonymize_ip: true });
+        } catch (error) {
+          window.optivraAnalytics.enabled = false;
+        }
+      })();
+    </script>
+`;
+};
+
 const renderIndex = (requestPath: string): string => {
   const html = readFileSync(indexPath, "utf8");
   const meta = metaForPath(requestPath);
@@ -441,6 +503,8 @@ const renderIndex = (requestPath: string): string => {
   const jsonLd = (meta.jsonLd ?? [])
     .map((item) => `<script type="application/ld+json">${JSON.stringify(item)}</script>`)
     .join("\n    ");
+
+  const analyticsSnippet = renderAnalyticsSnippet(requestPath);
 
   return html
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(meta.title)}</title>`)
@@ -455,7 +519,7 @@ const renderIndex = (requestPath: string): string => {
     .replace(/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`)
     .replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`)
     .replace(/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:image" content="${socialImage}" />`)
-    .replace("</head>", `${jsonLd ? `    ${jsonLd}\n` : ""}  </head>`);
+    .replace("</head>", `${jsonLd ? `    ${jsonLd}\n` : ""}${analyticsSnippet}  </head>`);
 };
 
 export const webRoutes = Router();

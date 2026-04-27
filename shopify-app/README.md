@@ -28,8 +28,9 @@ Copy `.env.example` to `.env` for local development.
 ```text
 SHOPIFY_API_KEY=
 SHOPIFY_API_SECRET=
-SHOPIFY_APP_URL=
+SHOPIFY_APP_URL=https://shopify.optivra.app
 SCOPES=read_products,write_products,read_files,write_files
+NODE_ENV=production
 DATABASE_URL=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -84,13 +85,45 @@ Install URL:
 https://your-url/auth?shop=your-dev-store.myshopify.com
 ```
 
+## Production Shopify Dev Dashboard setup
+
+Use the dedicated Shopify app subdomain. Do not use the main Optivra website root domain for the Shopify app.
+
+```text
+App URL:
+https://shopify.optivra.app/
+
+Allowed redirection URL:
+https://shopify.optivra.app/auth/callback
+
+Scopes:
+read_products,write_products,read_files,write_files
+
+OAuth begin URL for testing:
+https://shopify.optivra.app/auth?shop=your-dev-store.myshopify.com
+
+Embedded app routes:
+https://shopify.optivra.app/
+https://shopify.optivra.app/products
+https://shopify.optivra.app/queue
+https://shopify.optivra.app/settings
+
+Webhook endpoints:
+app/uninstalled -> https://shopify.optivra.app/webhooks/app/uninstalled
+customers/data_request -> https://shopify.optivra.app/webhooks/customers/data_request
+customers/redact -> https://shopify.optivra.app/webhooks/customers/redact
+shop/redact -> https://shopify.optivra.app/webhooks/shop/redact
+```
+
 ## Render deployment
 
-Use `render.yaml`.
+Create separate Render services from the `shopify-app` root directory, or use `shopify-app/render.yaml`.
 
 Web service:
 
 ```text
+Service Type: Web Service
+Root Directory: shopify-app
 Build Command: npm install && npm run build
 Start Command: npm run start
 Health Check: /health
@@ -99,9 +132,48 @@ Health Check: /health
 Worker service:
 
 ```text
+Service Type: Background Worker
+Root Directory: shopify-app
 Build Command: npm install && npm run build
 Start Command: npm run worker
 ```
+
+Required Render environment variables:
+
+```text
+SHOPIFY_API_KEY
+SHOPIFY_API_SECRET
+SHOPIFY_APP_URL=https://shopify.optivra.app
+SCOPES=read_products,write_products,read_files,write_files
+NODE_ENV=production
+DATABASE_URL
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+OPTIVRA_API_URL
+OPTIVRA_API_KEY
+ENCRYPTION_SECRET
+```
+
+`PORT` is supplied by Render for the web service. `WORKER_POLL_MS` is optional for the worker and defaults to `10000`.
+
+Production health check:
+
+```text
+https://shopify.optivra.app/health
+```
+
+## Production install test
+
+After deployment:
+
+1. Open `https://shopify.optivra.app/health` and confirm it returns JSON status `ok`.
+2. Set the Shopify Dev Dashboard app URL and redirect URL shown above.
+3. Install the app on a development store with `https://shopify.optivra.app/auth?shop=your-dev-store.myshopify.com`.
+4. Confirm OAuth redirects to `/auth/callback` and stores the encrypted access token/session.
+5. Confirm the embedded app opens in Shopify Admin.
+6. Confirm `/products`, `/queue`, and `/settings` render inside the embedded app.
+7. Send or trigger `app/uninstalled` and confirm the HMAC verifies and the shop is marked disconnected.
+8. Send Shopify compliance webhook test payloads and confirm each endpoint returns `200`.
 
 ## Workflow
 
@@ -135,7 +207,7 @@ Processing stops for uninstalled shops because worker queries exclude `shops.uni
 ## Still needed before Shopify App Store submission
 
 - Replace placeholder local session cookie handling with Shopify App Bridge session token validation.
-- Complete App Bridge host handling for all embedded navigation cases.
+- Complete deeper App Bridge session token validation for all embedded API requests.
 - Confirm the GraphQL media publish mutations against the target Shopify API version.
 - Add a real Shopify Billing API flow before charging merchants.
 - Add automated tests for OAuth, webhook HMAC verification, product scan, job queue, worker processing, and publishing.

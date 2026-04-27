@@ -38,7 +38,10 @@ authRouter.get("/auth/callback", async (req, res, next) => {
     const record = await upsertShop({ shopDomain: shop, accessToken: token.access_token, scopes: token.scope });
     await registerMandatoryWebhooks(shop, record.access_token_encrypted, config.appUrl);
     setSessionCookie(res, shop);
-    res.redirect("/?shop=" + encodeURIComponent(shop));
+    const redirectParams = new URLSearchParams({ shop });
+    const host = String(req.query.host || "");
+    if (host) redirectParams.set("host", host);
+    res.redirect(`/?${redirectParams.toString()}`);
   } catch (error) {
     next(error);
   }
