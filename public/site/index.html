@@ -15,11 +15,11 @@
     <meta property="og:description" content="Optivra builds AI-powered ecommerce tools for WooCommerce stores, including product image optimisation, SEO metadata, and catalogue workflow automation." />
     <meta property="og:url" content="https://www.optivra.app/" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://www.optivra.app/assets/hero-image.png" />
+    <meta property="og:image" content="https://www.optivra.app/assets/hero-optivra-image-studio-desktop.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Optivra | AI-Powered Ecommerce Tools for WooCommerce" />
     <meta name="twitter:description" content="Optivra builds AI-powered ecommerce tools for WooCommerce stores, including product image optimisation, SEO metadata, and catalogue workflow automation." />
-    <meta name="twitter:image" content="https://www.optivra.app/assets/hero-image.png" />
+    <meta name="twitter:image" content="https://www.optivra.app/assets/hero-optivra-image-studio-desktop.webp" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
     <link rel="apple-touch-icon" href="/assets/optivra-logo.png" />
     <link rel="stylesheet" href="/assets/styles.css" />
@@ -52,24 +52,41 @@
     </header>
 
     <main>
-      <section class="page hero-page" data-page="/">
-        <img
-          class="hero-image"
-          width="1536"
-          height="1024"
-          src="/assets/hero-image.png"
-          alt="Optivra AI-powered product image optimisation for ecommerce stores"
-        />
-        <div class="hero-content visually-hidden" aria-hidden="true">
-          <p class="eyebrow">Optivra for WooCommerce</p>
-          <h1>Optimise your store. Increase impact.</h1>
-          <p>
-            Turn product photos into consistent, SEO-ready catalogue assets with approval workflows, usage controls,
-            and a plugin built for real store operations.
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="/pricing" data-link data-analytics="pricing_plan_clicked">View pricing</a>
-            <a class="button light" href="/optivra-image-studio" data-link>Explore plugin</a>
+      <section class="page hero-page image-studio-hero" data-page="/">
+        <div class="hero-shell">
+          <div class="hero-copy">
+            <p class="eyebrow">Optivra Image Studio</p>
+            <h1>Real Images. <span>AI-Enhanced.</span></h1>
+            <p class="hero-kicker">Built for WooCommerce.</p>
+            <p class="hero-description">
+              Turn real product photos into polished, conversion-ready images with better lighting, cleaner backgrounds,
+              smarter framing, and SEO-ready metadata — all inside your store.
+            </p>
+            <ul class="hero-bullets">
+              <li>Uses your real product images</li>
+              <li>Improves lighting, clarity &amp; framing</li>
+              <li>Review before publishing</li>
+              <li>Writes SEO metadata automatically</li>
+            </ul>
+            <div class="hero-actions">
+              <a class="button primary" href="/login" data-link data-analytics="signup_clicked">Start Free Trial</a>
+              <a class="button ghost" href="/optivra-image-studio" data-link>See It In Action</a>
+            </div>
+          </div>
+          <div class="hero-art-panel" aria-label="Optivra Image Studio product image preview">
+            <picture>
+              <source media="(max-width: 640px)" srcset="/assets/hero-optivra-image-studio-mobile.webp" />
+              <source media="(max-width: 1024px)" srcset="/assets/hero-optivra-image-studio-tablet.webp" />
+              <img
+                class="hero-art"
+                width="1280"
+                height="998"
+                src="/assets/hero-optivra-image-studio-desktop.webp"
+                alt="Before and after WooCommerce product image optimisation with Optivra Image Studio."
+                fetchpriority="high"
+                decoding="async"
+              />
+            </picture>
           </div>
         </div>
       </section>
