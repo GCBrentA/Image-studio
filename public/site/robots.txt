@@ -1,4 +1,8 @@
-﻿User-agent: *
+User-agent: *
 Allow: /
+
+Disallow: /admin
+Disallow: /account
+Disallow: /api
 
 Sitemap: https://www.optivra.app/sitemap.xml

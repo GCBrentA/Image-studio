@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://www.optivra.app/</loc><priority>1.0</priority></url>
   <url><loc>https://www.optivra.app/optivra-image-studio</loc><priority>0.95</priority></url>
@@ -8,10 +8,10 @@
   <url><loc>https://www.optivra.app/support</loc><priority>0.7</priority></url>
   <url><loc>https://www.optivra.app/privacy</loc><priority>0.5</priority></url>
   <url><loc>https://www.optivra.app/terms</loc><priority>0.5</priority></url>
-  <url><loc>https://www.optivra.app/resources</loc><priority>0.75</priority></url>
-  <url><loc>https://www.optivra.app/resources/how-to-optimise-woocommerce-product-images-for-seo</loc><priority>0.65</priority></url>
-  <url><loc>https://www.optivra.app/resources/woocommerce-product-image-seo-checklist</loc><priority>0.65</priority></url>
-  <url><loc>https://www.optivra.app/resources/how-to-write-alt-text-for-woocommerce-product-images</loc><priority>0.65</priority></url>
-  <url><loc>https://www.optivra.app/resources/how-to-replace-product-image-backgrounds-in-woocommerce</loc><priority>0.65</priority></url>
-  <url><loc>https://www.optivra.app/resources/ai-product-photography-for-woocommerce-stores</loc><priority>0.65</priority></url>
+  <url><loc>https://www.optivra.app/blog</loc><priority>0.75</priority></url>
+  <url><loc>https://www.optivra.app/blog/how-to-optimise-woocommerce-product-images-for-seo</loc><priority>0.65</priority></url>
+  <url><loc>https://www.optivra.app/blog/woocommerce-product-image-seo-checklist</loc><priority>0.65</priority></url>
+  <url><loc>https://www.optivra.app/blog/how-to-write-alt-text-for-woocommerce-product-images</loc><priority>0.65</priority></url>
+  <url><loc>https://www.optivra.app/blog/how-to-replace-product-image-backgrounds-in-woocommerce</loc><priority>0.65</priority></url>
+  <url><loc>https://www.optivra.app/blog/ai-product-photography-for-woocommerce-stores</loc><priority>0.65</priority></url>
 </urlset>

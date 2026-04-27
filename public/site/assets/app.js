@@ -35,7 +35,12 @@ function routeTo(path) {
     history.replaceState({}, "", normalized);
   }
   if (normalized.startsWith("/resources/")) {
-    normalized = "/resources";
+    normalized = normalized.replace("/resources/", "/blog/");
+    history.replaceState({}, "", normalized);
+  }
+  if (normalized === "/resources") {
+    normalized = "/blog";
+    history.replaceState({}, "", normalized);
   }
   if (normalized === "/account") {
     normalized = "/dashboard";
@@ -76,7 +81,12 @@ function pageTitle(path) {
     "/catalogue-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
     "/pricing": "Pricing | Optivra",
     "/downloads": `Download ${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
-    "/resources": "WooCommerce Image SEO Resources | Optivra",
+    "/blog": "WooCommerce Image SEO Blog | Optivra",
+    "/blog/how-to-optimise-woocommerce-product-images-for-seo": "How to Optimise WooCommerce Product Images for SEO | Optivra",
+    "/blog/woocommerce-product-image-seo-checklist": "WooCommerce Product Image SEO Checklist | Optivra",
+    "/blog/how-to-write-alt-text-for-woocommerce-product-images": "How to Write Alt Text for WooCommerce Product Images | Optivra",
+    "/blog/how-to-replace-product-image-backgrounds-in-woocommerce": "How to Replace Product Image Backgrounds in WooCommerce | Optivra",
+    "/blog/ai-product-photography-for-woocommerce-stores": "AI Product Photography for WooCommerce Stores | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
     "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
@@ -102,17 +112,44 @@ function pageDescription(path) {
     "/pricing": "Compare Optivra Image Studio plans, monthly credits, and credit packs for WooCommerce product image optimisation.",
     "/downloads": "Download Optivra Image Studio for WooCommerce and install the plugin manually while WordPress.org review is pending.",
     "/docs/ai-image-studio": "Learn how to use Optivra Image Studio to scan, process, review, approve, and optimise WooCommerce product images.",
-    "/resources": "WooCommerce image SEO article outlines covering alt text, product image metadata, background replacement, and AI product photography.",
+    "/blog": "WooCommerce image SEO guides covering alt text, product image metadata, background replacement, and AI product photography.",
+    "/blog/how-to-optimise-woocommerce-product-images-for-seo": "Learn how to optimise WooCommerce product images with better filenames, alt text, backgrounds, review workflows, and metadata.",
+    "/blog/woocommerce-product-image-seo-checklist": "Use this WooCommerce product image SEO checklist before publishing product images in your store.",
+    "/blog/how-to-write-alt-text-for-woocommerce-product-images": "Write useful WooCommerce product image alt text that supports accessibility, product context, and search relevance.",
+    "/blog/how-to-replace-product-image-backgrounds-in-woocommerce": "Learn how to replace product image backgrounds in WooCommerce while preserving originals and reviewing results.",
+    "/blog/ai-product-photography-for-woocommerce-stores": "See how AI product photography can standardise WooCommerce product visuals with review controls.",
     "/support": "Contact Optivra support for Optivra Image Studio setup, billing, plugin, and product image processing help."
   };
   return descriptions[path] || descriptions["/"];
 }
 
+function pageRobots(path) {
+  return (
+    path.startsWith("/account") ||
+    path.startsWith("/admin") ||
+    path === "/dashboard" ||
+    path === "/billing/success" ||
+    path === "/billing/cancel" ||
+    path === "/billing/credits/success" ||
+    path === "/billing/credits/cancel"
+  ) ? "noindex,nofollow" : "index,follow";
+}
+
 function updateMetadata(path) {
   const description = document.querySelector('meta[name="description"]');
   const canonical = document.querySelector('link[rel="canonical"]');
+  const robots = document.querySelector('meta[name="robots"]');
+  const title = pageTitle(path);
+  const desc = pageDescription(path);
+  const canonicalUrl = `https://www.optivra.app${path === "/" ? "/" : path}`;
   if (description) description.setAttribute("content", pageDescription(path));
-  if (canonical) canonical.setAttribute("href", `https://www.optivra.app${path === "/" ? "/" : path}`);
+  if (canonical) canonical.setAttribute("href", canonicalUrl);
+  if (robots) robots.setAttribute("content", pageRobots(path));
+  document.querySelector('meta[property="og:title"]')?.setAttribute("content", title);
+  document.querySelector('meta[property="og:description"]')?.setAttribute("content", desc);
+  document.querySelector('meta[property="og:url"]')?.setAttribute("content", canonicalUrl);
+  document.querySelector('meta[name="twitter:title"]')?.setAttribute("content", title);
+  document.querySelector('meta[name="twitter:description"]')?.setAttribute("content", desc);
 }
 
 document.addEventListener("click", (event) => {

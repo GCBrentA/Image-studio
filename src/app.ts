@@ -12,13 +12,14 @@ import { webRoutes } from "./routes/webRoutes";
 export const app = express();
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'"],
       connectSrc: ["'self'"],
       baseUri: ["'self'"],
@@ -49,6 +50,20 @@ app.use(cors({
     callback(new Error("Not allowed by CORS"));
   }
 }));
+
+app.use((request, response, next) => {
+  const host = request.hostname;
+  const forwardedProto = request.header("x-forwarded-proto");
+  const protocol = forwardedProto ?? request.protocol;
+  const isOptivraHost = host === "optivra.app" || host === "www.optivra.app";
+
+  if (isOptivraHost && (host !== "www.optivra.app" || protocol !== "https")) {
+    response.redirect(301, `https://www.optivra.app${request.originalUrl}`);
+    return;
+  }
+
+  next();
+});
 app.use("/billing/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
 app.use(express.json({ limit: "60mb" }));
