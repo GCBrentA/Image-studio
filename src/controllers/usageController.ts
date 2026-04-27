@@ -15,6 +15,9 @@ export const getUsage = async (
 
   response.status(200).json({
     ...(await getUsageForUser(request.auth.userId)),
-    domain: request.auth.domain
+    domain: request.auth.domain,
+    canonical_domain: request.auth.canonicalDomain,
+    claim_status: request.auth.claimStatus,
+    free_credit_message: request.auth.freeCreditMessage
   });
 };

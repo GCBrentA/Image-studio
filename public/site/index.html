@@ -122,7 +122,7 @@
           <div>
             <p class="eyebrow">Account</p>
             <h1>Login to Optivra</h1>
-            <p>Manage plans, sites, credits, billing, and API tokens from one workspace. Start with 10 free credits.</p>
+            <p>Manage plans, sites, credits, billing, and API tokens from one workspace. Start with 10 free credits after connecting a verified production store.</p>
           </div>
           <form class="auth-form" id="auth-form">
             <label>Email<input type="email" name="email" required /></label>
@@ -500,13 +500,15 @@
 
               <section id="credits" class="doc-card">
                 <h2>Credits and billing</h2>
-                <p>Start with 10 free credits. Credits are required to process images. Scanning is free. One processed image usually uses one credit unless your account is configured differently.</p>
+                <p>Start with 10 free credits after connecting a verified production WooCommerce store. Credits are required to process images. Scanning is free. One processed image usually uses one credit unless your account is configured differently.</p>
+                <div class="doc-callout info"><p>Free credits are issued once per verified production store/domain. Creating another login does not issue more free credits for the same WooCommerce store.</p></div>
                 <div class="mini-card-grid">
                   <div><strong>Credits Remaining</strong><p>Available processing capacity.</p></div>
                   <div><strong>Credits Used</strong><p>Credits consumed by successful processing.</p></div>
                   <div><strong>Monthly Plan Credits</strong><p>Credits included with your subscription allowance.</p></div>
                 </div>
                 <p>Billing is managed securely through Optivra and Stripe, not inside WordPress.</p>
+                <p>Staging, development, local, preview, and temporary hosting domains can connect for testing but do not receive free signup credits. Store transfers are supported if ownership changes; the original free credit grant remains attached to the store domain.</p>
               </section>
 
               <section id="buy-credits" class="doc-card">

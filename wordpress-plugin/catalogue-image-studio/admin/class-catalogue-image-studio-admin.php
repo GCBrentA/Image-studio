@@ -1470,6 +1470,9 @@ class Catalogue_Image_Studio_Admin {
 				<p><?php /* translators: %s: connected store domain. */ echo esc_html(sprintf(__('Connected domain: %s', 'optivra-image-studio-for-woocommerce'), $usage['domain'])); ?></p>
 			<?php endif; ?>
 		</div>
+		<?php if (! empty($usage['free_credit_message']) && is_string($usage['free_credit_message'])) : ?>
+			<p class="catalogue-image-studio-muted"><?php echo esc_html($usage['free_credit_message']); ?></p>
+		<?php endif; ?>
 		<div class="catalogue-image-studio-usage">
 			<div>
 				<span><?php echo esc_html__('Plan', 'optivra-image-studio-for-woocommerce'); ?></span>

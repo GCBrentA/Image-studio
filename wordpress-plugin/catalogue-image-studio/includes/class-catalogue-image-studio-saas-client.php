@@ -45,7 +45,7 @@ class Catalogue_Image_Studio_SaaSClient {
 					'Authorization' => 'Bearer ' . $this->api_token,
 					'Content-Type'  => 'application/json',
 					'Accept'        => 'application/json',
-				],
+				] + $this->get_site_headers(),
 				'body'    => wp_json_encode(
 					array_filter(
 						[
@@ -127,7 +127,7 @@ class Catalogue_Image_Studio_SaaSClient {
 				'headers' => [
 					'Authorization' => 'Bearer ' . $this->api_token,
 					'Accept'        => 'application/json',
-				],
+				] + $this->get_site_headers(),
 			]
 		);
 
@@ -187,5 +187,34 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		return esc_url_raw($url);
+	}
+
+	/**
+	 * Send non-secret store identity metadata used for store claims.
+	 *
+	 * @return array<string,string>
+	 */
+	private function get_site_headers(): array {
+		$install_id = (string) get_option('optivra_image_studio_install_id', '');
+		if ('' === $install_id) {
+			$install_id = wp_generate_uuid4();
+			update_option('optivra_image_studio_install_id', $install_id, false);
+		}
+
+		$woocommerce_version = '';
+		if (defined('WC_VERSION')) {
+			$woocommerce_version = (string) WC_VERSION;
+		} elseif (function_exists('WC') && WC()) {
+			$woocommerce_version = (string) WC()->version;
+		}
+
+		return [
+			'X-Optivra-Site-Url'             => esc_url_raw(site_url()),
+			'X-Optivra-Home-Url'             => esc_url_raw(home_url()),
+			'X-Optivra-Admin-Url-Hash'       => hash('sha256', admin_url()),
+			'X-Optivra-WordPress-Install-Id' => sanitize_text_field($install_id),
+			'X-Optivra-Plugin-Version'       => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+			'X-Optivra-WooCommerce-Version'  => sanitize_text_field($woocommerce_version),
+		];
 	}
 }

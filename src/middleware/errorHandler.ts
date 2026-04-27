@@ -8,6 +8,7 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
 
   response.status(statusCode).json({
     error: {
+      ...(typeof error.code === "string" ? { code: error.code } : {}),
       message: statusCode === 500 ? "Internal server error" : error.message,
       ...(env.nodeEnv === "development" ? { stack: error.stack } : {})
     }

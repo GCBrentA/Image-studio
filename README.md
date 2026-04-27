@@ -360,7 +360,9 @@ Response:
 }
 ```
 
-New free Optivra Image Studio accounts start with 10 free credits. Monthly plan resets add one credit ledger entry for the paid plan amount: Starter 20, Growth 100, Pro 500, and Agency 1500. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
+New free Optivra Image Studio accounts receive 10 free credits after connecting a verified production WooCommerce store. Free credits are issued once per canonical production store/domain, so creating another login does not issue more free credits for the same store. Staging, development, local, preview, and temporary hosting domains can connect for testing but do not receive free signup credits. Monthly plan resets add one credit ledger entry for the paid plan amount: Starter 20, Growth 100, Pro 500, and Agency 1500. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
+
+The WordPress plugin sends non-secret store identity metadata during usage checks and processing requests: `site_url`, `home_url`, a persistent `wordpress_install_id`, plugin version, WooCommerce version, and a hash of the admin URL. Optivra uses this to claim the store domain, prevent duplicate free-credit grants, and support ownership transfers.
 
 ## Image Processing
 

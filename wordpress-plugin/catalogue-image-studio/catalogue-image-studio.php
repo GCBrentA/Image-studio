@@ -93,6 +93,10 @@ function catalogue_image_studio_render_woocommerce_notice(): void {
  */
 function catalogue_image_studio_activate() {
 	if (catalogue_image_studio_requirements_met()) {
+		if ('' === (string) get_option('optivra_image_studio_install_id', '')) {
+			update_option('optivra_image_studio_install_id', wp_generate_uuid4(), false);
+		}
+
 		Catalogue_Image_Studio_Plugin::activate();
 		return;
 	}
@@ -136,6 +140,10 @@ add_action(
 	'plugins_loaded',
 	static function () {
 		$plugin = Catalogue_Image_Studio_Plugin::instance();
+
+		if ('' === (string) get_option('optivra_image_studio_install_id', '')) {
+			update_option('optivra_image_studio_install_id', wp_generate_uuid4(), false);
+		}
 
 		if (is_admin()) {
 			if (! catalogue_image_studio_is_woocommerce_active()) {

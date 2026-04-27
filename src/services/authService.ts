@@ -1,9 +1,8 @@
-import { CreditLedgerReason, SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
+import { SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../utils/prisma";
 import { HttpError } from "../utils/httpError";
 import { createJwt } from "../utils/jwt";
 import { hashPassword, verifyPassword } from "../utils/password";
-import { FREE_TRIAL_CREDITS } from "./creditService";
 
 type AuthResult = {
   token: string;
@@ -46,8 +45,8 @@ export const registerUser = async (email: string, password: string): Promise<Aut
         billing_plan: SubscriptionPlan.starter,
         billing_status: SubscriptionStatus.trialing,
         current_period_end: trialEndsAt,
-        credits_included: FREE_TRIAL_CREDITS,
-        credits_remaining: FREE_TRIAL_CREDITS,
+        credits_included: 0,
+        credits_remaining: 0,
         credits_used: 0,
         credits_reset_at: trialEndsAt
       },
@@ -63,24 +62,10 @@ export const registerUser = async (email: string, password: string): Promise<Aut
         plan: SubscriptionPlan.starter,
         status: SubscriptionStatus.trialing,
         current_period_end: trialEndsAt,
-        credits_included: FREE_TRIAL_CREDITS,
-        credits_remaining: FREE_TRIAL_CREDITS,
+        credits_included: 0,
+        credits_remaining: 0,
         credits_used: 0,
         credits_reset_at: trialEndsAt
-      }
-    });
-
-    await transaction.creditLedger.create({
-      data: {
-        userId: createdUser.id,
-        accountId: createdUser.id,
-        changeAmount: FREE_TRIAL_CREDITS,
-        amount: FREE_TRIAL_CREDITS,
-        balanceAfter: FREE_TRIAL_CREDITS,
-        reason: CreditLedgerReason.trial,
-        source: "free_signup_credits",
-        description: "Free signup credits",
-        idempotencyKey: `trial:${createdUser.id}`
       }
     });
 

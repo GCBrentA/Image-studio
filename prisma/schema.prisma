@@ -60,6 +60,9 @@ model User {
   created_at             DateTime            @default(now())
   updated_at             DateTime            @updatedAt
   sites                  ConnectedSite[]
+  free_credit_grants     FreeCreditGrant[]
+  outgoing_store_transfers StoreTransferAudit[] @relation("StoreTransferOldAccount")
+  incoming_store_transfers StoreTransferAudit[] @relation("StoreTransferNewAccount")
   subscriptions          Subscription[]
   credit_ledger          CreditLedger[]
   image_jobs             ImageJob[]
@@ -69,18 +72,72 @@ model User {
 }
 
 model ConnectedSite {
-  id             String   @id @default(cuid())
-  user_id        String
-  domain         String
-  api_token_hash String
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                      String    @id @default(cuid())
+  user_id                 String
+  domain                  String
+  canonical_domain        String?
+  site_url                String?
+  home_url                String?
+  wordpress_install_id    String?
+  plugin_version          String?
+  woocommerce_version     String?
+  claim_status            String    @default("pending")
+  verified_at             DateTime?
+  first_connected_at      DateTime  @default(now())
+  last_seen_at            DateTime?
+  free_credits_granted_at DateTime?
+  api_token_hash          String
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @updatedAt
+  user                    User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  free_credit_grants      FreeCreditGrant[]
+  store_transfers         StoreTransferAudit[]
 
   @@unique([user_id, domain])
+  @@index([canonical_domain])
+  @@index([wordpress_install_id])
+  @@index([claim_status])
   @@unique([api_token_hash])
   @@index([user_id])
   @@map("connected_sites")
+}
+
+model FreeCreditGrant {
+  id               String        @id @default(cuid())
+  canonical_domain String
+  account_id       String
+  store_id         String?
+  credits_granted  Int
+  grant_type       String
+  granted_at       DateTime      @default(now())
+  reason           String?
+  account          User          @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  store            ConnectedSite? @relation(fields: [store_id], references: [id], onDelete: SetNull)
+
+  @@unique([canonical_domain, grant_type])
+  @@index([account_id])
+  @@index([store_id])
+  @@map("free_credit_grants")
+}
+
+model StoreTransferAudit {
+  id                      String        @id @default(cuid())
+  old_account_id          String
+  new_account_id          String
+  store_id                String
+  canonical_domain        String
+  transfer_token_hash     String?       @unique
+  status                  String        @default("requested")
+  requested_at            DateTime      @default(now())
+  confirmed_at            DateTime?
+  confirmed_by_install_id String?
+  old_account             User          @relation("StoreTransferOldAccount", fields: [old_account_id], references: [id], onDelete: Cascade)
+  new_account             User          @relation("StoreTransferNewAccount", fields: [new_account_id], references: [id], onDelete: Cascade)
+  store                   ConnectedSite @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([canonical_domain])
+  @@index([status])
+  @@map("store_transfer_audit")
 }
 
 model Subscription {
