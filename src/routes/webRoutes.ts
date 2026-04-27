@@ -60,7 +60,7 @@ type PageMeta = {
 };
 
 const privateRobots = "noindex,nofollow";
-const socialImage = `${siteBaseUrl}/assets/hero-image.png`;
+const socialImage = `${siteBaseUrl}/assets/hero-optivra-image-studio-desktop.webp`;
 
 const faqJsonLd = {
   "@context": "https://schema.org",
