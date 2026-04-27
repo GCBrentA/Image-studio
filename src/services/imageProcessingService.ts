@@ -452,6 +452,22 @@ export const processImageForProduct = async ({
   const lightingSettings = getObject(processingSettings.lighting);
   const overrideSettings = getObject(jobOverrides);
   const edgeToEdge = getObject(overrideSettings.edgeToEdge);
+  const edgeLeftRequested = edgeToEdge.left === true;
+  const edgeRightRequested = edgeToEdge.right === true;
+  const edgeTopRequested = edgeToEdge.top === true;
+  const edgeBottomRequested = edgeToEdge.bottom === true;
+  const edgeEnabled = edgeToEdge.enabled === true || edgeLeftRequested || edgeRightRequested || edgeTopRequested || edgeBottomRequested;
+  const edgeLeft = edgeEnabled && edgeLeftRequested;
+  const edgeRight = edgeEnabled && edgeRightRequested;
+  const edgeTop = edgeEnabled && edgeTopRequested;
+  const edgeBottom = edgeEnabled && edgeBottomRequested;
+  const hasProcessingOptions =
+    settings !== undefined ||
+    jobOverrides !== undefined ||
+    backgroundImageUrl !== undefined ||
+    backgroundImageBuffer !== undefined ||
+    scalePercent !== undefined ||
+    background !== "#ffffff";
   const originalImage = imageBuffer
     ? getUploadedImage(imageBuffer, imageContentType ?? "application/octet-stream")
     : await downloadImage(imageUrl);
@@ -472,7 +488,7 @@ export const processImageForProduct = async ({
   });
   const originalUploadedAt = new Date();
   const storageCleanupAfter = getStorageCleanupAfter();
-  const duplicateJob = await findDuplicateJob(userId, imageJobId, originalImageHash);
+  const duplicateJob = hasProcessingOptions ? null : await findDuplicateJob(userId, imageJobId, originalImageHash);
 
   if (duplicateJob?.processed_storage_path) {
     const processedUrl = await createStorageSignedUrl({
@@ -513,36 +529,31 @@ export const processImageForProduct = async ({
   const framingMode = getString(framingSettings.mode, "auto");
   const paddingPercent = getNumber(framingSettings.padding, 8, 0, 30);
   const autoPaddingPercent = framingMode === "auto" && !scalePercent ? Math.min(paddingPercent, 2) : paddingPercent;
-  const edgeLeftRequested = edgeToEdge.left === true;
-  const edgeRightRequested = edgeToEdge.right === true;
-  const edgeTopRequested = edgeToEdge.top === true;
-  const edgeBottomRequested = edgeToEdge.bottom === true;
-  const edgeEnabled = edgeToEdge.enabled === true || edgeLeftRequested || edgeRightRequested || edgeTopRequested || edgeBottomRequested;
-  const edgeLeft = edgeEnabled && edgeLeftRequested;
-  const edgeRight = edgeEnabled && edgeRightRequested;
-  const edgeTop = edgeEnabled && edgeTopRequested;
-  const edgeBottom = edgeEnabled && edgeBottomRequested;
   const margin = edgeEnabled ? Math.round(outputSize * (Math.min(autoPaddingPercent, 1) / 100)) : Math.round(outputSize * (autoPaddingPercent / 100));
   const horizontalLimit = outputSize - (edgeLeft ? 0 : margin) - (edgeRight ? 0 : margin);
   const verticalLimit = outputSize - (edgeTop ? 0 : margin) - (edgeBottom ? 0 : margin);
   const targetProductSize = Math.round(outputSize * (normalizeScalePercent(scalePercent) / 100));
   const resizeWidth = Math.max(1, Math.min(targetProductSize, horizontalLimit));
   const resizeHeight = Math.max(1, Math.min(targetProductSize, verticalLimit));
+  const edgeResizeWidth = edgeLeft && edgeRight ? horizontalLimit : resizeWidth;
+  const edgeResizeHeight = edgeTop && edgeBottom ? verticalLimit : resizeHeight;
   const productBuffer = await sharp(cutout)
     .rotate()
+    .ensureAlpha()
     .trim({
       background: {
         r: 0,
         g: 0,
         b: 0,
         alpha: 0
-      }
+      },
+      threshold: 8
     })
     .resize({
-      width: edgeLeft && edgeRight ? horizontalLimit : resizeWidth,
-      height: edgeTop && edgeBottom ? verticalLimit : resizeHeight,
+      width: edgeResizeWidth,
+      height: edgeResizeHeight,
       fit: "inside",
-      withoutEnlargement: true
+      withoutEnlargement: false
     })
     .png()
     .toBuffer();
