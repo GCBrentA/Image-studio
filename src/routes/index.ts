@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { adminRoutes } from "./adminRoutes";
 import { authRoutes } from "./authRoutes";
 import { billingRoutes } from "./billingRoutes";
 import { dashboardRoutes } from "./dashboardRoutes";
@@ -6,13 +7,16 @@ import { healthRoutes } from "./healthRoutes";
 import { imageRoutes } from "./imageRoutes";
 import { siteRoutes } from "./siteRoutes";
 import { usageRoutes } from "./usageRoutes";
+import { pluginEventRoutes } from "./pluginEventRoutes";
 
 export const routes = Router();
 
 routes.use("/auth", authRoutes);
+routes.use("/admin", adminRoutes);
 routes.use("/billing", billingRoutes);
 routes.use("/account/dashboard", dashboardRoutes);
 routes.use("/health", healthRoutes);
 routes.use("/images", imageRoutes);
 routes.use("/sites", siteRoutes);
+routes.use("/plugin", pluginEventRoutes);
 routes.use("/usage", usageRoutes);

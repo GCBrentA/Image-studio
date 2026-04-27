@@ -21,7 +21,9 @@ const getSiteMetadata = (request: Request): SiteMetadata => ({
   homeUrl: request.header("x-optivra-home-url") ?? undefined,
   wordpressInstallId: request.header("x-optivra-wordpress-install-id") ?? undefined,
   pluginVersion: request.header("x-optivra-plugin-version") ?? undefined,
+  wordpressVersion: request.header("x-optivra-wordpress-version") ?? undefined,
   woocommerceVersion: request.header("x-optivra-woocommerce-version") ?? undefined,
+  phpVersion: request.header("x-optivra-php-version") ?? undefined,
   adminUrlHash: request.header("x-optivra-admin-url-hash") ?? undefined,
   ipAddress: request.ip
 });

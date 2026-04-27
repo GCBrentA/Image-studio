@@ -11,7 +11,9 @@ export type SiteMetadata = {
   homeUrl?: string;
   wordpressInstallId?: string;
   pluginVersion?: string;
+  wordpressVersion?: string;
   woocommerceVersion?: string;
+  phpVersion?: string;
   adminUrlHash?: string;
   ipAddress?: string;
 };
@@ -162,7 +164,9 @@ export const verifyConnectedSite = async (
       home_url: metadata.homeUrl,
       wordpress_install_id: metadata.wordpressInstallId,
       plugin_version: metadata.pluginVersion,
+      wordpress_version: metadata.wordpressVersion,
       woocommerce_version: metadata.woocommerceVersion,
+      php_version: metadata.phpVersion,
       claim_status: claimStatus,
       verified_at: staging ? null : now,
       last_seen_at: now

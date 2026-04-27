@@ -4,6 +4,8 @@ const tokenKey = "optivra_token";
 const PRODUCT_NAME = "Optivra Image Studio";
 const PRODUCT_NAME_WOOCOMMERCE = "Optivra Image Studio for WooCommerce";
 const PRODUCT_TAGLINE = "AI-powered product image optimisation for WooCommerce.";
+let currentUser = null;
+let currentUserLoaded = false;
 
 function token() {
   return localStorage.getItem(tokenKey) || "";
@@ -37,6 +39,9 @@ function routeTo(path) {
   if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
     loadBilling();
   }
+  if (normalized === "/admin/plugin-analytics") {
+    loadAdminAnalytics();
+  }
 }
 
 function pageTitle(path) {
@@ -47,6 +52,7 @@ function pageTitle(path) {
     "/pricing": "Pricing | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
+    "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
     "/account/billing": `Billing & Credits | ${PRODUCT_NAME}`,
     "/billing/success": "Billing Success | Optivra",
     "/billing/cancel": "Billing Cancelled | Optivra",
@@ -107,6 +113,9 @@ async function submitAuth(path) {
       })
     });
     setToken(body.token);
+    currentUser = body.user || null;
+    currentUserLoaded = true;
+    updateAdminVisibility();
     authMessage.textContent = "Signed in.";
     history.pushState({}, "", "/dashboard");
     routeTo("/dashboard");
@@ -191,6 +200,109 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function loadCurrentUser() {
+  if (!token()) {
+    currentUser = null;
+    currentUserLoaded = true;
+    updateAdminVisibility();
+    return null;
+  }
+
+  if (currentUserLoaded) {
+    return currentUser;
+  }
+
+  try {
+    const body = await api("/auth/me");
+    currentUser = body.user || null;
+  } catch {
+    currentUser = null;
+  }
+
+  currentUserLoaded = true;
+  updateAdminVisibility();
+  return currentUser;
+}
+
+function updateAdminVisibility() {
+  const isAdmin = Boolean(currentUser?.is_internal_admin);
+  document.querySelectorAll("[data-admin-only]").forEach((node) => {
+    node.hidden = !isAdmin;
+  });
+  document.querySelectorAll("[data-admin-badge]").forEach((node) => {
+    node.hidden = !isAdmin;
+  });
+}
+
+function formatPercent(value) {
+  return `${Math.round(Number(value || 0) * 100)}%`;
+}
+
+async function loadAdminAnalytics() {
+  const denied = document.getElementById("admin-denied");
+  const content = document.getElementById("admin-analytics-content");
+  if (denied) denied.hidden = true;
+  if (content) content.hidden = true;
+
+  const user = await loadCurrentUser();
+  if (!user?.is_internal_admin) {
+    if (denied) denied.hidden = false;
+    return;
+  }
+
+  try {
+    const [overviewBody, storesBody, eventsBody] = await Promise.all([
+      api("/api/admin/plugin-analytics/overview"),
+      api("/api/admin/plugin-analytics/stores"),
+      api("/api/admin/plugin-analytics/events")
+    ]);
+    const cards = overviewBody.overview?.cards || {};
+    setText("admin-connected-stores", cards.connected_stores ?? "-");
+    setText("admin-active-stores", cards.active_stores_7d ?? "-");
+    setText("admin-new-stores", cards.new_stores_7d ?? "-");
+    setText("admin-processed", cards.images_processed_7d ?? "-");
+    setText("admin-credits", cards.credits_consumed_7d ?? "-");
+    setText("admin-failure-rate", formatPercent(cards.processing_failure_rate));
+    setText("admin-approval-rate", formatPercent(cards.approval_rate));
+    setText("admin-subscriptions", cards.active_subscriptions ?? "-");
+    setText("admin-mrr", `$${Number(cards.mrr_usd || 0).toLocaleString()} USD`);
+
+    renderList("admin-event-counts", overviewBody.event_counts_30d || [], (item) => `${escapeHtml(item.event_type)}<br><small>${escapeHtml(item.count)}</small>`);
+
+    const storeRows = document.getElementById("admin-store-rows");
+    if (storeRows) {
+      const stores = storesBody.stores || [];
+      storeRows.innerHTML = stores.length
+        ? stores.map((store) => `
+          <tr>
+            <td>${escapeHtml(store.domain)}</td>
+            <td>${escapeHtml(store.account_email)}</td>
+            <td>${escapeHtml(store.plan || "-")}</td>
+            <td>${escapeHtml(store.billing_status || store.claim_status || "-")}</td>
+            <td>${escapeHtml(store.credits_remaining ?? "-")}</td>
+            <td>${escapeHtml(store.plugin_version || "-")}</td>
+            <td>${escapeHtml(store.woocommerce_version || "-")}</td>
+            <td>${escapeHtml(store.total_processed ?? 0)}</td>
+            <td>${escapeHtml(store.total_approved ?? 0)}</td>
+            <td>${escapeHtml(store.total_failed ?? 0)}</td>
+            <td>${escapeHtml(formatDate(store.last_seen_at))}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="11">No connected stores yet.</td></tr>`;
+    }
+
+    renderList("admin-event-rows", eventsBody.events || [], (event) => `${escapeHtml(event.event_type)}<br><small>${escapeHtml(event.canonical_domain || "-")} · ${escapeHtml(formatDate(event.created_at))}</small>`);
+
+    if (content) content.hidden = false;
+  } catch (error) {
+    if (denied) {
+      denied.hidden = false;
+      const message = denied.querySelector("p");
+      if (message) message.textContent = error.message;
+    }
+  }
 }
 
 document.getElementById("site-form")?.addEventListener("submit", async (event) => {
@@ -313,4 +425,4 @@ async function openPortal() {
 document.getElementById("portal-button")?.addEventListener("click", openPortal);
 document.getElementById("portal-button-secondary")?.addEventListener("click", openPortal);
 
-routeTo(location.pathname);
+loadCurrentUser().finally(() => routeTo(location.pathname));

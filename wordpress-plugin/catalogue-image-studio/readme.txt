@@ -49,6 +49,8 @@ Service details:
 
 Data sent to Optivra may include product IDs, product names, product image URLs, image slot information, categories, selected image processing settings, and selected SEO metadata fields. Optivra returns processed image URLs, credit usage information, and suggested SEO metadata.
 
+After you connect your store with a Site API Token, Optivra Image Studio sends operational data required to provide the service, such as plugin version, WordPress/WooCommerce/PHP versions, store connection status, credit balance, scan counts, queue counts, processing status, and error diagnostics. This helps display account status, manage credits, process images, and provide support. The plugin does not send API tokens, passwords, order details, payment details, secret keys, or WordPress user lists as analytics data.
+
 == Installation ==
 
 1. Install and activate WooCommerce.

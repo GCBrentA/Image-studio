@@ -161,6 +161,99 @@ class Catalogue_Image_Studio_SaaSClient {
 	}
 
 	/**
+	 * Send a small operational event after the store is connected.
+	 *
+	 * @param string              $event_type Event type.
+	 * @param array<string,mixed> $metadata Event metadata.
+	 * @param array<string,mixed> $settings Plugin settings.
+	 * @return void
+	 */
+	public function send_event(string $event_type, array $metadata = [], array $settings = []): void {
+		if ('' === $this->api_base_url || '' === $this->api_token || empty($settings['send_operational_diagnostics'])) {
+			return;
+		}
+
+		$allowed = [
+			'plugin_connected',
+			'connection_tested',
+			'settings_saved',
+			'scan_started',
+			'scan_completed',
+			'queue_created',
+			'image_queued',
+			'processing_started',
+			'processing_completed',
+			'processing_failed',
+			'preview_failed',
+			'image_approved',
+			'image_rejected',
+			'seo_generated',
+			'credits_low',
+			'buy_credits_clicked',
+			'credit_checkout_started',
+			'credit_checkout_completed',
+			'subscription_checkout_started',
+			'subscription_checkout_completed',
+			'billing_portal_opened',
+			'plugin_version_seen',
+		];
+
+		if (! in_array($event_type, $allowed, true)) {
+			return;
+		}
+
+		$response = wp_remote_post(
+			$this->api_base_url . '/api/plugin/events',
+			[
+				'timeout'  => 5,
+				'blocking' => false,
+				'headers'  => [
+					'Authorization' => 'Bearer ' . $this->api_token,
+					'Content-Type'  => 'application/json',
+					'Accept'        => 'application/json',
+				] + $this->get_site_headers(),
+				'body'     => wp_json_encode(
+					[
+						'eventType'          => $event_type,
+						'pluginVersion'      => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+						'wordpressVersion'   => get_bloginfo('version'),
+						'woocommerceVersion' => defined('WC_VERSION') ? WC_VERSION : '',
+						'phpVersion'         => PHP_VERSION,
+						'metadata'           => $this->sanitize_event_metadata($metadata),
+					]
+				),
+			]
+		);
+
+		if (is_wp_error($response) && ! empty($settings['debug_mode'])) {
+			$this->logger->error('Operational diagnostics event could not be sent.', ['message' => $response->get_error_message()]);
+		}
+	}
+
+	/**
+	 * @param array<string,mixed> $metadata Raw metadata.
+	 * @return array<string,mixed>
+	 */
+	private function sanitize_event_metadata(array $metadata): array {
+		$blocked = ['token', 'api_token', 'authorization', 'password', 'secret', 'signed_url', 'image_url', 'processed_url'];
+		$output = [];
+
+		foreach ($metadata as $key => $value) {
+			$key = sanitize_key((string) $key);
+
+			if ('' === $key || in_array($key, $blocked, true) || false !== strpos($key, 'token') || false !== strpos($key, 'secret')) {
+				continue;
+			}
+
+			if (is_scalar($value) || null === $value) {
+				$output[$key] = is_string($value) ? sanitize_text_field($value) : $value;
+			}
+		}
+
+		return $output;
+	}
+
+	/**
 	 * @param array<string,mixed> $decoded API response body.
 	 */
 	private function get_error_message(array $decoded, string $fallback): string {
@@ -214,7 +307,9 @@ class Catalogue_Image_Studio_SaaSClient {
 			'X-Optivra-Admin-Url-Hash'       => hash('sha256', admin_url()),
 			'X-Optivra-WordPress-Install-Id' => sanitize_text_field($install_id),
 			'X-Optivra-Plugin-Version'       => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+			'X-Optivra-WordPress-Version'    => sanitize_text_field((string) get_bloginfo('version')),
 			'X-Optivra-WooCommerce-Version'  => sanitize_text_field($woocommerce_version),
+			'X-Optivra-PHP-Version'          => sanitize_text_field(PHP_VERSION),
 		];
 	}
 }

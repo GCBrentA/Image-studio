@@ -3,12 +3,15 @@ import { prisma } from "../utils/prisma";
 import { HttpError } from "../utils/httpError";
 import { createJwt } from "../utils/jwt";
 import { hashPassword, verifyPassword } from "../utils/password";
+import { ensureEnvAdminRolePersisted, getEffectiveInternalRole } from "./internalAdminService";
 
 type AuthResult = {
   token: string;
   user: {
     id: string;
     email: string;
+    role: string;
+    is_internal_admin: boolean;
   };
 };
 
@@ -42,6 +45,7 @@ export const registerUser = async (email: string, password: string): Promise<Aut
       data: {
         email: normalizedEmail,
         password_hash: hashPassword(password),
+        role: getEffectiveInternalRole(normalizedEmail),
         billing_plan: SubscriptionPlan.starter,
         billing_status: SubscriptionStatus.trialing,
         current_period_end: trialEndsAt,
@@ -52,7 +56,8 @@ export const registerUser = async (email: string, password: string): Promise<Aut
       },
       select: {
         id: true,
-        email: true
+        email: true,
+        role: true
       }
     });
 
@@ -74,7 +79,10 @@ export const registerUser = async (email: string, password: string): Promise<Aut
 
   return {
     token: createJwt(user),
-    user
+    user: {
+      ...user,
+      is_internal_admin: getEffectiveInternalRole(user.email, user.role) !== "user"
+    }
   };
 };
 
@@ -87,6 +95,7 @@ export const loginUser = async (email: string, password: string): Promise<AuthRe
     select: {
       id: true,
       email: true,
+      role: true,
       password_hash: true
     }
   });
@@ -95,11 +104,41 @@ export const loginUser = async (email: string, password: string): Promise<AuthRe
     throw new HttpError(401, "Invalid email or password");
   }
 
+  const role = await ensureEnvAdminRolePersisted(user);
+
   return {
     token: createJwt(user),
     user: {
       id: user.id,
-      email: user.email
+      email: user.email,
+      role,
+      is_internal_admin: role !== "user"
     }
+  };
+};
+
+export const getCurrentUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId
+    },
+    select: {
+      id: true,
+      email: true,
+      role: true
+    }
+  });
+
+  if (!user) {
+    throw new HttpError(404, "User not found");
+  }
+
+  const role = await ensureEnvAdminRolePersisted(user);
+
+  return {
+    id: user.id,
+    email: user.email,
+    role,
+    is_internal_admin: role !== "user"
   };
 };

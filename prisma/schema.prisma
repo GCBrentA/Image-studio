@@ -42,6 +42,7 @@ model User {
   id                     String              @id @default(cuid())
   email                  String              @unique
   password_hash          String
+  role                   String              @default("user")
   stripe_customer_id     String?             @unique
   stripe_subscription_id String?             @unique
   stripe_price_id        String?
@@ -67,6 +68,7 @@ model User {
   credit_ledger          CreditLedger[]
   image_jobs             ImageJob[]
   processed_images       ProcessedImage[]
+  plugin_events          PluginEvent[]
 
   @@map("optivra_users")
 }
@@ -80,7 +82,9 @@ model ConnectedSite {
   home_url                String?
   wordpress_install_id    String?
   plugin_version          String?
+  wordpress_version       String?
   woocommerce_version     String?
+  php_version             String?
   claim_status            String    @default("pending")
   verified_at             DateTime?
   first_connected_at      DateTime  @default(now())
@@ -92,6 +96,7 @@ model ConnectedSite {
   user                    User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   free_credit_grants      FreeCreditGrant[]
   store_transfers         StoreTransferAudit[]
+  plugin_events           PluginEvent[]
 
   @@unique([user_id, domain])
   @@index([canonical_domain])
@@ -100,6 +105,31 @@ model ConnectedSite {
   @@unique([api_token_hash])
   @@index([user_id])
   @@map("connected_sites")
+}
+
+model PluginEvent {
+  id                  String         @id @default(cuid())
+  account_id          String?
+  store_id            String?
+  canonical_domain    String?
+  event_type          String
+  event_source        String         @default("wordpress_plugin")
+  plugin_version      String?
+  wordpress_version   String?
+  woocommerce_version String?
+  php_version         String?
+  plan                String?
+  credits_remaining   Int?
+  metadata            Json?
+  created_at          DateTime       @default(now())
+  account             User?          @relation(fields: [account_id], references: [id], onDelete: SetNull)
+  store               ConnectedSite? @relation(fields: [store_id], references: [id], onDelete: SetNull)
+
+  @@index([event_type, created_at])
+  @@index([store_id, created_at])
+  @@index([account_id, created_at])
+  @@index([canonical_domain])
+  @@map("plugin_events")
 }
 
 model FreeCreditGrant {

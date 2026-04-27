@@ -285,6 +285,7 @@ class Catalogue_Image_Studio_Plugin {
 			'email_batch_complete'    => false,
 			'email_job_failed'        => false,
 			'notification_email'      => '',
+			'send_operational_diagnostics' => true,
 			'category_presets'        => [],
 			'debug_mode'              => false,
 		];

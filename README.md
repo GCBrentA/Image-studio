@@ -93,6 +93,8 @@ The app loads `.env` first and `.env.local` second, so local overrides can live 
 
 In Render, add the same variables from `.env.example` under the service Environment settings.
 
+Set `INTERNAL_ADMIN_EMAILS` to a comma-separated list of Optivra staff account emails that should see internal admin analytics, for example `admin@example.com,ops@example.com`. This value stays server-side and is never exposed to the frontend.
+
 Build Command:
 
 ```bash

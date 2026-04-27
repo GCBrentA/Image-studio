@@ -270,6 +270,8 @@ class Catalogue_Image_Studio_Admin {
 			);
 		}
 
+		$this->plugin->client()->send_event('settings_saved', [], $settings);
+
 		if (isset($_POST['clear_local_cache'])) {
 			$this->plugin->jobs()->delete_all();
 			$this->queue_notice(__('Local image job cache cleared.', 'optivra-image-studio-for-woocommerce'), 'success');
@@ -295,6 +297,7 @@ class Catalogue_Image_Studio_Admin {
 			if (is_wp_error($usage)) {
 				$this->queue_notice($usage->get_error_message(), 'error');
 			} else {
+				$client->send_event(isset($_POST['connect_store']) ? 'plugin_connected' : 'connection_tested', ['connected' => true], $settings);
 				$this->queue_notice(__('Store connected to Optivra.', 'optivra-image-studio-for-woocommerce'), 'success');
 			}
 		} else {
@@ -384,6 +387,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings['email_batch_complete']    = ! empty($input['email_batch_complete']);
 		$settings['email_job_failed']        = ! empty($input['email_job_failed']);
 		$settings['notification_email']      = isset($input['notification_email']) ? sanitize_email((string) $input['notification_email']) : '';
+		$settings['send_operational_diagnostics'] = ! empty($input['send_operational_diagnostics']);
 
 		if ($settings['only_fill_missing_metadata'] && $settings['overwrite_existing_metadata']) {
 			$settings['overwrite_existing_metadata'] = false;
@@ -430,6 +434,7 @@ class Catalogue_Image_Studio_Admin {
 		$job_ids = isset($_POST['job_ids']) ? array_map('absint', (array) wp_unslash($_POST['job_ids'])) : [];
 		$job_ids = array_values(array_filter($job_ids));
 		$usage   = $this->get_usage();
+		$settings = $this->plugin->get_settings();
 
 		if (is_wp_error($usage)) {
 			$this->add_error(__('Connect your Optivra account before scanning or processing images.', 'optivra-image-studio-for-woocommerce'));
@@ -439,7 +444,12 @@ class Catalogue_Image_Studio_Admin {
 		$this->save_posted_edge_overrides();
 
 		if ('scan' === $action) {
+			$this->plugin->client()->send_event('scan_started', [], $settings);
 			$result = $this->plugin->scanner()->scan($this->get_scan_filters_from_request());
+			$this->plugin->client()->send_event('scan_completed', [
+				'slots_found' => (int) $result['slots_found'],
+				'jobs_found'  => count((array) $result['job_ids']),
+			], $settings);
 			if ((int) $result['slots_found'] <= 0) {
 				$this->add_error(__('No images found. Check product status/category filters or run with debug mode enabled.', 'optivra-image-studio-for-woocommerce'));
 			} else {
@@ -458,6 +468,7 @@ class Catalogue_Image_Studio_Admin {
 		if ('queue_visible' === $action || 'queue_category' === $action) {
 			$result = $this->plugin->scanner()->scan($this->get_scan_filters_from_request());
 			$this->plugin->jobs()->update_statuses((array) $result['job_ids'], 'queued');
+			$this->plugin->client()->send_event('queue_created', ['jobs_queued' => count((array) $result['job_ids'])], $settings);
 			$this->add_success(sprintf(
 				/* translators: %d: jobs queued */
 				__('%d image(s) queued.', 'optivra-image-studio-for-woocommerce'),
@@ -469,6 +480,7 @@ class Catalogue_Image_Studio_Admin {
 		if ('queue_selected_slots' === $action) {
 			$job_ids = $this->queue_selected_slots();
 			$this->plugin->jobs()->update_statuses($job_ids, 'queued');
+			$this->plugin->client()->send_event('image_queued', ['jobs_queued' => count($job_ids)], $settings);
 			$this->add_success(sprintf(
 				/* translators: %d: jobs queued */
 				__('%d selected image(s) queued.', 'optivra-image-studio-for-woocommerce'),
@@ -478,7 +490,6 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		if ('process_next_batch' === $action) {
-			$settings = $this->plugin->get_settings();
 			if (! empty($settings['pause_low_credits']) && $this->is_low_credit_state($usage)) {
 				$this->add_error(__('Processing is paused because credits are running low. Buy credits or disable the pause setting to continue.', 'optivra-image-studio-for-woocommerce'));
 				return;
@@ -530,13 +541,28 @@ class Catalogue_Image_Studio_Admin {
 		$this->save_posted_seo_metadata();
 
 		foreach ($job_ids as $job_id) {
+			if ('process' === $action) {
+				$this->plugin->client()->send_event('processing_started', ['job_id' => $job_id], $settings);
+			}
 			$result = $this->run_job_action($action, $job_id);
 
 			if (is_wp_error($result)) {
 				$failed++;
+				if ('process' === $action) {
+					$this->plugin->client()->send_event('processing_failed', ['job_id' => $job_id, 'error_code' => $result->get_error_code()], $settings);
+				}
 				$this->add_error($result->get_error_message());
 			} else {
 				$success++;
+				if ('process' === $action) {
+					$this->plugin->client()->send_event('processing_completed', ['job_id' => $job_id], $settings);
+				} elseif ('approve' === $action) {
+					$this->plugin->client()->send_event('image_approved', ['job_id' => $job_id], $settings);
+				} elseif ('reject' === $action) {
+					$this->plugin->client()->send_event('image_rejected', ['job_id' => $job_id], $settings);
+				} elseif ('regenerate_seo' === $action) {
+					$this->plugin->client()->send_event('seo_generated', ['job_id' => $job_id], $settings);
+				}
 			}
 		}
 
@@ -1286,6 +1312,7 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_toggle_setting('show_failed_alerts', __('Show admin notices for failed jobs', 'optivra-image-studio-for-woocommerce'), __('Display failure notices when the API or processing workflow returns an error.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['show_failed_alerts'])); ?>
 					<?php $this->render_toggle_setting('email_batch_complete', __('Email admin when batch completes', 'optivra-image-studio-for-woocommerce'), __('Send an email when a processing batch finishes.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['email_batch_complete'])); ?>
 					<?php $this->render_toggle_setting('email_job_failed', __('Email admin when job fails', 'optivra-image-studio-for-woocommerce'), __('Send an email when an image job fails.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['email_job_failed'])); ?>
+					<?php $this->render_toggle_setting('send_operational_diagnostics', __('Send operational usage diagnostics to Optivra', 'optivra-image-studio-for-woocommerce'), __('After connection, send plugin version, scan counts, queue counts, processing status, credit balance, and error diagnostics needed for account status and support. No API tokens or secret keys are sent.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['send_operational_diagnostics'])); ?>
 					<?php $this->render_text_setting('notification_email', __('Notification email address', 'optivra-image-studio-for-woocommerce'), __('Optional. Defaults to the WordPress admin email if left blank.', 'optivra-image-studio-for-woocommerce'), (string) ($settings['notification_email'] ?? ''), 'email'); ?>
 				</section>
 
@@ -1398,6 +1425,7 @@ class Catalogue_Image_Studio_Admin {
 		<div class="catalogue-image-studio-disclosure">
 			<strong><?php echo esc_html__('External service disclosure', 'optivra-image-studio-for-woocommerce'); ?></strong>
 			<p><?php echo esc_html__('Optivra Image Studio connects your WooCommerce store to Optivra\'s external image processing service. When you scan or process images, selected product image data, image URLs, product names, categories, and related metadata may be sent to Optivra for image background replacement, optimisation, review workflow support, and SEO metadata generation. An Optivra account and Site API Token are required.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<p><?php echo esc_html__('After connection, Optivra Image Studio also sends operational data needed to provide the service, such as plugin version, WordPress/WooCommerce/PHP versions, store connection status, credit balance, scan counts, queue counts, processing status, and error diagnostics. No API tokens, passwords, order details, payment details, or secret keys are sent.', 'optivra-image-studio-for-woocommerce'); ?></p>
 			<p><?php echo esc_html__('No product or image data is sent until you connect your Site API Token and intentionally start scanning or processing. Image processing uses credits from your Optivra account.', 'optivra-image-studio-for-woocommerce'); ?></p>
 			<div class="catalogue-image-studio-link-row">
 				<a href="<?php echo esc_url('https://www.optivra.app'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Service: Optivra Image Studio', 'optivra-image-studio-for-woocommerce'); ?></a>

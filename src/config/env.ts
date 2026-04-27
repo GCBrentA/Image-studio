@@ -82,5 +82,9 @@ export const env = {
     process.env.APP_URL ??
     process.env.PUBLIC_BASE_URL ??
     `http://localhost:${process.env.PORT ?? 3000}`,
-  hasDatabaseUrl: Boolean(process.env.DATABASE_URL)
+  hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+  internalAdminEmails: (process.env.INTERNAL_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
 };

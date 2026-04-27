@@ -8,6 +8,8 @@ const webPaths = new Set([
   "/pricing",
   "/login",
   "/dashboard",
+  "/admin",
+  "/admin/plugin-analytics",
   "/account/billing",
   "/billing/success",
   "/billing/cancel",
