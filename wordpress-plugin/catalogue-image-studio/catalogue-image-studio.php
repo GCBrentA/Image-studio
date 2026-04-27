@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Optivra Image Studio for WooCommerce
- * Plugin URI:  https://www.optivra.app
+ * Plugin URI:  https://www.optivra.app/docs/optivra-image-studio
  * Description: AI-powered product image optimisation, background replacement, review workflow, and SEO metadata for WooCommerce.
  * Version:     1.0.0
  * Author:      Optivra
