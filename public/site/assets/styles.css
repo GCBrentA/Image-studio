@@ -26,8 +26,8 @@ a { color: inherit; }
   display: flex;
   align-items: center;
   gap: 24px;
-  min-height: 72px;
-  padding: 0 28px;
+  min-height: 64px;
+  padding: 0 22px;
   background: rgba(4, 9, 24, 0.92);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(14px);
@@ -39,7 +39,9 @@ a { color: inherit; }
 .brand { text-decoration: none; }
 .brand-logo {
   display: block;
-  width: 178px;
+  width: 132px;
+  max-height: 54px;
+  object-fit: contain;
   height: auto;
 }
 .main-nav {
@@ -205,7 +207,10 @@ p { color: var(--muted); line-height: 1.65; }
   min-height: 260px;
 }
 .credit-pack-card .eyebrow {
-  margin-bottom: 10px;
+  margin: 24px 0 10px;
+  max-width: calc(100% - 18px);
+  font-size: 12px;
+  line-height: 1.25;
 }
 .credit-pack-card h2 {
   font-size: 24px;
@@ -220,14 +225,16 @@ p { color: var(--muted); line-height: 1.65; }
 .credit-pack-card.featured::after {
   content: "Best value";
   position: absolute;
-  top: 14px;
+  top: 12px;
   right: 14px;
-  padding: 5px 9px;
+  padding: 4px 8px;
   border-radius: 999px;
   background: rgba(124, 61, 255, 0.1);
   color: var(--green);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 .auth-layout {
   display: grid;
@@ -551,7 +558,7 @@ pre {
 .site-footer a { color: var(--muted); }
 @media (max-width: 940px) {
   .site-header { flex-wrap: wrap; height: auto; padding: 14px 18px; }
-  .brand-logo { width: 150px; }
+  .brand-logo { width: 124px; max-height: 50px; }
   .main-nav { order: 3; width: 100%; overflow-x: auto; }
   .hero-content { padding-left: 24px; }
   .feature-grid, .feature-grid.three, .pricing-grid, .dashboard-grid, .product-hero, .auth-layout {
