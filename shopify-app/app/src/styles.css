@@ -1,0 +1,64 @@
+body {
+  margin: 0;
+  background: #f6f7f8;
+}
+
+.optivra-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.optivra-nav {
+  background: #111827;
+  color: #fff;
+  padding: 20px;
+}
+
+.optivra-brand {
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.optivra-nav a {
+  border-radius: 8px;
+  color: #d1d5db;
+  display: block;
+  margin: 6px 0;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.optivra-nav a.active,
+.optivra-nav a:hover {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.optivra-main {
+  padding: 24px;
+}
+
+.optivra-media {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #dfe3e8;
+}
+
+.optivra-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 800px) {
+  .optivra-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .optivra-nav {
+    position: static;
+  }
+}
