@@ -1,4 +1,4 @@
-﻿-- Internal analytics and admin role support.
+-- Internal analytics and admin role support.
 
 ALTER TABLE public.optivra_users
   ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
