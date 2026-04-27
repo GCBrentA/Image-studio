@@ -26,6 +26,17 @@ function setToken(value) {
 
 function routeTo(path) {
   let normalized = path === "" ? "/" : path;
+  if (normalized === "/catalogue-image-studio") {
+    normalized = "/optivra-image-studio";
+    history.replaceState({}, "", normalized);
+  }
+  if (normalized === "/docs/optivra-image-studio") {
+    normalized = "/docs/ai-image-studio";
+    history.replaceState({}, "", normalized);
+  }
+  if (normalized.startsWith("/resources/")) {
+    normalized = "/resources";
+  }
   if (normalized === "/account") {
     normalized = "/dashboard";
     history.replaceState({}, "", normalized);
@@ -42,6 +53,7 @@ function routeTo(path) {
   pages.forEach((node) => node.classList.toggle("active", node === page));
   navLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === normalized));
   document.title = pageTitle(normalized);
+  updateMetadata(normalized);
   if (normalized === "/dashboard") {
     loadDashboard();
   }
@@ -60,9 +72,11 @@ function pageTitle(path) {
   const names = {
     "/": `${PRODUCT_NAME} | Optivra`,
     "/plugins": "Plugins | Optivra",
-    "/catalogue-image-studio": `${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
+    "/optivra-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
+    "/catalogue-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
     "/pricing": "Pricing | Optivra",
     "/downloads": `Download ${PRODUCT_NAME_WOOCOMMERCE} | Optivra`,
+    "/resources": "WooCommerce Image SEO Resources | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
     "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
@@ -81,6 +95,26 @@ function pageTitle(path) {
   return names[path] || names["/"];
 }
 
+function pageDescription(path) {
+  const descriptions = {
+    "/": "AI-powered ecommerce tools for WooCommerce stores, starting with Optivra Image Studio for product image optimisation.",
+    "/optivra-image-studio": "Optimise WooCommerce product images with AI-powered background replacement, review workflows, and SEO-friendly image metadata.",
+    "/pricing": "Compare Optivra Image Studio plans, monthly credits, and credit packs for WooCommerce product image optimisation.",
+    "/downloads": "Download Optivra Image Studio for WooCommerce and install the plugin manually while WordPress.org review is pending.",
+    "/docs/ai-image-studio": "Learn how to use Optivra Image Studio to scan, process, review, approve, and optimise WooCommerce product images.",
+    "/resources": "WooCommerce image SEO article outlines covering alt text, product image metadata, background replacement, and AI product photography.",
+    "/support": "Contact Optivra support for Optivra Image Studio setup, billing, plugin, and product image processing help."
+  };
+  return descriptions[path] || descriptions["/"];
+}
+
+function updateMetadata(path) {
+  const description = document.querySelector('meta[name="description"]');
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (description) description.setAttribute("content", pageDescription(path));
+  if (canonical) canonical.setAttribute("href", `https://www.optivra.app${path === "/" ? "/" : path}`);
+}
+
 document.addEventListener("click", (event) => {
   const link = event.target.closest("[data-link]");
   if (!link) return;
@@ -89,6 +123,36 @@ document.addEventListener("click", (event) => {
   event.preventDefault();
   history.pushState({}, "", href);
   routeTo(location.pathname);
+});
+
+function trackConversion(eventName, properties = {}) {
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ event: eventName, ...properties });
+  if (typeof window.gtag === "function") {
+    window.gtag("event", eventName, properties);
+  }
+  if (typeof window.plausible === "function") {
+    window.plausible(eventName, { props: properties });
+  }
+}
+
+document.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-analytics], [data-download-zip], [data-plan], [data-pack]");
+  if (!target) return;
+
+  const explicitEvent = target.dataset.analytics;
+  if (explicitEvent) {
+    trackConversion(explicitEvent, { path: location.pathname });
+    return;
+  }
+
+  if (target.matches("[data-download-zip]")) {
+    trackConversion("download_plugin_clicked", { path: location.pathname });
+  } else if (target.matches("[data-plan]")) {
+    trackConversion("pricing_plan_clicked", { plan: target.dataset.plan, path: location.pathname });
+  } else if (target.matches("[data-pack]")) {
+    trackConversion("buy_credits_clicked", { pack: target.dataset.pack, path: location.pathname });
+  }
 });
 
 window.addEventListener("popstate", () => routeTo(location.pathname));
@@ -339,6 +403,7 @@ document.getElementById("site-form")?.addEventListener("submit", async (event) =
       body: JSON.stringify({ domain: form.get("domain") })
     });
     document.getElementById("new-token").textContent = `New site token for ${body.site.domain}:\n${body.api_token}`;
+    trackConversion("copy_api_token_clicked", { source: "site_connect" });
     await loadDashboard();
   } catch (error) {
     document.getElementById("new-token").textContent = error.message;

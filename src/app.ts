@@ -53,8 +53,14 @@ app.use("/billing/webhook", express.raw({ type: "application/json" }), billingWe
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), billingWebhookRoutes);
 app.use(express.json({ limit: "60mb" }));
 app.use(logger);
+app.get("/robots.txt", (_request, response) => {
+  response.type("text/plain").sendFile(path.resolve(process.cwd(), "public", "site", "robots.txt"));
+});
+app.get("/sitemap.xml", (_request, response) => {
+  response.type("application/xml").sendFile(path.resolve(process.cwd(), "public", "site", "sitemap.xml"));
+});
 app.use("/assets", express.static(path.resolve(process.cwd(), "public", "site", "assets")));
-app.use("/downloads", express.static(path.resolve(process.cwd(), "public", "site", "downloads")));
+app.use("/downloads", express.static(path.resolve(process.cwd(), "public", "site", "downloads"), { redirect: false }));
 app.use("/processed-images", express.static(path.resolve(process.cwd(), "storage", "processed-images")));
 
 app.get("/account/dashboard", (request, response, next) => {
