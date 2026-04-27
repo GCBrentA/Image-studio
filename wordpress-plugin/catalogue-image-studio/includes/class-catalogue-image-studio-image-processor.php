@@ -72,6 +72,15 @@ class Catalogue_Image_Studio_ImageProcessor {
 			return $error;
 		}
 
+		if (empty($source_payload)) {
+			$error = new WP_Error(
+				'catalogue_image_studio_missing_source_file',
+				__('The source image file could not be prepared for upload to Optivra. Check that the image exists in the Media Library and is smaller than 25 MB after resizing.', 'optivra-image-studio-for-woocommerce')
+			);
+			$this->mark_failed($job_id, $error);
+			return $error;
+		}
+
 		$this->jobs->update(
 			$job_id,
 			[
@@ -194,11 +203,28 @@ class Catalogue_Image_Studio_ImageProcessor {
 			return [];
 		}
 
-		$max_bytes = 15 * 1024 * 1024;
+		$max_bytes = 12 * 1024 * 1024;
 		$file_size = (int) filesize($file);
 
-		if ($file_size <= 0 || $file_size > $max_bytes) {
+		if ($file_size <= 0) {
 			return [];
+		}
+
+		$prepared_file = $file;
+		$temp_file = '';
+
+		if ($file_size > $max_bytes) {
+			$prepared_file = $this->create_processing_copy($file, $attachment_id);
+			if ('' === $prepared_file) {
+				return [];
+			}
+			$temp_file = $prepared_file;
+			$file_size = (int) filesize($prepared_file);
+
+			if ($file_size <= 0 || $file_size > $max_bytes) {
+				wp_delete_file($temp_file);
+				return [];
+			}
 		}
 
 		require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -206,16 +232,27 @@ class Catalogue_Image_Studio_ImageProcessor {
 		global $wp_filesystem;
 
 		if (! $wp_filesystem) {
+			if ('' !== $temp_file) {
+				wp_delete_file($temp_file);
+			}
 			return [];
 		}
 
-		$contents = $wp_filesystem->get_contents($file);
+		$contents = $wp_filesystem->get_contents($prepared_file);
+
+		if ('' !== $temp_file) {
+			wp_delete_file($temp_file);
+		}
 
 		if (! is_string($contents) || '' === $contents) {
 			return [];
 		}
 
 		$mime_type = (string) get_post_mime_type($attachment_id);
+		if ('' !== $temp_file) {
+			$mime_type = 'image/jpeg';
+		}
+
 		if ('' === $mime_type) {
 			$file_type = wp_check_filetype($file);
 			$mime_type = (string) ($file_type['type'] ?? '');
@@ -229,9 +266,48 @@ class Catalogue_Image_Studio_ImageProcessor {
 
 		return [
 			$key_prefix . 'image_data'      => base64_encode($contents),
-			$key_prefix . 'image_filename'  => sanitize_file_name(wp_basename($file)),
+			$key_prefix . 'image_filename'  => sanitize_file_name(wp_basename($prepared_file)),
 			$key_prefix . 'image_mime_type' => sanitize_mime_type($mime_type),
 		];
+	}
+
+	private function create_processing_copy(string $file, int $attachment_id): string {
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+
+		$editor = wp_get_image_editor($file);
+
+		if (is_wp_error($editor)) {
+			return '';
+		}
+
+		$editor->resize(2200, 2200, false);
+		if (method_exists($editor, 'set_quality')) {
+			$editor->set_quality(88);
+		}
+
+		$temp_file = wp_tempnam('optivra-processing-' . $attachment_id . '.jpg');
+		if (! $temp_file) {
+			return '';
+		}
+
+		$jpg_file = preg_replace('/\\.[^.]+$/', '.jpg', $temp_file);
+		if (! is_string($jpg_file) || '' === $jpg_file) {
+			wp_delete_file($temp_file);
+			return '';
+		}
+
+		if ($jpg_file !== $temp_file) {
+			wp_delete_file($temp_file);
+		}
+
+		$saved = $editor->save($jpg_file, 'image/jpeg');
+		if (is_wp_error($saved) || empty($saved['path'])) {
+			wp_delete_file($jpg_file);
+			return '';
+		}
+
+		return (string) $saved['path'];
 	}
 
 	/**
