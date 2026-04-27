@@ -14,7 +14,7 @@ export const PLAN_CREDIT_LIMITS: Record<SubscriptionPlan, number> = {
   agency: env.planCreditLimits.agency
 };
 
-export const FREE_TRIAL_CREDITS = 20;
+export const FREE_TRIAL_CREDITS = 10;
 
 const lowCreditThresholdPercents = [50, 80, 95, 0] as const;
 
@@ -41,6 +41,7 @@ export type DeductCreditOptions = {
 };
 
 export type CreditLedgerSource =
+  | "free_signup_credits"
   | "free_trial"
   | "stripe_invoice_payment_succeeded"
   | "stripe_credit_purchase"

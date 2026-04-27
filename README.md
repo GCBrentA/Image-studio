@@ -332,23 +332,23 @@ Response:
 ```json
 {
   "plan": "starter",
-  "credits_remaining": 20,
-  "credits_total": 20,
+  "credits_remaining": 10,
+  "credits_total": 10,
   "low_credit_thresholds": [
     {
       "percent": 50,
       "reached": false,
-      "credits_remaining_at_threshold": 10
+      "credits_remaining_at_threshold": 5
     },
     {
       "percent": 80,
       "reached": false,
-      "credits_remaining_at_threshold": 4
+      "credits_remaining_at_threshold": 2
     },
     {
       "percent": 95,
       "reached": false,
-      "credits_remaining_at_threshold": 1
+      "credits_remaining_at_threshold": 0
     },
     {
       "percent": 0,
@@ -360,7 +360,7 @@ Response:
 }
 ```
 
-Free trials start with 20 credits. Monthly plan resets add one credit ledger entry for the plan amount: Starter 20, Growth 100, Pro 500, and Agency 1500. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
+New free Optivra Image Studio accounts start with 10 free credits. Monthly plan resets add one credit ledger entry for the paid plan amount: Starter 20, Growth 100, Pro 500, and Agency 1500. The low-credit thresholds indicate when an account has used at least 50%, 80%, 95%, or all available credits.
 
 ## Image Processing
 

@@ -78,8 +78,8 @@ export const registerUser = async (email: string, password: string): Promise<Aut
         amount: FREE_TRIAL_CREDITS,
         balanceAfter: FREE_TRIAL_CREDITS,
         reason: CreditLedgerReason.trial,
-        source: "free_trial",
-        description: "Free trial credits",
+        source: "free_signup_credits",
+        description: "Free signup credits",
         idempotencyKey: `trial:${createdUser.id}`
       }
     });
