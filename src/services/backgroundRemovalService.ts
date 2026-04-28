@@ -16,7 +16,7 @@ export const removeImageBackground = async (imageBuffer: Buffer): Promise<Buffer
   formData.append("model", "gpt-image-1");
   formData.append(
     "prompt",
-    "Create a precise ecommerce product cutout from this image. Remove the entire background and keep only the product. Preserve product geometry, colors, labels, texture, and edges. Return a clean transparent-background PNG with no shadows, reflections, floor, text overlays, borders, or added objects."
+    "Create a precise ecommerce product alpha mask/cutout from this image. Preserve the product exactly as shown. Do not change the product shape, packaging, label, logo, text, colours, markings, icons, dimensions, proportions, material, texture, ingredients, annotations, or visible product details. Only remove the background outside the product area. Return a clean transparent-background PNG with the product foreground isolated, no shadows, reflections, floor, text overlays, borders, or added objects."
   );
   formData.append("background", "transparent");
   formData.append("output_format", "png");
