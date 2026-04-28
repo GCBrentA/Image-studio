@@ -625,6 +625,7 @@
 
 .catalogue-image-studio-admin .optivra-job-diagnostics {
 	margin-top: 10px;
+	position: relative;
 }
 
 .catalogue-image-studio-admin .optivra-job-diagnostics summary {
@@ -636,13 +637,21 @@
 
 .catalogue-image-studio-admin .optivra-job-diagnostics dl {
 	display: grid;
-	grid-template-columns: minmax(100px, 140px) minmax(0, 1fr);
-	gap: 4px 8px;
+	grid-template-columns: minmax(150px, 190px) minmax(260px, 1fr);
+	gap: 6px 12px;
 	margin: 8px 0 0;
 	padding: 10px;
 	border: 1px solid #e5e7eb;
 	border-radius: 8px;
 	background: #f9fafb;
+	box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+	max-height: 360px;
+	overflow: auto;
+	position: absolute;
+	right: 0;
+	top: 100%;
+	width: min(620px, calc(100vw - 96px));
+	z-index: 20;
 }
 
 .catalogue-image-studio-admin .optivra-job-diagnostics dt,
@@ -650,7 +659,8 @@
 	margin: 0;
 	font-size: 11px;
 	line-height: 1.45;
-	word-break: break-word;
+	word-break: normal;
+	overflow-wrap: anywhere;
 }
 
 .catalogue-image-studio-admin .optivra-job-diagnostics dt {

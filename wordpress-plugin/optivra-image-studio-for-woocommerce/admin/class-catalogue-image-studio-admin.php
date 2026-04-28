@@ -327,8 +327,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings['process_featured_images'] = ! empty($input['process_featured_images']);
 		$settings['process_gallery_images']  = ! empty($input['process_gallery_images']);
 		$settings['process_category_images'] = ! empty($input['process_category_images']);
-		$settings['processing_mode']         = $this->sanitize_processing_mode($input['processing_mode'] ?? $settings['processing_mode'] ?? 'background_only_cleanup');
-		$settings['preserve_product_exactly'] = 'creative_product_enhancement' === $settings['processing_mode'] ? ! empty($input['preserve_product_exactly']) : true;
+		$settings['preserve_product_exactly'] = ! empty($input['preserve_product_exactly']);
 		$settings['smart_scaling']           = ! empty($input['smart_scaling']);
 		$settings['smart_scaling_enabled']   = $settings['smart_scaling'];
 		$settings['apply_shadow']            = ! empty($input['apply_shadow']);
@@ -1236,9 +1235,7 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_toggle_setting('process_featured_images', __('Include featured/product images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue main product images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_featured_images'])); ?>
 					<?php $this->render_toggle_setting('process_gallery_images', __('Include gallery images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue WooCommerce gallery images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_gallery_images'])); ?>
 					<?php $this->render_toggle_setting('process_category_images', __('Include category thumbnail images', 'optivra-image-studio-for-woocommerce'), __('Allow scans to include product category thumbnails when selected.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_category_images'])); ?>
-					<?php $this->render_select_setting('processing_mode', __('Processing mode', 'optivra-image-studio-for-woocommerce'), __('Default is catalogue-safe background cleanup. Creative enhancement can change product details and should not be used for accurate product listings.', 'optivra-image-studio-for-woocommerce'), $this->get_processing_modes(), (string) ($settings['processing_mode'] ?? 'background_only_cleanup')); ?>
 					<?php $this->render_toggle_setting('preserve_product_exactly', __('Preserve product exactly', 'optivra-image-studio-for-woocommerce'), __('Recommended for WooCommerce catalogue images. Prevents AI from regenerating product details while still allowing lighting, framing, scaling, background replacement and SEO settings.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_product_exactly'])); ?>
-					<div class="catalogue-image-studio-warning"><p><?php echo esc_html__('Creative product enhancement may alter the product image. Do not use for catalogue-accurate product photos unless you intentionally want creative variation.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
 					<?php $this->render_toggle_setting('duplicate_detection', __('Duplicate detection', 'optivra-image-studio-for-woocommerce'), __('Reuse previous processed results when the same source image is encountered.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['duplicate_detection'])); ?>
 					<?php $this->render_toggle_setting('pause_on_low_credits', __('Pause processing when credits are low', 'optivra-image-studio-for-woocommerce'), __('Stop larger queue batches before credits are exhausted.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['pause_on_low_credits'])); ?>
 					<?php $this->render_toggle_setting('retry_failed_jobs', __('Retry failed jobs automatically', 'optivra-image-studio-for-woocommerce'), __('Keep failed jobs ready for a quick retry pass.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['retry_failed_jobs'])); ?>
@@ -1770,6 +1767,7 @@ class Catalogue_Image_Studio_Admin {
 			</div>
 			<div class="optivra-setting-control">
 				<label class="optivra-toggle">
+					<input type="hidden" name="<?php echo esc_attr($name); ?>" value="0" />
 					<input type="checkbox" name="<?php echo esc_attr($name); ?>" value="1" <?php checked($checked); ?> />
 					<span></span>
 				</label>
@@ -1904,16 +1902,6 @@ class Catalogue_Image_Studio_Admin {
 		];
 	}
 
-	private function get_processing_modes(): array {
-		return [
-			'background_only_cleanup'      => __('Background-only cleanup', 'optivra-image-studio-for-woocommerce'),
-			'background_replacement'       => __('Background replacement', 'optivra-image-studio-for-woocommerce'),
-			'framing_canvas_adjustment'    => __('Framing / canvas adjustment', 'optivra-image-studio-for-woocommerce'),
-			'seo_metadata_only'            => __('SEO metadata only', 'optivra-image-studio-for-woocommerce'),
-			'creative_product_enhancement' => __('Creative product enhancement', 'optivra-image-studio-for-woocommerce'),
-		];
-	}
-
 	private function get_shadow_modes(): array {
 		return [
 			'off'    => __('Off', 'optivra-image-studio-for-woocommerce'),
@@ -1962,11 +1950,6 @@ class Catalogue_Image_Studio_Admin {
 	private function sanitize_scale_mode($mode): string {
 		$mode = sanitize_key((string) $mode);
 		return array_key_exists($mode, $this->get_scale_modes()) ? $mode : 'auto';
-	}
-
-	private function sanitize_processing_mode($mode): string {
-		$mode = sanitize_key((string) $mode);
-		return array_key_exists($mode, $this->get_processing_modes()) ? $mode : 'background_only_cleanup';
 	}
 
 	private function sanitize_shadow_mode($mode): string {
@@ -2035,7 +2018,6 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		$options['settings'] = [
-			'processingMode' => (string) ($settings['processing_mode'] ?? 'background_only_cleanup'),
 			'preserveProductExactly' => ! empty($settings['preserve_product_exactly']),
 			'background' => [
 				'source'              => $background_source,
@@ -2256,10 +2238,8 @@ class Catalogue_Image_Studio_Admin {
 			<td><?php $this->render_after_thumbnail($processed_links, $job); ?></td>
 			<td><?php echo esc_html((string) $job['image_role']); ?> <?php echo 'gallery' === (string) $job['image_role'] ? esc_html('#' . ((int) $job['gallery_index'] + 1)) : ''; ?></td>
 			<td>
-				<span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html($this->format_status((string) $job['status'])); ?></span><?php echo ! empty($job['error_message']) ? '<br /><small>' . esc_html((string) $job['error_message']) . '</small>' : ''; ?>
-				<?php if (! empty($job['error_message']) && false !== stripos((string) $job['error_message'], 'Product area changed too much')) : ?>
-					<div class="catalogue-image-studio-warning"><strong><?php echo esc_html__('Warning: The product appears to have changed. This result should not be approved for catalogue use.', 'optivra-image-studio-for-woocommerce'); ?></strong></div>
-				<?php endif; ?>
+				<?php $display_error = $this->format_job_error((string) ($job['error_message'] ?? '')); ?>
+				<span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html($this->format_status((string) $job['status'])); ?></span><?php echo '' !== $display_error ? '<br /><small>' . esc_html($display_error) . '</small>' : ''; ?>
 				<?php if (in_array((string) ($job['status'] ?? ''), ['queued', 'processing', 'failed', 'completed', 'rejected'], true)) : ?>
 					<?php $this->render_job_edge_controls($job); ?>
 				<?php endif; ?>
@@ -2267,7 +2247,7 @@ class Catalogue_Image_Studio_Admin {
 			</td>
 			<td><?php $this->render_seo_fields($job); ?></td>
 			<td>
-				<?php echo ! empty($job['error_message']) ? esc_html((string) $job['error_message']) : esc_html((string) ($job['updated_at'] ?? '')); ?>
+				<?php echo '' !== $display_error ? esc_html($display_error) : esc_html((string) ($job['updated_at'] ?? '')); ?>
 			</td>
 		</tr>
 		<?php
@@ -2441,7 +2421,7 @@ class Catalogue_Image_Studio_Admin {
 			__('Processed URL', 'optivra-image-studio-for-woocommerce')           => (string) ($job['processed_url'] ?? ''),
 			__('Storage bucket', 'optivra-image-studio-for-woocommerce')          => (string) ($job['processed_storage_bucket'] ?? ''),
 			__('Storage path', 'optivra-image-studio-for-woocommerce')            => (string) ($job['processed_storage_path'] ?? ''),
-			__('Last processing error', 'optivra-image-studio-for-woocommerce')   => (string) ($job['error_message'] ?? ''),
+			__('Last processing error', 'optivra-image-studio-for-woocommerce')   => $this->format_job_error((string) ($job['error_message'] ?? '')),
 			__('Last approval error', 'optivra-image-studio-for-woocommerce')     => (string) ($job['approval_error'] ?? ''),
 		];
 		?>
@@ -2459,5 +2439,17 @@ class Catalogue_Image_Studio_Admin {
 
 	private function format_status(string $status): string {
 		return ucwords(str_replace('_', ' ', sanitize_key($status)));
+	}
+
+	private function format_job_error(string $message): string {
+		if ('' === trim($message)) {
+			return '';
+		}
+
+		if (false !== stripos($message, 'Product area changed too much')) {
+			return __('Legacy preservation warning from an older processing run. Reprocess this image with the current version.', 'optivra-image-studio-for-woocommerce');
+		}
+
+		return $message;
 	}
 }

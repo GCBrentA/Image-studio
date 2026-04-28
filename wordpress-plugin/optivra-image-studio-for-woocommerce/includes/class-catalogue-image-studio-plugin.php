@@ -229,7 +229,6 @@ class Catalogue_Image_Studio_Plugin {
 			'process_gallery_images'  => true,
 			'process_category_images' => false,
 			'duplicate_detection'     => true,
-			'processing_mode'         => 'background_only_cleanup',
 			'preserve_product_exactly' => true,
 			'background_source'       => 'preset',
 			'custom_background_attachment_id' => 0,
@@ -333,19 +332,7 @@ class Catalogue_Image_Studio_Plugin {
 		$settings['show_job_completion_alerts'] = $settings['show_completion_alerts'];
 		$settings['show_failed_alerts']    = array_key_exists('show_failed_alerts', $settings) ? (bool) $settings['show_failed_alerts'] : (bool) ($settings['show_failed_job_alerts'] ?? true);
 		$settings['show_failed_job_alerts'] = $settings['show_failed_alerts'];
-		$allowed_modes = [
-			'background_only_cleanup',
-			'background_replacement',
-			'framing_canvas_adjustment',
-			'seo_metadata_only',
-			'creative_product_enhancement',
-		];
-		$settings['processing_mode'] = in_array((string) ($settings['processing_mode'] ?? ''), $allowed_modes, true)
-			? (string) $settings['processing_mode']
-			: 'background_only_cleanup';
-		$settings['preserve_product_exactly'] = 'creative_product_enhancement' === $settings['processing_mode']
-			? ! empty($settings['preserve_product_exactly'])
-			: true;
+		$settings['preserve_product_exactly'] = array_key_exists('preserve_product_exactly', $settings) ? (bool) $settings['preserve_product_exactly'] : true;
 
 		return $settings;
 	}

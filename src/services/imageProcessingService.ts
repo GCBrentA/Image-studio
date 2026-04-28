@@ -28,16 +28,6 @@ export type ProcessImageInput = {
   jobOverrides?: unknown;
 };
 
-export const processingModes = [
-  "background_only_cleanup",
-  "background_replacement",
-  "framing_canvas_adjustment",
-  "seo_metadata_only",
-  "creative_product_enhancement"
-] as const;
-
-export type ProcessingMode = typeof processingModes[number];
-
 export type ProcessedImageResult = {
   processedUrl: string;
   originalImageHash: string;
@@ -67,8 +57,6 @@ const maxImageBytes = 15 * 1024 * 1024;
 const outputSize = 2000;
 const defaultScalePercent = 94;
 const signedUrlExpirySeconds = env.storageSignedUrlExpiresSeconds;
-const productChangedError =
-  "Product area changed too much. Result rejected to protect catalogue accuracy.";
 const defaultBackgroundImagePath = path.resolve(process.cwd(), "public/site/assets/optivra-default-background.png");
 
 type DownloadedImage = {
@@ -303,60 +291,6 @@ const buildPreservedProductCutout = async (
     .toBuffer();
 };
 
-const assertProductShapePreserved = async (
-  productBuffer: Buffer,
-  finalPngBuffer: Buffer,
-  productLeft: number,
-  productTop: number,
-  productWidth: number,
-  productHeight: number
-): Promise<void> => {
-  const [originalRaw, finalRaw] = await Promise.all([
-    sharp(productBuffer)
-      .ensureAlpha()
-      .raw()
-      .toBuffer(),
-    sharp(finalPngBuffer)
-      .extract({
-        left: productLeft,
-        top: productTop,
-        width: productWidth,
-        height: productHeight
-      })
-      .ensureAlpha()
-      .raw()
-      .toBuffer()
-  ]);
-
-  let comparedPixels = 0;
-  let alphaChangedPixels = 0;
-
-  for (let index = 0; index < originalRaw.length; index += 4) {
-    const alpha = originalRaw[index + 3] ?? 0;
-
-    if (alpha < 24) {
-      continue;
-    }
-
-    comparedPixels += 1;
-    const finalAlpha = finalRaw[index + 3] ?? 0;
-
-    if (Math.abs(alpha - finalAlpha) > 12) {
-      alphaChangedPixels += 1;
-    }
-  }
-
-  if (comparedPixels === 0) {
-    throw new Error(productChangedError);
-  }
-
-  const changedRatio = alphaChangedPixels / comparedPixels;
-
-  if (changedRatio > 0.01) {
-    throw new Error(productChangedError);
-  }
-};
-
 const normalizeScalePercent = (scalePercent?: number): number => {
   if (!scalePercent) {
     return defaultScalePercent;
@@ -375,11 +309,6 @@ const getNumber = (value: unknown, fallback: number, min: number, max: number): 
 
 const getString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim() ? value.trim() : fallback;
-
-const normalizeProcessingMode = (value: unknown): ProcessingMode =>
-  processingModes.includes(value as ProcessingMode)
-    ? value as ProcessingMode
-    : "background_only_cleanup";
 
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
   const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : "000000";
@@ -617,11 +546,7 @@ export const processImageForProduct = async ({
   jobOverrides
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
   const processingSettings = getObject(settings);
-  const processingMode = normalizeProcessingMode(processingSettings.processingMode ?? processingSettings.mode);
-  const preserveProductExactly =
-    processingMode !== "creative_product_enhancement" &&
-    (processingSettings.preserveProductExactly !== false ||
-      ["background_only_cleanup", "background_replacement"].includes(processingMode));
+  const preserveProductExactly = processingSettings.preserveProductExactly !== false;
   const framingSettings = getObject(processingSettings.framing);
   const shadowSettings = getObject(processingSettings.shadow);
   const lightingSettings = getObject(processingSettings.lighting);
@@ -689,44 +614,6 @@ export const processImageForProduct = async ({
   }
 
   const openAiInput = await normalizeImageForOpenAi(originalImage.buffer);
-
-  if (processingMode === "seo_metadata_only") {
-    const processedImage = await sharp(originalImage.buffer)
-      .rotate()
-      .webp({
-        quality: 92,
-        smartSubsample: true
-      })
-      .toBuffer();
-    const processedStoragePath = getStoragePath(userId, imageJobId, `metadata-only-${randomUUID()}.webp`);
-    await uploadStorageObject({
-      bucket: storageBuckets.processedImages,
-      path: processedStoragePath,
-      body: processedImage,
-      contentType: "image/webp"
-    });
-    const processedUploadedAt = new Date();
-    const processedUrl = await createStorageSignedUrl({
-      bucket: storageBuckets.processedImages,
-      path: processedStoragePath,
-      expiresInSeconds: env.storageSignedUrlExpiresSeconds
-    });
-
-    return {
-      processedUrl,
-      originalImageHash,
-      originalStoragePath,
-      processedStoragePath,
-      debugCutoutStoragePath: null,
-      originalUploadedAt,
-      processedUploadedAt,
-      debugCutoutUploadedAt: null,
-      storageCleanupAfter,
-      duplicateOfJobId: null,
-      creditDeductionRequired: false,
-      seoMetadata
-    };
-  }
 
   const aiCutout = await removeImageBackground(openAiInput);
   await validateImage(aiCutout);
@@ -814,10 +701,6 @@ export const processImageForProduct = async ({
     .composite(composites)
     .png()
     .toBuffer();
-
-  if (preserveProductExactly) {
-    await assertProductShapePreserved(productBuffer, composedImage, left, top, productWidth, productHeight);
-  }
 
   const processedImage = await sharp(composedImage)
     .webp({
