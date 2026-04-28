@@ -468,7 +468,7 @@ const assertProductAlphaCoverage = (
   label: string
 ): void => {
   const coverage = getAlphaCoverage(alpha);
-  const minCoverage = Math.max(2500, Math.round(width * height * 0.006));
+  const minCoverage = Math.max(1800, Math.round(width * height * 0.0015));
 
   if (coverage < minCoverage) {
     throw new Error(`${label} was too small to preserve the product. Reprocess this image or use a cleaner source image.`);
@@ -718,16 +718,106 @@ const buildLocalForegroundAlpha = (rgba: Buffer, width: number, height: number):
     const distance = closestPaletteDistance(r, g, b, backgroundPalette);
     const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     const saturation = getRgbSaturation(r, g, b);
-    const isDarkProduct = luminance < 62 && distance > 22;
+    const gradient = getRgbGradientMagnitude(rgba, width, height, pixel);
+    const isDarkProduct = luminance < 72 && distance > 14 && gradient > 8;
     const isColouredProduct = saturation > 0.18 && distance > 34;
-    const isDistinctProduct = distance > 58 && luminance < 180;
+    const isDistinctProduct = distance > 48 && luminance < 205;
+    const isFineProductEdge = gradient > 30 && distance > 10 && luminance < 230;
 
-    if (isDarkProduct || isColouredProduct || isDistinctProduct) {
+    if (isDarkProduct || isColouredProduct || isDistinctProduct || isFineProductEdge) {
       alpha[pixel] = 255;
     }
   }
 
-  return dilateAlphaMask(keepMainAlphaComponents(alpha, width, height), width, height, 1);
+  return dilateAlphaMask(
+    keepMainAlphaComponents(expandForegroundFromSeeds(rgba, alpha, backgroundPalette, width, height), width, height),
+    width,
+    height,
+    1
+  );
+};
+
+const expandForegroundFromSeeds = (
+  rgba: Buffer,
+  seedAlpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number
+): Buffer => {
+  let expanded = Buffer.from(seedAlpha);
+
+  for (let pass = 0; pass < 10; pass += 1) {
+    const next = Buffer.from(expanded);
+    let changed = false;
+    const bounds = getMaskBounds(expanded, width, height);
+    const minX = Math.max(0, bounds.minX - 14);
+    const maxX = Math.min(width - 1, bounds.maxX + 14);
+    const minY = Math.max(0, bounds.minY - 14);
+    const maxY = Math.min(height - 1, bounds.maxY + 14);
+
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const pixel = y * width + x;
+
+        if ((expanded[pixel] ?? 0) >= 24 || !hasMaskedNeighbor(expanded, width, height, x, y, 2)) {
+          continue;
+        }
+
+        const index = pixel * 4;
+
+        if ((rgba[index + 3] ?? 0) < 16) {
+          continue;
+        }
+
+        const r = rgba[index] ?? 0;
+        const g = rgba[index + 1] ?? 0;
+        const b = rgba[index + 2] ?? 0;
+        const distance = closestPaletteDistance(r, g, b, backgroundPalette);
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const saturation = getRgbSaturation(r, g, b);
+        const gradient = getRgbGradientMagnitude(rgba, width, height, pixel);
+        const closeDarkStructure = luminance < 95 && distance > 8 && gradient > 5;
+        const connectedDetail = distance > 18 || saturation > 0.12 || gradient > 18;
+
+        if (closeDarkStructure || connectedDetail) {
+          next[pixel] = 255;
+          changed = true;
+        }
+      }
+    }
+
+    expanded = next;
+
+    if (!changed) {
+      break;
+    }
+  }
+
+  return expanded;
+};
+
+const getRgbGradientMagnitude = (
+  rgba: Buffer,
+  width: number,
+  height: number,
+  pixel: number
+): number => {
+  const x = pixel % width;
+  const y = Math.floor(pixel / width);
+  const left = (y * width + Math.max(0, x - 1)) * 4;
+  const right = (y * width + Math.min(width - 1, x + 1)) * 4;
+  const up = (Math.max(0, y - 1) * width + x) * 4;
+  const down = (Math.min(height - 1, y + 1) * width + x) * 4;
+  const dx =
+    Math.abs((rgba[right] ?? 0) - (rgba[left] ?? 0)) +
+    Math.abs((rgba[right + 1] ?? 0) - (rgba[left + 1] ?? 0)) +
+    Math.abs((rgba[right + 2] ?? 0) - (rgba[left + 2] ?? 0));
+  const dy =
+    Math.abs((rgba[down] ?? 0) - (rgba[up] ?? 0)) +
+    Math.abs((rgba[down + 1] ?? 0) - (rgba[up + 1] ?? 0)) +
+    Math.abs((rgba[down + 2] ?? 0) - (rgba[up + 2] ?? 0));
+
+  return (dx + dy) / 6;
 };
 
 const buildSourceBackgroundPalette = (
