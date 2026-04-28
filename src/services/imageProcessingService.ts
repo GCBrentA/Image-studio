@@ -331,7 +331,7 @@ const getResizedAiAlpha = async (
       fit: "fill",
       kernel: sharp.kernel.lanczos3
     })
-    .blur(0.25)
+    .blur(0.3)
     .raw()
     .toBuffer();
 
