@@ -88,7 +88,7 @@ class Catalogue_Image_Studio_Admin {
 			'catalogue-image-studio-admin',
 			CIS_URL . 'assets/admin.css',
 			[],
-			CIS_VERSION
+			CIS_VERSION . '-' . (string) filemtime(CIS_PATH . 'assets/admin.css')
 		);
 		wp_enqueue_script('jquery');
 
