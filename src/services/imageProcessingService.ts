@@ -65,6 +65,17 @@ type DownloadedImage = {
   extension: string;
 };
 
+type CutoutResult = {
+  cutout: Buffer;
+  debugCutout: Buffer;
+  provider: string;
+  attempts: number;
+  validation: {
+    alphaCoverage: number;
+    foregroundMeanDelta: number;
+  };
+};
+
 const assertValidImageUrl = (imageUrl: string): void => {
   let parsedUrl: URL;
 
@@ -245,6 +256,19 @@ const validateImage = async (imageBuffer: Buffer): Promise<void> => {
   }
 };
 
+const getImageDimensions = async (imageBuffer: Buffer): Promise<{ width: number; height: number }> => {
+  const metadata = await sharp(imageBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Invalid image dimensions");
+  }
+
+  return {
+    width: metadata.width,
+    height: metadata.height
+  };
+};
+
 const normalizeImageForOpenAi = async (imageBuffer: Buffer): Promise<Buffer> =>
   sharp(imageBuffer)
     .rotate()
@@ -283,10 +307,118 @@ const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<B
     .png()
     .toBuffer();
 
-const buildPreservedProductCutout = async (
+const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResult> => {
+  const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
+  await validateImage(aiCutout);
+
+  return {
+    cutout: aiCutout,
+    debugCutout: aiCutout,
+    provider: "openai:gpt-image-1:flexible-cutout",
+    attempts: 1,
+    validation: {
+      alphaCoverage: await getImageAlphaCoverage(aiCutout),
+      foregroundMeanDelta: 0
+    }
+  };
+};
+
+const processImagePreserveMode = async (
+  preservedOriginalBuffer: Buffer,
+  openAiInput: Buffer,
+  imageJobId: string
+): Promise<CutoutResult> => {
+  console.info("Image preserve-mode masking started", {
+    imageJobId,
+    provider: "openai:gpt-image-1",
+    attempt: 1
+  });
+
+  try {
+    const aiCutoutBuffer = await removeImageBackground(openAiInput, "preserve-mask");
+    await validateImage(aiCutoutBuffer);
+    const result = await buildPreservedProductCutoutFromAiMask(preservedOriginalBuffer, aiCutoutBuffer);
+    console.info("Image preserve-mode masking passed", {
+      imageJobId,
+      provider: result.provider,
+      attempts: result.attempts,
+      alphaCoverage: result.validation.alphaCoverage,
+      foregroundMeanDelta: result.validation.foregroundMeanDelta
+    });
+
+    return result;
+  } catch (error) {
+    console.warn("Image preserve-mode primary mask rejected; trying local fallback", {
+      imageJobId,
+      attempt: 2,
+      error: error instanceof Error ? error.message : "Unknown preserve mask error"
+    });
+  }
+
+  const fallback = await buildPreservedProductCutoutFromLocalMask(preservedOriginalBuffer);
+  console.info("Image preserve-mode local fallback passed", {
+    imageJobId,
+    provider: fallback.provider,
+    attempts: fallback.attempts,
+    alphaCoverage: fallback.validation.alphaCoverage,
+    foregroundMeanDelta: fallback.validation.foregroundMeanDelta
+  });
+
+  return {
+    ...fallback,
+    attempts: 2
+  };
+};
+
+const buildPreservedProductCutoutFromAiMask = async (
   preservedOriginalBuffer: Buffer,
   aiCutoutBuffer: Buffer
-): Promise<Buffer> => {
+): Promise<CutoutResult> => {
+  const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
+
+  if (!originalMetadata.width || !originalMetadata.height) {
+    throw new Error("Original product image could not be read");
+  }
+
+  const aiAlpha = await getResizedAiAlpha(aiCutoutBuffer, originalMetadata.width, originalMetadata.height);
+
+  return buildPreservedProductCutoutFromAlpha(
+    preservedOriginalBuffer,
+    aiAlpha,
+    "openai:gpt-image-1:preserve-mask",
+    1
+  );
+};
+
+const buildPreservedProductCutoutFromLocalMask = async (
+  preservedOriginalBuffer: Buffer
+): Promise<CutoutResult> => {
+  const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
+
+  if (!originalMetadata.width || !originalMetadata.height) {
+    throw new Error("Original product image could not be read");
+  }
+
+  const originalRgba = await sharp(preservedOriginalBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  const localAlpha = buildLocalForegroundAlpha(originalRgba, originalMetadata.width, originalMetadata.height);
+
+  return buildPreservedProductCutoutFromAlpha(
+    preservedOriginalBuffer,
+    localAlpha,
+    "local-color-segmentation",
+    2
+  );
+};
+
+const buildPreservedProductCutoutFromAlpha = async (
+  preservedOriginalBuffer: Buffer,
+  candidateAlpha: Buffer,
+  provider: string,
+  attempts: number
+): Promise<CutoutResult> => {
   const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
 
   if (!originalMetadata.width || !originalMetadata.height) {
@@ -295,14 +427,13 @@ const buildPreservedProductCutout = async (
 
   const width = originalMetadata.width;
   const height = originalMetadata.height;
-  const aiAlpha = await getResizedAiAlpha(aiCutoutBuffer, width, height);
   const originalImage = sharp(preservedOriginalBuffer).ensureAlpha();
   const [originalRaw, originalRgba] = await Promise.all([
     originalImage.clone().removeAlpha().raw().toBuffer(),
     originalImage.clone().raw().toBuffer()
   ]);
   const localAlpha = buildLocalForegroundAlpha(originalRgba, width, height);
-  const alpha = chooseBaseProductAlpha(aiAlpha, localAlpha);
+  const alpha = chooseBaseProductAlpha(candidateAlpha, localAlpha);
   assertProductAlphaCoverage(alpha, width, height, "AI product mask");
   const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
   const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
@@ -310,7 +441,7 @@ const buildPreservedProductCutout = async (
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
   const productRgba = removeEdgeMatte(originalRaw, safeAlpha, width, height, backgroundPalette);
 
-  return sharp(productRgba, {
+  const cutout = await sharp(productRgba, {
     raw: {
       width,
       height,
@@ -319,6 +450,15 @@ const buildPreservedProductCutout = async (
   })
     .png()
     .toBuffer();
+  const validation = await validatePreservedForegroundIntegrity(preservedOriginalBuffer, cutout);
+
+  return {
+    cutout,
+    debugCutout: cutout,
+    provider,
+    attempts,
+    validation
+  };
 };
 
 const assertProductAlphaCoverage = (
@@ -333,6 +473,74 @@ const assertProductAlphaCoverage = (
   if (coverage < minCoverage) {
     throw new Error(`${label} was too small to preserve the product. Reprocess this image or use a cleaner source image.`);
   }
+};
+
+const getImageAlphaCoverage = async (imageBuffer: Buffer): Promise<number> => {
+  const alpha = await sharp(imageBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .raw()
+    .toBuffer();
+
+  return getAlphaCoverage(alpha);
+};
+
+const validatePreservedForegroundIntegrity = async (
+  preservedOriginalBuffer: Buffer,
+  cutoutBuffer: Buffer
+): Promise<{ alphaCoverage: number; foregroundMeanDelta: number }> => {
+  const metadata = await sharp(preservedOriginalBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Original product image could not be read for foreground validation");
+  }
+
+  const [originalRgb, cutoutRgba] = await Promise.all([
+    sharp(preservedOriginalBuffer).ensureAlpha().removeAlpha().raw().toBuffer(),
+    sharp(cutoutBuffer)
+      .ensureAlpha()
+      .resize(metadata.width, metadata.height, {
+        fit: "fill",
+        kernel: sharp.kernel.nearest
+      })
+      .raw()
+      .toBuffer()
+  ]);
+  const pixelCount = metadata.width * metadata.height;
+  const alpha = Buffer.alloc(pixelCount);
+  let solidPixelCount = 0;
+  let totalDelta = 0;
+
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const cutoutIndex = pixel * 4;
+    const currentAlpha = cutoutRgba[cutoutIndex + 3] ?? 0;
+    alpha[pixel] = currentAlpha;
+
+    if (currentAlpha < 245) {
+      continue;
+    }
+
+    const originalIndex = pixel * 3;
+    const delta =
+      Math.abs((originalRgb[originalIndex] ?? 0) - (cutoutRgba[cutoutIndex] ?? 0)) +
+      Math.abs((originalRgb[originalIndex + 1] ?? 0) - (cutoutRgba[cutoutIndex + 1] ?? 0)) +
+      Math.abs((originalRgb[originalIndex + 2] ?? 0) - (cutoutRgba[cutoutIndex + 2] ?? 0));
+    totalDelta += delta / 3;
+    solidPixelCount += 1;
+  }
+
+  assertProductAlphaCoverage(alpha, metadata.width, metadata.height, "preserved product foreground");
+
+  const foregroundMeanDelta = solidPixelCount > 0 ? totalDelta / solidPixelCount : Number.POSITIVE_INFINITY;
+
+  if (!Number.isFinite(foregroundMeanDelta) || foregroundMeanDelta > 3) {
+    throw new Error("Foreground integrity check failed. Preserve mode rejected a result that materially changed product pixels.");
+  }
+
+  return {
+    alphaCoverage: getAlphaCoverage(alpha),
+    foregroundMeanDelta
+  };
 };
 
 const removeEdgeMatte = (
@@ -1228,6 +1436,7 @@ export const processImageForProduct = async ({
     ? getUploadedImage(imageBuffer, imageContentType ?? "application/octet-stream")
     : await downloadImage(imageUrl);
   await validateImage(originalImage.buffer);
+  const originalImageDimensions = await getImageDimensions(originalImage.buffer);
   const originalImageHash = getSha256(originalImage.buffer);
   const seoMetadata = getSuggestedSeoMetadata(imageUrl, originalImageHash);
 
@@ -1244,7 +1453,7 @@ export const processImageForProduct = async ({
   });
   const originalUploadedAt = new Date();
   const storageCleanupAfter = getStorageCleanupAfter();
-  const duplicateJob = hasProcessingOptions ? null : await findDuplicateJob(userId, imageJobId, originalImageHash);
+  const duplicateJob = preserveProductExactly || hasProcessingOptions ? null : await findDuplicateJob(userId, imageJobId, originalImageHash);
 
   if (duplicateJob?.processed_storage_path) {
     const processedUrl = await createStorageSignedUrl({
@@ -1274,18 +1483,26 @@ export const processImageForProduct = async ({
     normalizeImageForPreservedProduct(originalImage.buffer)
   ]);
 
-  const aiCutout = await removeImageBackground(openAiInput);
-  await validateImage(aiCutout);
-  const cutout = preserveProductExactly
-    ? await buildPreservedProductCutout(preservedOriginalInput, aiCutout)
-    : aiCutout;
+  console.info("Image processing cutout mode selected", {
+    imageJobId,
+    preserveProductExactly,
+    originalContentType: originalImage.contentType,
+    originalBytes: originalImage.buffer.byteLength,
+    originalWidth: originalImageDimensions.width,
+    originalHeight: originalImageDimensions.height
+  });
+
+  const cutoutResult = preserveProductExactly
+    ? await processImagePreserveMode(preservedOriginalInput, openAiInput, imageJobId)
+    : await processImageFlexibleMode(openAiInput);
+  const cutout = cutoutResult.cutout;
   await validateImage(cutout);
 
   const debugCutoutStoragePath = getStoragePath(userId, imageJobId, `cutout-${randomUUID()}.png`);
   await uploadStorageObject({
     bucket: storageBuckets.debugCutouts,
     path: debugCutoutStoragePath,
-    body: aiCutout,
+    body: cutoutResult.debugCutout,
     contentType: "image/png"
   });
   const debugCutoutUploadedAt = new Date();
