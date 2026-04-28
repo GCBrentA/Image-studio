@@ -19,10 +19,10 @@ const gatewayRulesRelease = {
   name: "Payment Gateway Rules for WooCommerce",
   version: "1.0.0",
   zipPath: "/downloads/payment-gateway-rules-for-woocommerce-1.0.0.zip",
-  fileSize: "177.7 KB",
-  sha256: "6832544AE3E9FAF3359E1AC154004C8D44DD838CE85C8B5DDA43C5CB4FA4D8F4",
+  fileSize: "177.5 KB",
+  sha256: "33E82D8FABAC9002CB103CF8E210286709345C66C2965C03522BAA2B30AFFDF4",
   status: "Early access",
-  updatedAt: "2026-04-27"
+  updatedAt: "2026-04-28"
 };
 const blogArticles = [
   {
