@@ -249,11 +249,18 @@ const normalizeImageForOpenAi = async (imageBuffer: Buffer): Promise<Buffer> =>
   sharp(imageBuffer)
     .rotate()
     .resize({
-      width: 1536,
-      height: 1536,
-      fit: "inside",
-      withoutEnlargement: true
+      width: 1024,
+      height: 1024,
+      fit: "contain",
+      withoutEnlargement: false,
+      background: {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0
+      }
     })
+    .ensureAlpha()
     .png()
     .toBuffer();
 
@@ -289,7 +296,7 @@ const buildPreservedProductCutout = async (
     originalImage.clone().png().toBuffer(),
     originalImage.clone().raw().toBuffer()
   ]);
-  const expandedAlpha = expandMaskWithOriginalForeground(originalRaw, alpha, width, height);
+  const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
 
   return sharp(originalRgb)
     .joinChannel(expandedAlpha, {
@@ -315,10 +322,10 @@ const expandMaskWithOriginalForeground = (
     return alpha;
   }
 
-  const expanded = Buffer.from(alpha);
+  const expanded = removeBackgroundLikePixelsFromMask(originalRgb, alpha, backgroundPalette);
   const bounds = getMaskBounds(alpha, width, height);
-  const padX = Math.round(width * 0.18);
-  const padY = Math.round(height * 0.18);
+  const padX = Math.round(width * 0.12);
+  const padY = Math.round(height * 0.12);
   const minX = Math.max(0, bounds.minX - padX);
   const maxX = Math.min(width - 1, bounds.maxX + padX);
   const minY = Math.max(0, bounds.minY - padY);
@@ -337,14 +344,68 @@ const expandMaskWithOriginalForeground = (
       const g = originalRgb[index + 1] ?? 0;
       const b = originalRgb[index + 2] ?? 0;
       const distance = closestPaletteDistance(r, g, b, backgroundPalette);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-      if (distance > 70 && hasMaskedNeighbor(expanded, width, height, x, y, 18)) {
+      if (luminance < 70 && distance > 96 && hasMaskedNeighbor(expanded, width, height, x, y, 4)) {
         expanded[pixel] = 255;
       }
     }
   }
 
   return expanded;
+};
+
+const removeBackgroundLikePixelsFromMask = (
+  originalRgb: Buffer,
+  alpha: Buffer,
+  palette: Array<{ r: number; g: number; b: number }>
+): Buffer => {
+  const refined = Buffer.from(alpha);
+
+  for (let pixel = 0; pixel < refined.length; pixel += 1) {
+    if ((refined[pixel] ?? 0) < 24) {
+      refined[pixel] = 0;
+      continue;
+    }
+
+    const index = pixel * 3;
+    const r = originalRgb[index] ?? 0;
+    const g = originalRgb[index + 1] ?? 0;
+    const b = originalRgb[index + 2] ?? 0;
+    const distance = closestPaletteDistance(r, g, b, palette);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+
+    if (distance < 46 && luminance > 65) {
+      refined[pixel] = 0;
+      continue;
+    }
+
+    if (saturation < 0.16 && luminance > 55 && distance < 92) {
+      refined[pixel] = 0;
+    }
+  }
+
+  return refined;
+};
+
+const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Promise<Buffer> =>
+  sharp(alpha, {
+    raw: {
+      width,
+      height,
+      channels: 1
+    }
+  })
+    .blur(0.35)
+    .raw()
+    .toBuffer();
+
+const getRgbSaturation = (r: number, g: number, b: number): number => {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+
+  return max === 0 ? 0 : (max - min) / max;
 };
 
 const getMaskBounds = (
