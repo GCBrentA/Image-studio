@@ -303,8 +303,10 @@ const buildPreservedProductCutout = async (
   ]);
   const localAlpha = buildLocalForegroundAlpha(originalRgba, width, height);
   const alpha = chooseBaseProductAlpha(aiAlpha, localAlpha);
+  assertProductAlphaCoverage(alpha, width, height, "AI product mask");
   const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
   const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
+  assertProductAlphaCoverage(safeAlpha, width, height, "preserved product mask");
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
   const productRgba = removeEdgeMatte(originalRaw, safeAlpha, width, height, backgroundPalette);
 
@@ -317,6 +319,20 @@ const buildPreservedProductCutout = async (
   })
     .png()
     .toBuffer();
+};
+
+const assertProductAlphaCoverage = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  label: string
+): void => {
+  const coverage = getAlphaCoverage(alpha);
+  const minCoverage = Math.max(2500, Math.round(width * height * 0.006));
+
+  if (coverage < minCoverage) {
+    throw new Error(`${label} was too small to preserve the product. Reprocess this image or use a cleaner source image.`);
+  }
 };
 
 const removeEdgeMatte = (
@@ -537,12 +553,6 @@ const buildSourceBackgroundPalette = (
       const r = rgba[index] ?? 0;
       const g = rgba[index + 1] ?? 0;
       const b = rgba[index + 2] ?? 0;
-      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-      if (luminance < 70) {
-        continue;
-      }
-
       const key = `${Math.round(r / 24)}:${Math.round(g / 24)}:${Math.round(b / 24)}`;
       const bin = bins.get(key) ?? { r: 0, g: 0, b: 0, count: 0 };
       bin.r += r;
@@ -1079,6 +1089,26 @@ const applyProductLighting = async (productBuffer: Buffer, settings?: unknown): 
     .toBuffer();
 };
 
+const assertVisibleProductImage = async (productBuffer: Buffer): Promise<void> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Product cutout could not be read before compositing.");
+  }
+
+  const alpha = await sharp(productBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .raw()
+    .toBuffer();
+  const coverage = getAlphaCoverage(alpha);
+  const minCoverage = Math.max(1200, Math.round(metadata.width * metadata.height * 0.004));
+
+  if (coverage < minCoverage) {
+    throw new Error("Product cutout was empty after background removal. No image was replaced; reprocess this image with preserve product enabled.");
+  }
+};
+
 const buildBrandedBackground = async (background: string): Promise<Buffer> => {
   if (background === "transparent") {
     return sharp({
@@ -1306,6 +1336,7 @@ export const processImageForProduct = async ({
   productBuffer = preserveProductExactly
     ? productBuffer
     : await applyProductLighting(productBuffer, lightingSettings);
+  await assertVisibleProductImage(productBuffer);
   productMetadata = await sharp(productBuffer).metadata();
 
   const productWidth = Math.min(outputSize, productMetadata.width ?? targetProductSize);
