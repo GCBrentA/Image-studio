@@ -272,6 +272,7 @@ const buildPreservedProductCutout = async (
   const alpha = await sharp(aiCutoutBuffer)
     .ensureAlpha()
     .extractChannel("alpha")
+    .raw()
     .toBuffer();
   const originalImage = sharp(normalizedOriginalBuffer)
     .resize(width, height, {
