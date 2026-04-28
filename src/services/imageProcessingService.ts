@@ -440,6 +440,11 @@ const buildPreservedProductCutoutFromAlpha = async (
   assertProductAlphaCoverage(safeAlpha, width, height, "preserved product mask");
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
   const productRgba = removeEdgeMatte(originalRaw, safeAlpha, width, height, backgroundPalette);
+  const visualValidation = getCutoutVisualPresence(productRgba, safeAlpha);
+
+  if (!visualValidation.isVisible) {
+    throw new Error("Preserve mode rejected the cutout because the detected foreground is visually indistinguishable from the source background.");
+  }
 
   const cutout = await sharp(productRgba, {
     raw: {
@@ -483,6 +488,39 @@ const getImageAlphaCoverage = async (imageBuffer: Buffer): Promise<number> => {
     .toBuffer();
 
   return getAlphaCoverage(alpha);
+};
+
+const getCutoutVisualPresence = (
+  rgba: Buffer,
+  alpha: Buffer
+): { isVisible: boolean; meanAlphaWeightedContrast: number; sampledPixels: number } => {
+  let sampledPixels = 0;
+  let totalContrast = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    const currentAlpha = alpha[pixel] ?? 0;
+
+    if (currentAlpha < 96) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = rgba[index] ?? 0;
+    const g = rgba[index + 1] ?? 0;
+    const b = rgba[index + 2] ?? 0;
+    const localContrast = Math.max(r, g, b) - Math.min(r, g, b);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    totalContrast += localContrast + Math.abs(luminance - 24) * 0.35;
+    sampledPixels += 1;
+  }
+
+  const meanAlphaWeightedContrast = sampledPixels > 0 ? totalContrast / sampledPixels : 0;
+
+  return {
+    isVisible: sampledPixels >= 1800 && meanAlphaWeightedContrast > 5,
+    meanAlphaWeightedContrast,
+    sampledPixels
+  };
 };
 
 const validatePreservedForegroundIntegrity = async (
@@ -1407,6 +1445,59 @@ const assertVisibleProductImage = async (productBuffer: Buffer): Promise<void> =
   }
 };
 
+const assertCompositeContainsProduct = async (
+  backgroundBuffer: Buffer,
+  composedImage: Buffer,
+  productAlphaCoverage: number,
+  preserveProductExactly: boolean
+): Promise<void> => {
+  if (!preserveProductExactly) {
+    return;
+  }
+
+  const [backgroundRaw, composedRaw] = await Promise.all([
+    sharp(backgroundBuffer)
+      .resize(outputSize, outputSize, {
+        fit: "fill",
+        kernel: sharp.kernel.nearest
+      })
+      .removeAlpha()
+      .raw()
+      .toBuffer(),
+    sharp(composedImage)
+      .resize(outputSize, outputSize, {
+        fit: "fill",
+        kernel: sharp.kernel.nearest
+      })
+      .removeAlpha()
+      .raw()
+      .toBuffer()
+  ]);
+  let changedPixels = 0;
+  let totalDelta = 0;
+  const pixelCount = outputSize * outputSize;
+
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const index = pixel * 3;
+    const delta =
+      Math.abs((backgroundRaw[index] ?? 0) - (composedRaw[index] ?? 0)) +
+      Math.abs((backgroundRaw[index + 1] ?? 0) - (composedRaw[index + 1] ?? 0)) +
+      Math.abs((backgroundRaw[index + 2] ?? 0) - (composedRaw[index + 2] ?? 0));
+
+    if (delta > 12) {
+      changedPixels += 1;
+      totalDelta += delta / 3;
+    }
+  }
+
+  const minChangedPixels = Math.max(800, Math.round(productAlphaCoverage * 0.08));
+  const meanChangedDelta = changedPixels > 0 ? totalDelta / changedPixels : 0;
+
+  if (changedPixels < minChangedPixels || meanChangedDelta < 3) {
+    throw new Error("Preserve mode rejected a background-only composite. The product layer was not visibly present in the final image.");
+  }
+};
+
 const buildBrandedBackground = async (background: string): Promise<Buffer> => {
   if (background === "transparent") {
     return sharp({
@@ -1644,6 +1735,7 @@ export const processImageForProduct = async ({
     ? productBuffer
     : await applyProductLighting(productBuffer, lightingSettings);
   await assertVisibleProductImage(productBuffer);
+  const productAlphaCoverage = await getImageAlphaCoverage(productBuffer);
   productMetadata = await sharp(productBuffer).metadata();
 
   const productWidth = Math.min(outputSize, productMetadata.width ?? targetProductSize);
@@ -1674,6 +1766,7 @@ export const processImageForProduct = async ({
     .composite(composites)
     .png()
     .toBuffer();
+  await assertCompositeContainsProduct(backgroundBuffer, composedImage, productAlphaCoverage, preserveProductExactly);
 
   const webpOptions = preserveProductExactly
     ? {
