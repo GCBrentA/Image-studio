@@ -625,7 +625,7 @@
 
 .catalogue-image-studio-admin .optivra-job-diagnostics {
 	margin-top: 10px;
-	position: relative;
+	position: static;
 }
 
 .catalogue-image-studio-admin .optivra-job-diagnostics summary {
@@ -638,34 +638,41 @@
 .catalogue-image-studio-admin .optivra-job-diagnostics dl {
 	display: grid;
 	grid-template-columns: minmax(150px, 190px) minmax(260px, 1fr);
-	gap: 6px 12px;
-	margin: 8px 0 0;
-	padding: 10px;
+	gap: 7px 14px;
+	margin: 0;
+	padding: 16px;
 	border: 1px solid #e5e7eb;
-	border-radius: 8px;
-	background: #f9fafb;
-	box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
-	max-height: 360px;
+	border-radius: 12px;
+	background: #ffffff;
+	box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+	max-height: min(70vh, 520px);
 	overflow: auto;
-	position: absolute;
-	right: 0;
-	top: 100%;
-	width: min(620px, calc(100vw - 96px));
-	z-index: 20;
+	position: fixed;
+	right: 32px;
+	top: 120px;
+	width: min(720px, calc(100vw - 64px));
+	z-index: 100000;
 }
 
 .catalogue-image-studio-admin .optivra-job-diagnostics dt,
 .catalogue-image-studio-admin .optivra-job-diagnostics dd {
 	margin: 0;
-	font-size: 11px;
-	line-height: 1.45;
+	font-size: 12px;
+	line-height: 1.5;
 	word-break: normal;
 	overflow-wrap: anywhere;
+	white-space: normal;
 }
 
 .catalogue-image-studio-admin .optivra-job-diagnostics dt {
 	color: var(--cis-muted);
 	font-weight: 700;
+}
+
+.catalogue-image-studio-admin .optivra-job-diagnostics dd {
+	min-width: 0;
+	color: #111827;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .catalogue-image-studio-admin .catalogue-image-studio-muted {

@@ -288,50 +288,116 @@ const buildPreservedProductCutout = async (
     originalImage.clone().png().toBuffer(),
     originalImage.clone().raw().toBuffer()
   ]);
-  const refinedAlpha = refineProductAlphaMask(originalRaw, alpha, width, height);
+  const expandedAlpha = expandMaskWithOriginalForeground(originalRaw, alpha, width, height);
 
   return sharp(originalRgb)
-    .joinChannel(refinedAlpha)
+    .joinChannel(expandedAlpha, {
+      raw: {
+        width,
+        height,
+        channels: 1
+      }
+    })
     .png()
     .toBuffer();
 };
 
-const refineProductAlphaMask = (
+const expandMaskWithOriginalForeground = (
   originalRgb: Buffer,
   alpha: Buffer,
   width: number,
   height: number
 ): Buffer => {
-  const palette = buildBackgroundPalette(originalRgb, alpha, width, height);
+  const backgroundPalette = buildBackgroundPalette(originalRgb, alpha, width, height);
 
-  if (palette.length === 0) {
+  if (backgroundPalette.length === 0) {
     return alpha;
   }
 
-  const refined = Buffer.from(alpha);
+  const expanded = Buffer.from(alpha);
+  const bounds = getMaskBounds(alpha, width, height);
+  const padX = Math.round(width * 0.18);
+  const padY = Math.round(height * 0.18);
+  const minX = Math.max(0, bounds.minX - padX);
+  const maxX = Math.min(width - 1, bounds.maxX + padX);
+  const minY = Math.max(0, bounds.minY - padY);
+  const maxY = Math.min(height - 1, bounds.maxY + padY);
 
-  for (let index = 0, pixel = 0; index < originalRgb.length; index += 3, pixel += 1) {
-    const currentAlpha = refined[pixel] ?? 0;
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const pixel = y * width + x;
 
-    if (currentAlpha < 24) {
-      refined[pixel] = 0;
-      continue;
-    }
+      if ((expanded[pixel] ?? 0) >= 24) {
+        continue;
+      }
 
-    const r = originalRgb[index] ?? 0;
-    const g = originalRgb[index + 1] ?? 0;
-    const b = originalRgb[index + 2] ?? 0;
-    const closestBackground = palette.reduce((best, color) => {
-      const distance = colorDistance(r, g, b, color.r, color.g, color.b);
-      return Math.min(best, distance);
-    }, Number.POSITIVE_INFINITY);
+      const index = pixel * 3;
+      const r = originalRgb[index] ?? 0;
+      const g = originalRgb[index + 1] ?? 0;
+      const b = originalRgb[index + 2] ?? 0;
+      const distance = closestPaletteDistance(r, g, b, backgroundPalette);
 
-    if (closestBackground < 54) {
-      refined[pixel] = 0;
+      if (distance > 70 && hasMaskedNeighbor(expanded, width, height, x, y, 18)) {
+        expanded[pixel] = 255;
+      }
     }
   }
 
-  return refined;
+  return expanded;
+};
+
+const getMaskBounds = (
+  alpha: Buffer,
+  width: number,
+  height: number
+): { minX: number; maxX: number; minY: number; maxY: number } => {
+  let minX = width;
+  let maxX = 0;
+  let minY = height;
+  let maxY = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((alpha[y * width + x] ?? 0) < 24) {
+        continue;
+      }
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (minX > maxX || minY > maxY) {
+    return { minX: 0, maxX: width - 1, minY: 0, maxY: height - 1 };
+  }
+
+  return { minX, maxX, minY, maxY };
+};
+
+const hasMaskedNeighbor = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  radius: number
+): boolean => {
+  const minX = Math.max(0, x - radius);
+  const maxX = Math.min(width - 1, x + radius);
+  const minY = Math.max(0, y - radius);
+  const maxY = Math.min(height - 1, y + radius);
+
+  for (let ny = minY; ny <= maxY; ny += 1) {
+    for (let nx = minX; nx <= maxX; nx += 1) {
+      if ((alpha[ny * width + nx] ?? 0) >= 24) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 };
 
 const buildBackgroundPalette = (
@@ -348,9 +414,9 @@ const buildBackgroundPalette = (
     for (let x = 0; x < width; x += step) {
       const pixel = y * width + x;
       const isBorder = x < border || y < border || x >= width - border || y >= height - border;
-      const isTransparentByAi = (alpha[pixel] ?? 0) < 16;
+      const isAiBackground = (alpha[pixel] ?? 0) < 16;
 
-      if (!isBorder && !isTransparentByAi) {
+      if (!isBorder && !isAiBackground) {
         continue;
       }
 
@@ -380,20 +446,20 @@ const buildBackgroundPalette = (
     }));
 };
 
-const colorDistance = (
-  r1: number,
-  g1: number,
-  b1: number,
-  r2: number,
-  g2: number,
-  b2: number
-): number => {
-  const dr = r1 - r2;
-  const dg = g1 - g2;
-  const db = b1 - b2;
+const closestPaletteDistance = (
+  r: number,
+  g: number,
+  b: number,
+  palette: Array<{ r: number; g: number; b: number }>
+): number =>
+  palette.reduce((best, color) => {
+    const dr = r - color.r;
+    const dg = g - color.g;
+    const db = b - color.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
 
-  return Math.sqrt(dr * dr + dg * dg + db * db);
-};
+    return Math.min(best, distance);
+  }, Number.POSITIVE_INFINITY);
 
 const normalizeScalePercent = (scalePercent?: number): number => {
   if (!scalePercent) {
