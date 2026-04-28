@@ -306,10 +306,7 @@ const buildPreservedProductCutout = async (
   const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
   const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
-  const refinedAlpha = backgroundPalette.length > 0
-    ? getSafeAlphaMask(safeAlpha, await smoothAlphaMask(refineAlphaEdges(originalRaw, safeAlpha, backgroundPalette), width, height), 0.92)
-    : safeAlpha;
-  const productRgba = removeEdgeMatte(originalRaw, refinedAlpha, width, height, backgroundPalette);
+  const productRgba = removeEdgeMatte(originalRaw, safeAlpha, width, height, backgroundPalette);
 
   return sharp(productRgba, {
     raw: {
@@ -320,42 +317,6 @@ const buildPreservedProductCutout = async (
   })
     .png()
     .toBuffer();
-};
-
-const refineAlphaEdges = (
-  originalRgb: Buffer,
-  alpha: Buffer,
-  palette: Array<{ r: number; g: number; b: number }>
-): Buffer => {
-  const refined = Buffer.from(alpha);
-
-  for (let pixel = 0; pixel < refined.length; pixel += 1) {
-    const currentAlpha = refined[pixel] ?? 0;
-
-    if (currentAlpha <= 0) {
-      continue;
-    }
-
-    const index = pixel * 3;
-    const r = originalRgb[index] ?? 0;
-    const g = originalRgb[index + 1] ?? 0;
-    const b = originalRgb[index + 2] ?? 0;
-    const distance = closestPaletteDistance(r, g, b, palette);
-    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    const saturation = getRgbSaturation(r, g, b);
-    const looksLikeSourceMatte = distance < 58 || (saturation < 0.12 && luminance > 78 && distance < 96);
-
-    if (looksLikeSourceMatte && currentAlpha < 245) {
-      refined[pixel] = Math.max(0, Math.round(currentAlpha * 0.28));
-      continue;
-    }
-
-    if (looksLikeSourceMatte && currentAlpha < 255) {
-      refined[pixel] = Math.max(0, currentAlpha - 48);
-    }
-  }
-
-  return refined;
 };
 
 const removeEdgeMatte = (
