@@ -297,9 +297,10 @@ const buildPreservedProductCutout = async (
     originalImage.clone().raw().toBuffer()
   ]);
   const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
+  const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
 
   return sharp(originalRgb)
-    .joinChannel(expandedAlpha, {
+    .joinChannel(safeAlpha, {
       raw: {
         width,
         height,
@@ -322,7 +323,8 @@ const expandMaskWithOriginalForeground = (
     return alpha;
   }
 
-  const expanded = removeBackgroundLikePixelsFromMask(originalRgb, alpha, backgroundPalette);
+  const cleaned = removeBackgroundLikePixelsFromMask(originalRgb, alpha, backgroundPalette);
+  const expanded = getSafeAlphaMask(alpha, cleaned, 0.55);
   const bounds = getMaskBounds(alpha, width, height);
   const padX = Math.round(width * 0.12);
   const padY = Math.round(height * 0.12);
@@ -400,6 +402,33 @@ const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Pr
     .blur(0.35)
     .raw()
     .toBuffer();
+
+const getSafeAlphaMask = (fallbackAlpha: Buffer, candidateAlpha: Buffer, minCoverageRatio = 0.65): Buffer => {
+  const fallbackCoverage = getAlphaCoverage(fallbackAlpha);
+  const candidateCoverage = getAlphaCoverage(candidateAlpha);
+
+  if (fallbackCoverage === 0) {
+    throw new Error("Product cutout could not be detected. Try reprocessing this image or use a cleaner source photo.");
+  }
+
+  if (candidateCoverage === 0 || candidateCoverage < fallbackCoverage * minCoverageRatio) {
+    return fallbackAlpha;
+  }
+
+  return candidateAlpha;
+};
+
+const getAlphaCoverage = (alpha: Buffer): number => {
+  let count = 0;
+
+  for (let index = 0; index < alpha.length; index += 1) {
+    if ((alpha[index] ?? 0) >= 24) {
+      count += 1;
+    }
+  }
+
+  return count;
+};
 
 const getRgbSaturation = (r: number, g: number, b: number): number => {
   const max = Math.max(r, g, b);
