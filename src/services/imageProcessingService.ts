@@ -264,26 +264,14 @@ const normalizeImageForOpenAi = async (imageBuffer: Buffer): Promise<Buffer> =>
     .png()
     .toBuffer();
 
-const buildPreservedProductCutout = async (
-  normalizedOriginalBuffer: Buffer,
-  aiCutoutBuffer: Buffer
-): Promise<Buffer> => {
-  const cutoutMetadata = await sharp(aiCutoutBuffer).metadata();
-
-  if (!cutoutMetadata.width || !cutoutMetadata.height) {
-    throw new Error("Product mask could not be read");
-  }
-
-  const width = cutoutMetadata.width;
-  const height = cutoutMetadata.height;
-  const aiAlpha = await sharp(aiCutoutBuffer)
-    .ensureAlpha()
-    .extractChannel("alpha")
-    .raw()
-    .toBuffer();
-  const originalImage = sharp(normalizedOriginalBuffer)
-    .resize(width, height, {
+const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<Buffer> =>
+  sharp(imageBuffer)
+    .rotate()
+    .resize({
+      width: outputSize,
+      height: outputSize,
       fit: "contain",
+      withoutEnlargement: false,
       background: {
         r: 0,
         g: 0,
@@ -291,7 +279,24 @@ const buildPreservedProductCutout = async (
         alpha: 0
       }
     })
-    .ensureAlpha();
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+
+const buildPreservedProductCutout = async (
+  preservedOriginalBuffer: Buffer,
+  aiCutoutBuffer: Buffer
+): Promise<Buffer> => {
+  const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
+
+  if (!originalMetadata.width || !originalMetadata.height) {
+    throw new Error("Original product image could not be read");
+  }
+
+  const width = originalMetadata.width;
+  const height = originalMetadata.height;
+  const aiAlpha = await getResizedAiAlpha(aiCutoutBuffer, width, height);
+  const originalImage = sharp(preservedOriginalBuffer).ensureAlpha();
   const [originalRgb, originalRaw, originalRgba] = await Promise.all([
     originalImage.clone().removeAlpha().png().toBuffer(),
     originalImage.clone().removeAlpha().raw().toBuffer(),
@@ -313,6 +318,22 @@ const buildPreservedProductCutout = async (
     .png()
     .toBuffer();
 };
+
+const getResizedAiAlpha = async (
+  aiCutoutBuffer: Buffer,
+  width: number,
+  height: number
+): Promise<Buffer> =>
+  sharp(aiCutoutBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .resize(width, height, {
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3
+    })
+    .blur(0.25)
+    .raw()
+    .toBuffer();
 
 const chooseBaseProductAlpha = (aiAlpha: Buffer, localAlpha: Buffer): Buffer => {
   const aiCoverage = getAlphaCoverage(aiAlpha);
@@ -1098,12 +1119,15 @@ export const processImageForProduct = async ({
     };
   }
 
-  const openAiInput = await normalizeImageForOpenAi(originalImage.buffer);
+  const [openAiInput, preservedOriginalInput] = await Promise.all([
+    normalizeImageForOpenAi(originalImage.buffer),
+    normalizeImageForPreservedProduct(originalImage.buffer)
+  ]);
 
   const aiCutout = await removeImageBackground(openAiInput);
   await validateImage(aiCutout);
   const cutout = preserveProductExactly
-    ? await buildPreservedProductCutout(openAiInput, aiCutout)
+    ? await buildPreservedProductCutout(preservedOriginalInput, aiCutout)
     : aiCutout;
   await validateImage(cutout);
 
@@ -1159,7 +1183,9 @@ export const processImageForProduct = async ({
       .toBuffer();
     productMetadata = await sharp(productBuffer).metadata();
   }
-  productBuffer = await applyProductLighting(productBuffer, lightingSettings);
+  productBuffer = preserveProductExactly
+    ? productBuffer
+    : await applyProductLighting(productBuffer, lightingSettings);
   productMetadata = await sharp(productBuffer).metadata();
 
   const productWidth = Math.min(outputSize, productMetadata.width ?? targetProductSize);
@@ -1187,11 +1213,18 @@ export const processImageForProduct = async ({
     .png()
     .toBuffer();
 
+  const webpOptions = preserveProductExactly
+    ? {
+        quality: 100,
+        lossless: true,
+        smartSubsample: true
+      }
+    : {
+        quality: 92,
+        smartSubsample: true
+      };
   const processedImage = await sharp(composedImage)
-    .webp({
-      quality: 92,
-      smartSubsample: true
-    })
+    .webp(webpOptions)
     .toBuffer();
 
   const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.webp`);

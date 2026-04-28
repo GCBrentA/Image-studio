@@ -19,6 +19,7 @@ export const removeImageBackground = async (imageBuffer: Buffer): Promise<Buffer
     "Create a precise ecommerce product alpha mask/cutout from this image. Isolate only the actual product object. Preserve the product exactly as shown. Do not change the product shape, label, logo, text, colours, markings, icons, dimensions, proportions, material, texture, annotations, or visible product details. Remove all background, floor, wall, table, shadows, reflections, glare patches, gaps, holes, empty spaces between parts, and background visible through openings in the product. Return a clean transparent-background PNG with only the product foreground isolated, no added objects and no background remnants."
   );
   formData.append("background", "transparent");
+  formData.append("input_fidelity", "high");
   formData.append("output_format", "png");
   formData.append("quality", "high");
   formData.append("size", "1024x1024");
