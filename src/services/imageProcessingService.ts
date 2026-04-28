@@ -267,12 +267,14 @@ const buildPreservedProductCutout = async (
     throw new Error("Product mask could not be read");
   }
 
+  const width = cutoutMetadata.width;
+  const height = cutoutMetadata.height;
   const alpha = await sharp(aiCutoutBuffer)
     .ensureAlpha()
     .extractChannel("alpha")
     .toBuffer();
-  const originalRgb = await sharp(normalizedOriginalBuffer)
-    .resize(cutoutMetadata.width, cutoutMetadata.height, {
+  const originalImage = sharp(normalizedOriginalBuffer)
+    .resize(width, height, {
       fit: "contain",
       background: {
         r: 0,
@@ -281,14 +283,116 @@ const buildPreservedProductCutout = async (
         alpha: 0
       }
     })
-    .removeAlpha()
-    .png()
-    .toBuffer();
+    .removeAlpha();
+  const [originalRgb, originalRaw] = await Promise.all([
+    originalImage.clone().png().toBuffer(),
+    originalImage.clone().raw().toBuffer()
+  ]);
+  const refinedAlpha = refineProductAlphaMask(originalRaw, alpha, width, height);
 
   return sharp(originalRgb)
-    .joinChannel(alpha)
+    .joinChannel(refinedAlpha)
     .png()
     .toBuffer();
+};
+
+const refineProductAlphaMask = (
+  originalRgb: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const palette = buildBackgroundPalette(originalRgb, alpha, width, height);
+
+  if (palette.length === 0) {
+    return alpha;
+  }
+
+  const refined = Buffer.from(alpha);
+
+  for (let index = 0, pixel = 0; index < originalRgb.length; index += 3, pixel += 1) {
+    const currentAlpha = refined[pixel] ?? 0;
+
+    if (currentAlpha < 24) {
+      refined[pixel] = 0;
+      continue;
+    }
+
+    const r = originalRgb[index] ?? 0;
+    const g = originalRgb[index + 1] ?? 0;
+    const b = originalRgb[index + 2] ?? 0;
+    const closestBackground = palette.reduce((best, color) => {
+      const distance = colorDistance(r, g, b, color.r, color.g, color.b);
+      return Math.min(best, distance);
+    }, Number.POSITIVE_INFINITY);
+
+    if (closestBackground < 54) {
+      refined[pixel] = 0;
+    }
+  }
+
+  return refined;
+};
+
+const buildBackgroundPalette = (
+  originalRgb: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Array<{ r: number; g: number; b: number; count: number }> => {
+  const bins = new Map<string, { r: number; g: number; b: number; count: number }>();
+  const border = Math.max(8, Math.round(Math.min(width, height) * 0.04));
+  const step = Math.max(1, Math.round(Math.min(width, height) / 180));
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const pixel = y * width + x;
+      const isBorder = x < border || y < border || x >= width - border || y >= height - border;
+      const isTransparentByAi = (alpha[pixel] ?? 0) < 16;
+
+      if (!isBorder && !isTransparentByAi) {
+        continue;
+      }
+
+      const index = pixel * 3;
+      const r = originalRgb[index] ?? 0;
+      const g = originalRgb[index + 1] ?? 0;
+      const b = originalRgb[index + 2] ?? 0;
+      const key = `${Math.round(r / 24)}:${Math.round(g / 24)}:${Math.round(b / 24)}`;
+      const bin = bins.get(key) ?? { r: 0, g: 0, b: 0, count: 0 };
+      bin.r += r;
+      bin.g += g;
+      bin.b += b;
+      bin.count += 1;
+      bins.set(key, bin);
+    }
+  }
+
+  return Array.from(bins.values())
+    .filter((bin) => bin.count >= 4)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+    .map((bin) => ({
+      r: Math.round(bin.r / bin.count),
+      g: Math.round(bin.g / bin.count),
+      b: Math.round(bin.b / bin.count),
+      count: bin.count
+    }));
+};
+
+const colorDistance = (
+  r1: number,
+  g1: number,
+  b1: number,
+  r2: number,
+  g2: number,
+  b2: number
+): number => {
+  const dr = r1 - r2;
+  const dg = g1 - g2;
+  const db = b1 - b2;
+
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 };
 
 const normalizeScalePercent = (scalePercent?: number): number => {

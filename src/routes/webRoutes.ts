@@ -305,8 +305,8 @@ const metaForPath = (requestPath: string): PageMeta => {
       ]
     },
     "/optivra-image-studio": {
-      title: "Optivra Image Studio | WooCommerce Product Image Optimisation",
-      description: "Optimise WooCommerce product images with AI-powered background replacement, review workflows, smart framing, and SEO-friendly image metadata.",
+      title: "Optivra Image Studio for WooCommerce | AI Product Image Optimisation",
+      description: "Scan, enhance, review and publish WooCommerce product images with AI background replacement, smart framing and SEO-ready filenames, alt text, titles, captions and descriptions.",
       canonicalPath: "/optivra-image-studio",
       jsonLd: imageStudioJsonLd
     },

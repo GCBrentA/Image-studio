@@ -300,9 +300,9 @@ function pageTitle(path) {
     "/": `${PRODUCT_NAME} | Optivra`,
     "/plugins": "Plugins | Optivra",
     "/woocommerce-plugins": "WooCommerce Plugins by Optivra | Checkout Rules and Image Optimisation",
-    "/optivra-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
+    "/optivra-image-studio": "Optivra Image Studio for WooCommerce | AI Product Image Optimisation",
     "/payment-gateway-rules-for-woocommerce": "Payment Gateway Rules for WooCommerce | Control Checkout Payment Methods",
-    "/catalogue-image-studio": "Optivra Image Studio | WooCommerce Product Image Optimisation",
+    "/catalogue-image-studio": "Optivra Image Studio for WooCommerce | AI Product Image Optimisation",
     "/pricing": "Pricing | Optivra",
     "/downloads": "Download WooCommerce Plugins | Optivra",
     "/blog": "WooCommerce Image SEO Blog | Optivra",
@@ -343,7 +343,7 @@ function pageDescription(path) {
   const descriptions = {
     "/": "AI-powered ecommerce tools for WooCommerce stores, starting with Optivra Image Studio for product image optimisation.",
     "/woocommerce-plugins": "Download WooCommerce plugins from Optivra, including Payment Gateway Rules for WooCommerce and Optivra Image Studio for product image optimisation and SEO metadata.",
-    "/optivra-image-studio": "Optimise WooCommerce product images with AI-powered background replacement, review workflows, and SEO-friendly image metadata.",
+    "/optivra-image-studio": "Scan, enhance, review and publish WooCommerce product images with AI background replacement, smart framing and SEO-ready filenames, alt text, titles, captions and descriptions.",
     "/payment-gateway-rules-for-woocommerce": "Create WooCommerce payment gateway rules to show or hide checkout payment methods based on country, shipping location, cart conditions, and store rules.",
     "/pricing": "Compare Optivra Image Studio plans, monthly credits, and credit packs for WooCommerce product image optimisation.",
     "/downloads": "Download Optivra WooCommerce plugins, including Optivra Image Studio and Payment Gateway Rules for WooCommerce.",
@@ -586,6 +586,29 @@ document.addEventListener("click", (event) => {
     trackConversion("buy_credits_clicked", { pack: target.dataset.pack, path: location.pathname });
   }
 });
+
+function bindTimeCalculator() {
+  const calculator = document.querySelector("[data-calculator]");
+  if (!calculator) return;
+
+  const products = calculator.querySelector("[data-calc-products]");
+  const images = calculator.querySelector("[data-calc-images]");
+  const minutes = calculator.querySelector("[data-calc-minutes]");
+  const output = calculator.querySelector("[data-calc-output]");
+
+  const update = () => {
+    const productCount = Math.max(0, Number(products?.value || 0));
+    const imageCount = Math.max(0, Number(images?.value || 0));
+    const minuteCount = Math.max(0, Number(minutes?.value || 0));
+    const hours = Math.round((productCount * imageCount * minuteCount) / 60);
+    if (output) output.textContent = `Estimated manual image workload: ${hours.toLocaleString()} hours`;
+  };
+
+  [products, images, minutes].forEach((input) => input?.addEventListener("input", update));
+  update();
+}
+
+bindTimeCalculator();
 
 window.addEventListener("popstate", () => {
   const normalized = routeTo(location.pathname);
