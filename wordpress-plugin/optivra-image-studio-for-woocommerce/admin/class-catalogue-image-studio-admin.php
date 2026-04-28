@@ -1237,7 +1237,7 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_toggle_setting('process_gallery_images', __('Include gallery images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue WooCommerce gallery images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_gallery_images'])); ?>
 					<?php $this->render_toggle_setting('process_category_images', __('Include category thumbnail images', 'optivra-image-studio-for-woocommerce'), __('Allow scans to include product category thumbnails when selected.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_category_images'])); ?>
 					<?php $this->render_select_setting('processing_mode', __('Processing mode', 'optivra-image-studio-for-woocommerce'), __('Default is catalogue-safe background cleanup. Creative enhancement can change product details and should not be used for accurate product listings.', 'optivra-image-studio-for-woocommerce'), $this->get_processing_modes(), (string) ($settings['processing_mode'] ?? 'background_only_cleanup')); ?>
-					<?php $this->render_toggle_setting('preserve_product_exactly', __('Preserve product exactly', 'optivra-image-studio-for-woocommerce'), __('Recommended for WooCommerce catalogue images. Keeps the original product pixels and only changes the background/canvas.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_product_exactly'])); ?>
+					<?php $this->render_toggle_setting('preserve_product_exactly', __('Preserve product exactly', 'optivra-image-studio-for-woocommerce'), __('Recommended for WooCommerce catalogue images. Prevents AI from regenerating product details while still allowing lighting, framing, scaling, background replacement and SEO settings.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_product_exactly'])); ?>
 					<div class="catalogue-image-studio-warning"><p><?php echo esc_html__('Creative product enhancement may alter the product image. Do not use for catalogue-accurate product photos unless you intentionally want creative variation.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
 					<?php $this->render_toggle_setting('duplicate_detection', __('Duplicate detection', 'optivra-image-studio-for-woocommerce'), __('Reuse previous processed results when the same source image is encountered.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['duplicate_detection'])); ?>
 					<?php $this->render_toggle_setting('pause_on_low_credits', __('Pause processing when credits are low', 'optivra-image-studio-for-woocommerce'), __('Stop larger queue batches before credits are exhausted.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['pause_on_low_credits'])); ?>
@@ -1884,6 +1884,8 @@ class Catalogue_Image_Studio_Admin {
 	private function get_background_presets(): array {
 		return [
 			'optivra-default' => __('Optivra Default', 'optivra-image-studio-for-woocommerce'),
+			'white'           => __('White', 'optivra-image-studio-for-woocommerce'),
+			'transparent'     => __('Transparent', 'optivra-image-studio-for-woocommerce'),
 			'soft-white'      => __('Soft White', 'optivra-image-studio-for-woocommerce'),
 			'cool-studio'     => __('Cool Studio', 'optivra-image-studio-for-woocommerce'),
 			'warm-studio'     => __('Warm Studio', 'optivra-image-studio-for-woocommerce'),
@@ -2095,13 +2097,15 @@ class Catalogue_Image_Studio_Admin {
 
 	private function resolve_background_value(string $preset): string {
 		$map = [
-			'optivra-default' => '#f4f6f8',
+			'optivra-default' => 'optivra-default',
+			'white'           => 'white',
+			'transparent'     => 'transparent',
 			'soft-white'      => '#ffffff',
 			'cool-studio'     => '#eef4ff',
 			'warm-studio'     => '#fff5ec',
 		];
 
-		return $map[$preset] ?? '#f4f6f8';
+		return $map[$preset] ?? 'optivra-default';
 	}
 
 	/**

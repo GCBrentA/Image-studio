@@ -10,8 +10,8 @@ const pluginRelease = {
   name: "Optivra Image Studio for WooCommerce",
   version: "1.0.0",
   zipPath: "/downloads/optivra-image-studio-for-woocommerce-1.0.0.zip",
-  fileSize: "61.6 KB",
-  sha256: "D56AA190608F8D749DC0A75792927D059A8B8D0ED4F6FA2ACC2D36387F217026",
+  fileSize: "61.7 KB",
+  sha256: "5836CACF36938E23505D333608C43ABF70485B64A2E045A3E77969D5A6ED808E",
   wordpressOrgStatus: "WordPress.org review pending",
   updatedAt: "2026-04-28"
 };

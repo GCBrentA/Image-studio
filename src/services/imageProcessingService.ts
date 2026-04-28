@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "crypto";
+import { existsSync } from "fs";
+import path from "path";
 import sharp from "sharp";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
@@ -67,6 +69,7 @@ const defaultScalePercent = 94;
 const signedUrlExpirySeconds = env.storageSignedUrlExpiresSeconds;
 const productChangedError =
   "Product area changed too much. Result rejected to protect catalogue accuracy.";
+const defaultBackgroundImagePath = path.resolve(process.cwd(), "public/site/assets/optivra-default-background.png");
 
 type DownloadedImage = {
   buffer: Buffer;
@@ -300,7 +303,7 @@ const buildPreservedProductCutout = async (
     .toBuffer();
 };
 
-const assertProductPixelsPreserved = async (
+const assertProductShapePreserved = async (
   productBuffer: Buffer,
   finalPngBuffer: Buffer,
   productLeft: number,
@@ -326,8 +329,7 @@ const assertProductPixelsPreserved = async (
   ]);
 
   let comparedPixels = 0;
-  let totalDifference = 0;
-  let changedPixels = 0;
+  let alphaChangedPixels = 0;
 
   for (let index = 0; index < originalRaw.length; index += 4) {
     const alpha = originalRaw[index + 3] ?? 0;
@@ -337,14 +339,10 @@ const assertProductPixelsPreserved = async (
     }
 
     comparedPixels += 1;
-    const diff =
-      Math.abs((originalRaw[index] ?? 0) - (finalRaw[index] ?? 0)) +
-      Math.abs((originalRaw[index + 1] ?? 0) - (finalRaw[index + 1] ?? 0)) +
-      Math.abs((originalRaw[index + 2] ?? 0) - (finalRaw[index + 2] ?? 0));
-    totalDifference += diff / 3;
+    const finalAlpha = finalRaw[index + 3] ?? 0;
 
-    if (diff / 3 > 8) {
-      changedPixels += 1;
+    if (Math.abs(alpha - finalAlpha) > 12) {
+      alphaChangedPixels += 1;
     }
   }
 
@@ -352,10 +350,9 @@ const assertProductPixelsPreserved = async (
     throw new Error(productChangedError);
   }
 
-  const averageDifference = totalDifference / comparedPixels;
-  const changedRatio = changedPixels / comparedPixels;
+  const changedRatio = alphaChangedPixels / comparedPixels;
 
-  if (averageDifference > 2 || changedRatio > 0.015) {
+  if (changedRatio > 0.01) {
     throw new Error(productChangedError);
   }
 };
@@ -504,14 +501,76 @@ const buildShadow = async (
   return sharp(Buffer.from(shadowSvg)).blur(blur).png().toBuffer();
 };
 
-const buildBrandedBackground = (background: string): Buffer => {
+const applyProductLighting = async (productBuffer: Buffer, settings?: unknown): Promise<Buffer> => {
+  const lightingSettings = getObject(settings);
+
+  if (lightingSettings.enabled !== true) {
+    return productBuffer;
+  }
+
+  const brightness = 1 + getNumber(lightingSettings.brightness, 0, -100, 100) / 200;
+  const contrast = getNumber(lightingSettings.contrast, 0, -100, 100);
+  const contrastFactor = 1 + contrast / 100;
+  const contrastIntercept = -128 * (contrastFactor - 1);
+  const saturation = lightingSettings.neutralizeTint === true ? 0.98 : 1;
+  const gamma = lightingSettings.shadowLift === true ? 1.08 : 1;
+
+  return sharp(productBuffer)
+    .modulate({
+      brightness,
+      saturation
+    })
+    .linear(contrastFactor, contrastIntercept)
+    .gamma(gamma)
+    .png()
+    .toBuffer();
+};
+
+const buildBrandedBackground = async (background: string): Promise<Buffer> => {
+  if (background === "transparent") {
+    return sharp({
+      create: {
+        width: outputSize,
+        height: outputSize,
+        channels: 4,
+        background: {
+          r: 0,
+          g: 0,
+          b: 0,
+          alpha: 0
+        }
+      }
+    })
+      .png()
+      .toBuffer();
+  }
+
+  if (background === "optivra-default" && existsSync(defaultBackgroundImagePath)) {
+    return sharp(defaultBackgroundImagePath)
+      .resize(outputSize, outputSize, {
+        fit: "cover",
+        position: "centre"
+      })
+      .png()
+      .toBuffer();
+  }
+
+  const presetColors: Record<string, string> = {
+    white: "#ffffff",
+    "soft-white": "#ffffff",
+    "cool-studio": "#eef4ff",
+    "warm-studio": "#fff5ec",
+    "optivra-default": "#f4f6f8"
+  };
+  const backgroundColor = presetColors[background] ?? background;
   const safeBackground = /^#[0-9a-f]{6}$/i.test(background) ? background : "#ffffff";
+  const safeColor = /^#[0-9a-f]{6}$/i.test(backgroundColor) ? backgroundColor : safeBackground;
   const backgroundSvg = `
     <svg width="${outputSize}" height="${outputSize}" viewBox="0 0 ${outputSize} ${outputSize}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#ffffff"/>
-          <stop offset="0.55" stop-color="${safeBackground}"/>
+          <stop offset="0.55" stop-color="${safeColor}"/>
           <stop offset="1" stop-color="#f4f6f8"/>
         </linearGradient>
       </defs>
@@ -728,6 +787,9 @@ export const processImageForProduct = async ({
       .toBuffer();
     productMetadata = await sharp(productBuffer).metadata();
   }
+  productBuffer = await applyProductLighting(productBuffer, lightingSettings);
+  productMetadata = await sharp(productBuffer).metadata();
+
   const productWidth = Math.min(outputSize, productMetadata.width ?? targetProductSize);
   const productHeight = Math.min(outputSize, productMetadata.height ?? targetProductSize);
   let left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), edgeLeft ? 0 : margin), outputSize - productWidth - (edgeRight ? 0 : margin));
@@ -742,33 +804,19 @@ export const processImageForProduct = async ({
 
   const backgroundBuffer = backgroundImageUrl || backgroundImageBuffer
     ? await buildBackgroundFromImage(backgroundImageUrl, backgroundImageBuffer, backgroundImageContentType)
-    : buildBrandedBackground(background);
+    : await buildBrandedBackground(background);
 
   const composites = [
     ...(shadow ? [{ input: shadow, top: 0, left: 0 }] : []),
     { input: productBuffer, top, left }
   ];
-  const lightingEnabled = lightingSettings.enabled === true && !preserveProductExactly;
-  const brightness = lightingEnabled ? 1 + getNumber(lightingSettings.brightness, 0, -100, 100) / 200 : 1;
-  const contrast = lightingEnabled ? getNumber(lightingSettings.contrast, 0, -100, 100) : 0;
-  const contrastFactor = 1 + contrast / 100;
-  const contrastIntercept = -128 * (contrastFactor - 1);
-  const saturation = lightingEnabled && lightingSettings.neutralizeTint === true ? 0.98 : 1;
-  const gamma = lightingEnabled && lightingSettings.shadowLift === true ? 1.08 : 1;
-
   const composedImage = await sharp(backgroundBuffer)
     .composite(composites)
-    .modulate({
-      brightness,
-      saturation
-    })
-    .linear(contrastFactor, contrastIntercept)
-    .gamma(gamma)
     .png()
     .toBuffer();
 
   if (preserveProductExactly) {
-    await assertProductPixelsPreserved(productBuffer, composedImage, left, top, productWidth, productHeight);
+    await assertProductShapePreserved(productBuffer, composedImage, left, top, productWidth, productHeight);
   }
 
   const processedImage = await sharp(composedImage)
