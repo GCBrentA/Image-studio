@@ -157,6 +157,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 			'processed_mime_type'     => $mime_type,
 			'processed_width'         => is_array($image_meta) && isset($image_meta['width']) ? (int) $image_meta['width'] : 0,
 			'processed_height'        => is_array($image_meta) && isset($image_meta['height']) ? (int) $image_meta['height'] : 0,
+			'processing_diagnostics'  => $this->get_processing_diagnostics_json($processed),
 			'processed_at'            => current_time('mysql', true),
 			'error_message'           => '',
 			'approval_error'          => $import_error,
@@ -174,11 +175,17 @@ class Catalogue_Image_Studio_ImageProcessor {
 	}
 
 	private function mark_failed(int $job_id, WP_Error $error): void {
+		$error_data  = $error->get_error_data();
+		$diagnostics = is_array($error_data) && isset($error_data['preserve_debug']) && is_array($error_data['preserve_debug'])
+			? wp_json_encode($error_data['preserve_debug'])
+			: '';
+
 		$this->jobs->update(
 			$job_id,
 			[
-				'status'        => 'failed',
-				'error_message' => $error->get_error_message(),
+				'status'                 => 'failed',
+				'error_message'          => $error->get_error_message(),
+				'processing_diagnostics' => $diagnostics ?: null,
 			]
 		);
 
@@ -189,6 +196,18 @@ class Catalogue_Image_Studio_ImageProcessor {
 				'message' => $error->get_error_message(),
 			]
 		);
+	}
+
+	/**
+	 * @param array<string,mixed> $processed API response.
+	 */
+	private function get_processing_diagnostics_json(array $processed): ?string {
+		if (isset($processed['preserve_debug']) && is_array($processed['preserve_debug'])) {
+			$json = wp_json_encode($processed['preserve_debug']);
+			return is_string($json) ? $json : null;
+		}
+
+		return null;
 	}
 
 	/**

@@ -41,6 +41,7 @@ export type ProcessedImageResult = {
   duplicateOfJobId: string | null;
   creditDeductionRequired: boolean;
   seoMetadata: SuggestedSeoMetadata;
+  preserveDebug?: PreserveDebugInfo;
 };
 
 export type SuggestedSeoMetadata = {
@@ -74,6 +75,96 @@ type CutoutResult = {
     alphaCoverage: number;
     foregroundMeanDelta: number;
   };
+  debugAlphaMask?: Buffer;
+  preserveDebug?: PreserveDebugInfo;
+};
+
+type PreserveModeFallback = "fail_safe" | "local_experimental" | "external_provider";
+type PreserveMaskSource = "ai_mask" | "local_fallback" | "failed";
+type PreserveRgbIntegrity = {
+  passed: boolean;
+  foregroundMeanDelta: number | null;
+  alphaCoverage: number | null;
+};
+
+export type PreserveDebugAsset = {
+  kind: "original_source" | "ai_cutout" | "alpha_mask" | "preserved_cutout" | "final_composite" | "background_only_comparison";
+  bucket: string;
+  path: string;
+  url: string | null;
+  contentType: string;
+};
+
+export type PreserveMaskDiagnostics = {
+  width: number;
+  height: number;
+  alphaCoverage: number;
+  alphaCoveragePercent: number;
+  visibleForegroundCoveragePercent: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  bboxAreaPercent: number;
+  connectedComponentCount: number;
+  largestComponentPixels: number;
+  largestComponentCoveragePercent: number;
+  largestComponentSharePercent: number;
+  passed: boolean;
+  failureReasons: string[];
+};
+
+export type PreserveDebugInfo = {
+  preserveMode: true;
+  fallbackMode: PreserveModeFallback;
+  finalStatus: "masking" | "refining_edges" | "compositing" | "validating_foreground_integrity" | "completed" | "failed";
+  maskSource: PreserveMaskSource;
+  attempts: number;
+  provider: string | null;
+  failureReason: string | null;
+  sourceDimensions: {
+    width: number;
+    height: number;
+  };
+  workingDimensions: {
+    width: number;
+    height: number;
+  };
+  aiResultDimensions: {
+    width: number;
+    height: number;
+  } | null;
+  mask: PreserveMaskDiagnostics | null;
+  backgroundOnlyBlockerTriggered: boolean;
+  rgbIntegrity: PreserveRgbIntegrity;
+  assets: PreserveDebugAsset[];
+};
+
+class PreserveModeProcessingError extends Error {
+  public readonly preserveDebug: PreserveDebugInfo;
+
+  public constructor(message: string, preserveDebug: PreserveDebugInfo) {
+    super(message);
+    this.name = "PreserveModeProcessingError";
+    this.preserveDebug = preserveDebug;
+  }
+}
+
+export const getPreserveDebugFromError = (error: unknown): PreserveDebugInfo | undefined =>
+  error instanceof PreserveModeProcessingError ? error.preserveDebug : undefined;
+
+type PreserveDebugContext = {
+  userId: string;
+  imageJobId: string;
+  originalStoragePath: string;
+  originalContentType: string;
+  sourceDimensions: {
+    width: number;
+    height: number;
+  };
+  fallbackMode: PreserveModeFallback;
 };
 
 const assertValidImageUrl = (imageUrl: string): void => {
@@ -116,6 +207,46 @@ const getStorageCleanupAfter = (): Date => {
   cleanupAfter.setDate(cleanupAfter.getDate() + env.imageStorageRetentionDays);
 
   return cleanupAfter;
+};
+
+const addExistingPreserveDebugAsset = async (
+  debug: PreserveDebugInfo,
+  kind: PreserveDebugAsset["kind"],
+  bucket: string,
+  assetPath: string,
+  contentType: string
+): Promise<void> => {
+  const url = await createStorageSignedUrl({
+    bucket,
+    path: assetPath,
+    expiresInSeconds: signedUrlExpirySeconds
+  }).catch(() => null);
+
+  debug.assets.push({
+    kind,
+    bucket,
+    path: assetPath,
+    url,
+    contentType
+  });
+};
+
+const uploadPreserveDebugAsset = async (
+  context: PreserveDebugContext,
+  debug: PreserveDebugInfo,
+  kind: PreserveDebugAsset["kind"],
+  fileName: string,
+  body: Buffer,
+  contentType: string
+): Promise<void> => {
+  const assetPath = getStoragePath(context.userId, context.imageJobId, `preserve-debug-${fileName}`);
+  await uploadStorageObject({
+    bucket: storageBuckets.debugCutouts,
+    path: assetPath,
+    body,
+    contentType
+  });
+  await addExistingPreserveDebugAsset(debug, kind, storageBuckets.debugCutouts, assetPath, contentType);
 };
 
 const getSha256 = (buffer: Buffer): string =>
@@ -326,48 +457,219 @@ const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResu
 const processImagePreserveMode = async (
   preservedOriginalBuffer: Buffer,
   openAiInput: Buffer,
-  imageJobId: string
+  context: PreserveDebugContext
 ): Promise<CutoutResult> => {
+  const workingDimensions = await getImageDimensions(preservedOriginalBuffer);
+  const debug: PreserveDebugInfo = {
+    preserveMode: true,
+    fallbackMode: context.fallbackMode,
+    finalStatus: "masking",
+    maskSource: "failed",
+    attempts: 0,
+    provider: null,
+    failureReason: null,
+    sourceDimensions: context.sourceDimensions,
+    workingDimensions,
+    aiResultDimensions: null,
+    mask: null,
+    backgroundOnlyBlockerTriggered: false,
+    rgbIntegrity: {
+      passed: false,
+      foregroundMeanDelta: null,
+      alphaCoverage: null
+    },
+    assets: []
+  };
+  await addExistingPreserveDebugAsset(debug, "original_source", storageBuckets.originalImages, context.originalStoragePath, context.originalContentType);
+
   console.info("Image preserve-mode masking started", {
-    imageJobId,
+    imageJobId: context.imageJobId,
     provider: "openai:gpt-image-1",
-    attempt: 1
+    fallbackMode: context.fallbackMode,
+    sourceWidth: context.sourceDimensions.width,
+    sourceHeight: context.sourceDimensions.height,
+    workingWidth: workingDimensions.width,
+    workingHeight: workingDimensions.height
   });
 
-  try {
-    const aiCutoutBuffer = await removeImageBackground(openAiInput, "preserve-mask");
+  const runAiMaskAttempt = async (mode: "preserve-mask" | "preserve-mask-refined", attempt: number): Promise<CutoutResult> => {
+    debug.finalStatus = attempt === 1 ? "masking" : "refining_edges";
+    debug.attempts = attempt;
+    debug.provider = `openai:gpt-image-1:${mode}`;
+    const aiCutoutBuffer = await removeImageBackground(openAiInput, mode);
     await validateImage(aiCutoutBuffer);
-    const result = await buildPreservedProductCutoutFromAiMask(preservedOriginalBuffer, aiCutoutBuffer);
+    const aiResultDimensions = await getImageDimensions(aiCutoutBuffer);
+    debug.aiResultDimensions = aiResultDimensions;
+    await uploadPreserveDebugAsset(context, debug, "ai_cutout", `attempt-${attempt}-ai-cutout-${randomUUID()}.png`, aiCutoutBuffer, "image/png");
+
+    const aiAlpha = await getResizedAiAlpha(aiCutoutBuffer, workingDimensions.width, workingDimensions.height);
+    const maskDiagnostics = analyzeAlphaMask(aiAlpha, workingDimensions.width, workingDimensions.height);
+    debug.mask = maskDiagnostics;
+    await uploadPreserveDebugAsset(
+      context,
+      debug,
+      "alpha_mask",
+      `attempt-${attempt}-alpha-mask-${randomUUID()}.png`,
+      await buildAlphaMaskPreview(aiAlpha, workingDimensions.width, workingDimensions.height),
+      "image/png"
+    );
+
+    if (!maskDiagnostics.passed) {
+      throw new PreserveModeProcessingError(
+        `Preserve mode rejected the ${attempt === 1 ? "primary" : "refined"} AI mask: ${maskDiagnostics.failureReasons.join("; ")}`,
+        {
+          ...debug,
+          failureReason: maskDiagnostics.failureReasons.join("; "),
+          finalStatus: "failed"
+        }
+      );
+    }
+
+    const result = await buildPreservedProductCutoutFromAlpha(
+      preservedOriginalBuffer,
+      aiAlpha,
+      `openai:gpt-image-1:${mode}`,
+      attempt,
+      {
+        allowLocalAssist: false,
+        maskSource: "ai_mask",
+        prevalidatedMask: maskDiagnostics
+      }
+    );
+    debug.finalStatus = "validating_foreground_integrity";
+    debug.maskSource = "ai_mask";
+    debug.mask = result.preserveDebug?.mask ?? maskDiagnostics;
+    debug.rgbIntegrity = {
+      passed: true,
+      foregroundMeanDelta: result.validation.foregroundMeanDelta,
+      alphaCoverage: result.validation.alphaCoverage
+    };
+    await uploadPreserveDebugAsset(
+      context,
+      debug,
+      "preserved_cutout",
+      `attempt-${attempt}-preserved-cutout-${randomUUID()}.png`,
+      result.cutout,
+      "image/png"
+    );
+
     console.info("Image preserve-mode masking passed", {
-      imageJobId,
+      imageJobId: context.imageJobId,
       provider: result.provider,
       attempts: result.attempts,
-      alphaCoverage: result.validation.alphaCoverage,
-      foregroundMeanDelta: result.validation.foregroundMeanDelta
+      alphaCoverage: debug.mask?.alphaCoverage ?? result.validation.alphaCoverage,
+      alphaCoveragePercent: debug.mask?.alphaCoveragePercent,
+      foregroundMeanDelta: result.validation.foregroundMeanDelta,
+      maskBBox: debug.mask?.bbox,
+      connectedComponentCount: debug.mask?.connectedComponentCount,
+      selectedMaskSource: "ai_mask"
     });
 
-    return result;
-  } catch (error) {
-    console.warn("Image preserve-mode primary mask rejected; trying local fallback", {
-      imageJobId,
-      attempt: 2,
-      error: error instanceof Error ? error.message : "Unknown preserve mask error"
-    });
+    return {
+      ...result,
+      preserveDebug: {
+        ...debug,
+        finalStatus: "validating_foreground_integrity",
+        failureReason: null
+      }
+    };
+  };
+
+  const errors: string[] = [];
+
+  for (const [mode, attempt] of [["preserve-mask", 1], ["preserve-mask-refined", 2]] as const) {
+    try {
+      return await runAiMaskAttempt(mode, attempt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown preserve mask error";
+      errors.push(message);
+      const errorDebug = getPreserveDebugFromError(error);
+      if (errorDebug) {
+        Object.assign(debug, errorDebug);
+      }
+      console.warn("Image preserve-mode AI mask rejected", {
+        imageJobId: context.imageJobId,
+        attempt,
+        fallbackMode: context.fallbackMode,
+        error: message,
+        alphaCoveragePercent: debug.mask?.alphaCoveragePercent,
+        maskBBox: debug.mask?.bbox,
+        connectedComponentCount: debug.mask?.connectedComponentCount
+      });
+    }
   }
 
-  const fallback = await buildPreservedProductCutoutFromLocalMask(preservedOriginalBuffer);
-  console.info("Image preserve-mode local fallback passed", {
-    imageJobId,
-    provider: fallback.provider,
-    attempts: fallback.attempts,
-    alphaCoverage: fallback.validation.alphaCoverage,
-    foregroundMeanDelta: fallback.validation.foregroundMeanDelta
+  if (context.fallbackMode === "local_experimental") {
+    console.warn("Image preserve-mode local fallback enabled by experimental config", {
+      imageJobId: context.imageJobId,
+      attempt: 2,
+      fallbackMode: context.fallbackMode
+    });
+
+    const fallback = await buildPreservedProductCutoutFromLocalMask(preservedOriginalBuffer);
+    const localMask = fallback.preserveDebug?.mask ?? null;
+
+    if (!localMask?.passed) {
+      throw new PreserveModeProcessingError("Experimental local foreground fallback did not pass strict mask quality checks.", {
+        ...debug,
+        finalStatus: "failed",
+        maskSource: "local_fallback",
+        mask: localMask,
+        failureReason: "Experimental local foreground fallback did not pass strict mask quality checks."
+      });
+    }
+
+    await uploadPreserveDebugAsset(
+      context,
+      debug,
+      "preserved_cutout",
+      `local-fallback-preserved-cutout-${randomUUID()}.png`,
+      fallback.cutout,
+      "image/png"
+    );
+
+    return {
+      ...fallback,
+      attempts: 2,
+      preserveDebug: {
+        ...debug,
+        finalStatus: "validating_foreground_integrity",
+        maskSource: "local_fallback",
+        mask: localMask,
+        rgbIntegrity: {
+          passed: true,
+          foregroundMeanDelta: fallback.validation.foregroundMeanDelta,
+          alphaCoverage: fallback.validation.alphaCoverage
+        },
+        failureReason: null
+      }
+    };
+  }
+
+  if (context.fallbackMode === "external_provider") {
+    errors.push("External specialist background-removal provider is not configured yet.");
+  }
+
+  const failureReason = errors.join(" | ") || "Preserve mode could not produce a trustworthy product mask.";
+  debug.finalStatus = "failed";
+  debug.maskSource = "failed";
+  debug.failureReason = failureReason;
+  console.error("Image preserve-mode failed safely", {
+    imageJobId: context.imageJobId,
+    fallbackMode: context.fallbackMode,
+    selectedMaskSource: "failed",
+    failureReason,
+    alphaCoveragePercent: debug.mask?.alphaCoveragePercent,
+    visibleForegroundCoveragePercent: debug.mask?.visibleForegroundCoveragePercent,
+    maskBBox: debug.mask?.bbox,
+    connectedComponentCount: debug.mask?.connectedComponentCount,
+    finalStatus: debug.finalStatus
   });
 
-  return {
-    ...fallback,
-    attempts: 2
-  };
+  throw new PreserveModeProcessingError(
+    "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output.",
+    debug
+  );
 };
 
 const buildPreservedProductCutoutFromAiMask = async (
@@ -386,7 +688,11 @@ const buildPreservedProductCutoutFromAiMask = async (
     preservedOriginalBuffer,
     aiAlpha,
     "openai:gpt-image-1:preserve-mask",
-    1
+    1,
+    {
+      allowLocalAssist: false,
+      maskSource: "ai_mask"
+    }
   );
 };
 
@@ -409,7 +715,11 @@ const buildPreservedProductCutoutFromLocalMask = async (
     preservedOriginalBuffer,
     localAlpha,
     "local-color-segmentation",
-    2
+    2,
+    {
+      allowLocalAssist: true,
+      maskSource: "local_fallback"
+    }
   );
 };
 
@@ -417,7 +727,12 @@ const buildPreservedProductCutoutFromAlpha = async (
   preservedOriginalBuffer: Buffer,
   candidateAlpha: Buffer,
   provider: string,
-  attempts: number
+  attempts: number,
+  options: {
+    allowLocalAssist: boolean;
+    maskSource: PreserveMaskSource;
+    prevalidatedMask?: PreserveMaskDiagnostics;
+  }
 ): Promise<CutoutResult> => {
   const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
 
@@ -432,12 +747,25 @@ const buildPreservedProductCutoutFromAlpha = async (
     originalImage.clone().removeAlpha().raw().toBuffer(),
     originalImage.clone().raw().toBuffer()
   ]);
-  const localAlpha = buildLocalForegroundAlpha(originalRgba, width, height);
-  const alpha = chooseBaseProductAlpha(candidateAlpha, localAlpha);
-  assertProductAlphaCoverage(alpha, width, height, "AI product mask");
-  const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
-  const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
-  assertProductAlphaCoverage(safeAlpha, width, height, "preserved product mask");
+  const localAlpha = options.allowLocalAssist ? buildLocalForegroundAlpha(originalRgba, width, height) : null;
+  const alpha = localAlpha ? chooseBaseProductAlpha(candidateAlpha, localAlpha) : candidateAlpha;
+  const initialMaskDiagnostics = options.prevalidatedMask ?? analyzeAlphaMask(alpha, width, height);
+
+  if (!initialMaskDiagnostics.passed) {
+    throw new Error(`Preserve mode rejected ${options.maskSource}: ${initialMaskDiagnostics.failureReasons.join("; ")}`);
+  }
+
+  const assistedAlpha = options.allowLocalAssist
+    ? expandMaskWithOriginalForeground(originalRaw, alpha, width, height)
+    : alpha;
+  const expandedAlpha = await smoothAlphaMask(assistedAlpha, width, height);
+  const safeAlpha = options.allowLocalAssist ? getSafeAlphaMask(alpha, expandedAlpha) : expandedAlpha;
+  const finalMaskDiagnostics = analyzeAlphaMask(safeAlpha, width, height);
+
+  if (!finalMaskDiagnostics.passed) {
+    throw new Error(`Preserve mode rejected the refined product mask: ${finalMaskDiagnostics.failureReasons.join("; ")}`);
+  }
+
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
   const productRgba = removeEdgeMatte(originalRaw, safeAlpha, width, height, backgroundPalette);
   const visualValidation = getCutoutVisualPresence(productRgba, safeAlpha);
@@ -462,7 +790,34 @@ const buildPreservedProductCutoutFromAlpha = async (
     debugCutout: cutout,
     provider,
     attempts,
-    validation
+    validation,
+    debugAlphaMask: await buildAlphaMaskPreview(safeAlpha, width, height),
+    preserveDebug: {
+      preserveMode: true,
+      fallbackMode: options.allowLocalAssist ? "local_experimental" : "fail_safe",
+      finalStatus: "validating_foreground_integrity",
+      maskSource: options.maskSource,
+      attempts,
+      provider,
+      failureReason: null,
+      sourceDimensions: {
+        width,
+        height
+      },
+      workingDimensions: {
+        width,
+        height
+      },
+      aiResultDimensions: null,
+      mask: finalMaskDiagnostics,
+      backgroundOnlyBlockerTriggered: false,
+      rgbIntegrity: {
+        passed: true,
+        foregroundMeanDelta: validation.foregroundMeanDelta,
+        alphaCoverage: validation.alphaCoverage
+      },
+      assets: []
+    }
   };
 };
 
@@ -1139,6 +1494,174 @@ const getAlphaCoverage = (alpha: Buffer): number => {
   return count;
 };
 
+const buildAlphaMaskPreview = async (alpha: Buffer, width: number, height: number): Promise<Buffer> =>
+  sharp(alpha, {
+    raw: {
+      width,
+      height,
+      channels: 1
+    }
+  })
+    .png()
+    .toBuffer();
+
+const analyzeAlphaMask = (alpha: Buffer, width: number, height: number): PreserveMaskDiagnostics => {
+  const totalPixels = width * height;
+  const visited = new Uint8Array(alpha.length);
+  let alphaCoverage = 0;
+  let connectedComponentCount = 0;
+  let largestComponentPixels = 0;
+  let largestBounds = { minX: width, minY: height, maxX: 0, maxY: 0 };
+  let minX = width;
+  let minY = height;
+  let maxX = 0;
+  let maxY = 0;
+
+  for (let start = 0; start < alpha.length; start += 1) {
+    if ((alpha[start] ?? 0) < 24) {
+      continue;
+    }
+
+    alphaCoverage += 1;
+
+    if (visited[start]) {
+      continue;
+    }
+
+    connectedComponentCount += 1;
+    const stack = [start];
+    visited[start] = 1;
+    let componentPixels = 0;
+    let componentMinX = width;
+    let componentMinY = height;
+    let componentMaxX = 0;
+    let componentMaxY = 0;
+
+    while (stack.length > 0) {
+      const pixel = stack.pop() as number;
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      componentPixels += 1;
+      componentMinX = Math.min(componentMinX, x);
+      componentMinY = Math.min(componentMinY, y);
+      componentMaxX = Math.max(componentMaxX, x);
+      componentMaxY = Math.max(componentMaxY, y);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+
+      const neighbours = [
+        x > 0 ? pixel - 1 : -1,
+        x < width - 1 ? pixel + 1 : -1,
+        y > 0 ? pixel - width : -1,
+        y < height - 1 ? pixel + width : -1
+      ];
+
+      for (const next of neighbours) {
+        if (next < 0 || visited[next] || (alpha[next] ?? 0) < 24) {
+          continue;
+        }
+
+        visited[next] = 1;
+        stack.push(next);
+      }
+    }
+
+    if (componentPixels > largestComponentPixels) {
+      largestComponentPixels = componentPixels;
+      largestBounds = {
+        minX: componentMinX,
+        minY: componentMinY,
+        maxX: componentMaxX,
+        maxY: componentMaxY
+      };
+    }
+  }
+
+  const hasForeground = alphaCoverage > 0 && minX <= maxX && minY <= maxY;
+  const bbox = hasForeground
+    ? {
+        x: minX,
+        y: minY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+      }
+    : {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0
+      };
+  const largestBBox = largestComponentPixels > 0
+    ? {
+        width: largestBounds.maxX - largestBounds.minX + 1,
+        height: largestBounds.maxY - largestBounds.minY + 1
+      }
+    : {
+        width: 0,
+        height: 0
+      };
+  const alphaCoveragePercent = totalPixels > 0 ? (alphaCoverage / totalPixels) * 100 : 0;
+  const bboxAreaPercent = totalPixels > 0 ? ((bbox.width * bbox.height) / totalPixels) * 100 : 0;
+  const largestComponentCoveragePercent = totalPixels > 0 ? (largestComponentPixels / totalPixels) * 100 : 0;
+  const largestComponentSharePercent = alphaCoverage > 0 ? (largestComponentPixels / alphaCoverage) * 100 : 0;
+  const failureReasons: string[] = [];
+  const minimumForegroundPixels = Math.max(1800, Math.round(totalPixels * 0.0015));
+
+  if (alphaCoverage <= 0) {
+    failureReasons.push("alpha mask is empty");
+  }
+
+  if (alphaCoverage > 0 && alphaCoverage < minimumForegroundPixels) {
+    failureReasons.push(`foreground coverage ${alphaCoveragePercent.toFixed(3)}% is too small for preserve mode`);
+  }
+
+  if (alphaCoveragePercent > 82) {
+    failureReasons.push(`foreground coverage ${alphaCoveragePercent.toFixed(2)}% is unrealistically large`);
+  }
+
+  if (hasForeground && (bbox.width < Math.round(width * 0.04) || bbox.height < Math.round(height * 0.04))) {
+    failureReasons.push(`mask bounding box ${bbox.width}x${bbox.height} is too small`);
+  }
+
+  if (hasForeground && bboxAreaPercent < 0.4) {
+    failureReasons.push(`mask bounding box area ${bboxAreaPercent.toFixed(3)}% is too small`);
+  }
+
+  if (largestComponentPixels > 0 && largestComponentPixels < minimumForegroundPixels) {
+    failureReasons.push("largest connected foreground structure is too small");
+  }
+
+  if (alphaCoverage > 0 && largestComponentSharePercent < 45) {
+    failureReasons.push(`mask is fragmented; largest component is only ${largestComponentSharePercent.toFixed(1)}% of foreground`);
+  }
+
+  if (connectedComponentCount > 250 && largestComponentSharePercent < 80) {
+    failureReasons.push(`mask appears to be edge noise with ${connectedComponentCount} disconnected components`);
+  }
+
+  if (largestComponentPixels > 0 && (largestBBox.width < Math.round(width * 0.04) || largestBBox.height < Math.round(height * 0.04))) {
+    failureReasons.push(`largest component bounds ${largestBBox.width}x${largestBBox.height} are too small`);
+  }
+
+  return {
+    width,
+    height,
+    alphaCoverage,
+    alphaCoveragePercent,
+    visibleForegroundCoveragePercent: alphaCoveragePercent,
+    bbox,
+    bboxAreaPercent,
+    connectedComponentCount,
+    largestComponentPixels,
+    largestComponentCoveragePercent,
+    largestComponentSharePercent,
+    passed: failureReasons.length === 0,
+    failureReasons
+  };
+};
+
 const getRgbSaturation = (r: number, g: number, b: number): number => {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
@@ -1279,6 +1802,16 @@ const getNumber = (value: unknown, fallback: number, min: number, max: number): 
 
 const getString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim() ? value.trim() : fallback;
+
+const getPreserveModeFallback = (settings: Record<string, unknown>): PreserveModeFallback => {
+  const value = settings.preserveModeFallback ?? settings.preserve_mode_fallback;
+
+  if (value === "local_experimental" || value === "external_provider") {
+    return value;
+  }
+
+  return "fail_safe";
+};
 
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
   const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : "000000";
@@ -1590,6 +2123,7 @@ export const processImageForProduct = async ({
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
   const processingSettings = getObject(settings);
   const preserveProductExactly = processingSettings.preserveProductExactly !== false;
+  const preserveModeFallback = getPreserveModeFallback(processingSettings);
   const framingSettings = getObject(processingSettings.framing);
   const shadowSettings = getObject(processingSettings.shadow);
   const lightingSettings = getObject(processingSettings.lighting);
@@ -1667,6 +2201,7 @@ export const processImageForProduct = async ({
   console.info("Image processing cutout mode selected", {
     imageJobId,
     preserveProductExactly,
+    preserveModeFallback: preserveProductExactly ? preserveModeFallback : null,
     originalContentType: originalImage.contentType,
     originalBytes: originalImage.buffer.byteLength,
     originalWidth: originalImageDimensions.width,
@@ -1674,7 +2209,14 @@ export const processImageForProduct = async ({
   });
 
   const cutoutResult = preserveProductExactly
-    ? await processImagePreserveMode(preservedOriginalInput, openAiInput, imageJobId)
+    ? await processImagePreserveMode(preservedOriginalInput, openAiInput, {
+        userId,
+        imageJobId,
+        originalStoragePath,
+        originalContentType: originalImage.contentType,
+        sourceDimensions: originalImageDimensions,
+        fallbackMode: preserveModeFallback
+      })
     : await processImageFlexibleMode(openAiInput);
   const cutout = cutoutResult.cutout;
   await validateImage(cutout);
@@ -1766,7 +2308,50 @@ export const processImageForProduct = async ({
     .composite(composites)
     .png()
     .toBuffer();
-  await assertCompositeContainsProduct(backgroundBuffer, composedImage, productAlphaCoverage, preserveProductExactly);
+
+  if (preserveProductExactly && cutoutResult.preserveDebug) {
+    const preserveContext = {
+      userId,
+      imageJobId,
+      originalStoragePath,
+      originalContentType: originalImage.contentType,
+      sourceDimensions: originalImageDimensions,
+      fallbackMode: preserveModeFallback
+    };
+    await uploadPreserveDebugAsset(
+      preserveContext,
+      cutoutResult.preserveDebug,
+      "background_only_comparison",
+      `background-only-comparison-${randomUUID()}.png`,
+      backgroundBuffer,
+      "image/png"
+    );
+    await uploadPreserveDebugAsset(
+      preserveContext,
+      cutoutResult.preserveDebug,
+      "final_composite",
+      `final-composite-${randomUUID()}.png`,
+      composedImage,
+      "image/png"
+    );
+  }
+
+  try {
+    await assertCompositeContainsProduct(backgroundBuffer, composedImage, productAlphaCoverage, preserveProductExactly);
+  } catch (error) {
+    if (preserveProductExactly && cutoutResult.preserveDebug) {
+      cutoutResult.preserveDebug.backgroundOnlyBlockerTriggered = true;
+      cutoutResult.preserveDebug.finalStatus = "failed";
+      cutoutResult.preserveDebug.failureReason = error instanceof Error ? error.message : "Preserve mode rejected a background-only composite.";
+      throw new PreserveModeProcessingError(cutoutResult.preserveDebug.failureReason, cutoutResult.preserveDebug);
+    }
+
+    throw error;
+  }
+
+  if (preserveProductExactly && cutoutResult.preserveDebug) {
+    cutoutResult.preserveDebug.finalStatus = "completed";
+  }
 
   const webpOptions = preserveProductExactly
     ? {
@@ -1808,6 +2393,7 @@ export const processImageForProduct = async ({
     storageCleanupAfter,
     duplicateOfJobId: null,
     creditDeductionRequired: true,
-    seoMetadata
+    seoMetadata,
+    preserveDebug: cutoutResult.preserveDebug
   };
 };

@@ -142,6 +142,7 @@ class Catalogue_Image_Studio_Plugin {
 			processed_mime_type varchar(100) NULL,
 			processed_width int(11) NOT NULL DEFAULT 0,
 			processed_height int(11) NOT NULL DEFAULT 0,
+			processing_diagnostics longtext NULL,
 			seo_filename text NULL,
 			seo_alt_text text NULL,
 			seo_title text NULL,

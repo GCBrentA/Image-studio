@@ -1,7 +1,7 @@
 import { ImageJobStatus } from "@prisma/client";
 import type { Response } from "express";
 import { deductCredit, getUserCredits } from "../services/creditService";
-import { processImageForProduct } from "../services/imageProcessingService";
+import { getPreserveDebugFromError, processImageForProduct } from "../services/imageProcessingService";
 import { prisma } from "../utils/prisma";
 import type { AuthenticatedRequest } from "../middleware/apiTokenAuth";
 
@@ -149,7 +149,12 @@ export const processImage = async (
         processed_uploaded_at: result.processedUploadedAt,
         debug_cutout_uploaded_at: result.debugCutoutUploadedAt,
         storage_cleanup_after: result.storageCleanupAfter,
-        seo_metadata: result.seoMetadata,
+        seo_metadata: result.preserveDebug
+          ? {
+              ...result.seoMetadata,
+              preserve_debug: result.preserveDebug
+            }
+          : result.seoMetadata,
         status: ImageJobStatus.completed
       }
     });
@@ -164,7 +169,8 @@ export const processImage = async (
         processed_storage_path: result.processedStoragePath,
         credits_remaining: credits.credits_remaining,
         low_credit_thresholds: credits.low_credit_thresholds,
-        seo_metadata: result.seoMetadata
+        seo_metadata: result.seoMetadata,
+        preserve_debug: result.preserveDebug
       });
       return;
     }
@@ -192,13 +198,16 @@ export const processImage = async (
       processed_storage_path: result.processedStoragePath,
       credits_remaining: deduction.credits_remaining,
       low_credit_thresholds: deduction.low_credit_thresholds,
-      seo_metadata: result.seoMetadata
+      seo_metadata: result.seoMetadata,
+      preserve_debug: result.preserveDebug
     });
   } catch (error) {
+    const preserveDebug = getPreserveDebugFromError(error);
     console.error("Image processing failed", {
       imageJobId: imageJob.id,
       userId: auth.userId,
       imageUrl: sourceImageUrl,
+      preserveDebug,
       error
     });
 
@@ -207,7 +216,8 @@ export const processImage = async (
         id: imageJob.id
       },
       data: {
-        status: ImageJobStatus.failed
+        status: ImageJobStatus.failed,
+        seo_metadata: preserveDebug ? { preserve_debug: preserveDebug } : undefined
       }
     });
 
@@ -216,7 +226,8 @@ export const processImage = async (
       processed_url: null,
       credits_remaining: credits.credits_remaining,
       low_credit_thresholds: credits.low_credit_thresholds,
-      error: error instanceof Error ? error.message : "Image processing failed"
+      error: error instanceof Error ? error.message : "Image processing failed",
+      preserve_debug: preserveDebug
     });
   }
 };

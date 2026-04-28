@@ -2433,8 +2433,81 @@ class Catalogue_Image_Studio_Admin {
 					<dd><?php echo '' !== trim($value) ? esc_html($value) : esc_html__('Not stored', 'optivra-image-studio-for-woocommerce'); ?></dd>
 				<?php endforeach; ?>
 			</dl>
+			<?php $this->render_preserve_diagnostics($job); ?>
 		</details>
 		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 */
+	private function render_preserve_diagnostics(array $job): void {
+		$diagnostics = $this->get_preserve_diagnostics($job);
+
+		if (empty($diagnostics)) {
+			return;
+		}
+
+		$mask = isset($diagnostics['mask']) && is_array($diagnostics['mask']) ? $diagnostics['mask'] : [];
+		$bbox = isset($mask['bbox']) && is_array($mask['bbox']) ? $mask['bbox'] : [];
+		$rgb  = isset($diagnostics['rgbIntegrity']) && is_array($diagnostics['rgbIntegrity']) ? $diagnostics['rgbIntegrity'] : [];
+		$rows = [
+			__('Preserve failure reason', 'optivra-image-studio-for-woocommerce') => (string) ($diagnostics['failureReason'] ?? ''),
+			__('Preserve final status', 'optivra-image-studio-for-woocommerce')  => (string) ($diagnostics['finalStatus'] ?? ''),
+			__('Mask source', 'optivra-image-studio-for-woocommerce')            => (string) ($diagnostics['maskSource'] ?? ''),
+			__('Fallback mode', 'optivra-image-studio-for-woocommerce')          => (string) ($diagnostics['fallbackMode'] ?? ''),
+			__('Provider', 'optivra-image-studio-for-woocommerce')               => (string) ($diagnostics['provider'] ?? ''),
+			__('Attempts', 'optivra-image-studio-for-woocommerce')               => (string) ($diagnostics['attempts'] ?? ''),
+			__('Foreground coverage', 'optivra-image-studio-for-woocommerce')    => isset($mask['alphaCoveragePercent']) ? sprintf('%.3f%%', (float) $mask['alphaCoveragePercent']) : '',
+			__('Mask bounding box', 'optivra-image-studio-for-woocommerce')      => sprintf('%d,%d %dx%d', (int) ($bbox['x'] ?? 0), (int) ($bbox['y'] ?? 0), (int) ($bbox['width'] ?? 0), (int) ($bbox['height'] ?? 0)),
+			__('Connected components', 'optivra-image-studio-for-woocommerce')   => (string) ($mask['connectedComponentCount'] ?? ''),
+			__('Background-only blocker', 'optivra-image-studio-for-woocommerce') => ! empty($diagnostics['backgroundOnlyBlockerTriggered']) ? __('Triggered', 'optivra-image-studio-for-woocommerce') : __('Not triggered', 'optivra-image-studio-for-woocommerce'),
+			__('RGB integrity', 'optivra-image-studio-for-woocommerce')          => ! empty($rgb['passed']) ? __('Passed', 'optivra-image-studio-for-woocommerce') : __('Failed or not reached', 'optivra-image-studio-for-woocommerce'),
+		];
+		?>
+		<h4><?php echo esc_html__('Preserve-mode diagnostics', 'optivra-image-studio-for-woocommerce'); ?></h4>
+		<dl>
+			<?php foreach ($rows as $label => $value) : ?>
+				<dt><?php echo esc_html($label); ?></dt>
+				<dd><?php echo '' !== trim((string) $value) ? esc_html((string) $value) : esc_html__('Not stored', 'optivra-image-studio-for-woocommerce'); ?></dd>
+			<?php endforeach; ?>
+		</dl>
+		<?php if (! empty($mask['failureReasons']) && is_array($mask['failureReasons'])) : ?>
+			<ul>
+				<?php foreach ($mask['failureReasons'] as $reason) : ?>
+					<li><?php echo esc_html((string) $reason); ?></li>
+				<?php endforeach; ?>
+			</ul>
+		<?php endif; ?>
+		<?php if (! empty($diagnostics['assets']) && is_array($diagnostics['assets'])) : ?>
+			<ul>
+				<?php foreach ($diagnostics['assets'] as $asset) : ?>
+					<?php if (! is_array($asset) || empty($asset['url']) || ! is_string($asset['url'])) { continue; } ?>
+					<li>
+						<a href="<?php echo esc_url($asset['url']); ?>" target="_blank" rel="noopener noreferrer">
+							<?php echo esc_html((string) ($asset['kind'] ?? __('Debug image', 'optivra-image-studio-for-woocommerce'))); ?>
+						</a>
+					</li>
+				<?php endforeach; ?>
+			</ul>
+		<?php endif; ?>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 * @return array<string,mixed>
+	 */
+	private function get_preserve_diagnostics(array $job): array {
+		$raw = (string) ($job['processing_diagnostics'] ?? '');
+
+		if ('' === trim($raw)) {
+			return [];
+		}
+
+		$decoded = json_decode($raw, true);
+
+		return is_array($decoded) ? $decoded : [];
 	}
 
 	private function format_status(string $status): string {

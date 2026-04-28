@@ -93,7 +93,11 @@ class Catalogue_Image_Studio_SaaSClient {
 
 		if ($status_code < 200 || $status_code >= 300) {
 			$message = $this->get_error_message($decoded, __('Image processing failed.', 'optivra-image-studio-for-woocommerce'));
-			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
+			$error_data = ['status_code' => $status_code];
+			if (isset($decoded['preserve_debug']) && is_array($decoded['preserve_debug'])) {
+				$error_data['preserve_debug'] = $decoded['preserve_debug'];
+			}
+			return new WP_Error('catalogue_image_studio_api_error', $message, $error_data);
 		}
 
 		if (empty($decoded['processed_url'])) {
