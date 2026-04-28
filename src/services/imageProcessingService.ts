@@ -297,8 +297,7 @@ const buildPreservedProductCutout = async (
   const height = originalMetadata.height;
   const aiAlpha = await getResizedAiAlpha(aiCutoutBuffer, width, height);
   const originalImage = sharp(preservedOriginalBuffer).ensureAlpha();
-  const [originalRgb, originalRaw, originalRgba] = await Promise.all([
-    originalImage.clone().removeAlpha().png().toBuffer(),
+  const [originalRaw, originalRgba] = await Promise.all([
     originalImage.clone().removeAlpha().raw().toBuffer(),
     originalImage.clone().raw().toBuffer()
   ]);
@@ -306,17 +305,175 @@ const buildPreservedProductCutout = async (
   const alpha = chooseBaseProductAlpha(aiAlpha, localAlpha);
   const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
   const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
+  const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
+  const refinedAlpha = backgroundPalette.length > 0
+    ? getSafeAlphaMask(safeAlpha, await smoothAlphaMask(refineAlphaEdges(originalRaw, safeAlpha, backgroundPalette), width, height), 0.92)
+    : safeAlpha;
+  const productRgba = removeEdgeMatte(originalRaw, refinedAlpha, width, height, backgroundPalette);
 
-  return sharp(originalRgb)
-    .joinChannel(safeAlpha, {
-      raw: {
-        width,
-        height,
-        channels: 1
-      }
-    })
+  return sharp(productRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
     .png()
     .toBuffer();
+};
+
+const refineAlphaEdges = (
+  originalRgb: Buffer,
+  alpha: Buffer,
+  palette: Array<{ r: number; g: number; b: number }>
+): Buffer => {
+  const refined = Buffer.from(alpha);
+
+  for (let pixel = 0; pixel < refined.length; pixel += 1) {
+    const currentAlpha = refined[pixel] ?? 0;
+
+    if (currentAlpha <= 0) {
+      continue;
+    }
+
+    const index = pixel * 3;
+    const r = originalRgb[index] ?? 0;
+    const g = originalRgb[index + 1] ?? 0;
+    const b = originalRgb[index + 2] ?? 0;
+    const distance = closestPaletteDistance(r, g, b, palette);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const looksLikeSourceMatte = distance < 58 || (saturation < 0.12 && luminance > 78 && distance < 96);
+
+    if (looksLikeSourceMatte && currentAlpha < 245) {
+      refined[pixel] = Math.max(0, Math.round(currentAlpha * 0.28));
+      continue;
+    }
+
+    if (looksLikeSourceMatte && currentAlpha < 255) {
+      refined[pixel] = Math.max(0, currentAlpha - 48);
+    }
+  }
+
+  return refined;
+};
+
+const removeEdgeMatte = (
+  originalRgb: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number,
+  palette: Array<{ r: number; g: number; b: number }>
+): Buffer => {
+  const rgba = Buffer.alloc(width * height * 4);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    const sourceIndex = pixel * 3;
+    const targetIndex = pixel * 4;
+    rgba[targetIndex] = originalRgb[sourceIndex] ?? 0;
+    rgba[targetIndex + 1] = originalRgb[sourceIndex + 1] ?? 0;
+    rgba[targetIndex + 2] = originalRgb[sourceIndex + 2] ?? 0;
+    rgba[targetIndex + 3] = alpha[pixel] ?? 0;
+  }
+
+  if (palette.length === 0) {
+    return rgba;
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+      const currentAlpha = alpha[pixel] ?? 0;
+
+      if (currentAlpha <= 0 || currentAlpha >= 250) {
+        continue;
+      }
+
+      const targetIndex = pixel * 4;
+      const r = rgba[targetIndex] ?? 0;
+      const g = rgba[targetIndex + 1] ?? 0;
+      const b = rgba[targetIndex + 2] ?? 0;
+      const distance = closestPaletteDistance(r, g, b, palette);
+      const saturation = getRgbSaturation(r, g, b);
+
+      if (distance >= 82 && saturation >= 0.1) {
+        continue;
+      }
+
+      const replacement = findNearestSolidProductColor(rgba, width, height, x, y, 6);
+
+      if (replacement) {
+        rgba[targetIndex] = replacement.r;
+        rgba[targetIndex + 1] = replacement.g;
+        rgba[targetIndex + 2] = replacement.b;
+      }
+    }
+  }
+
+  return rgba;
+};
+
+const findNearestSolidProductColor = (
+  rgba: Buffer,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  radius: number
+): { r: number; g: number; b: number } | null => {
+  let best: { r: number; g: number; b: number; distance: number } | null = null;
+
+  for (let ny = Math.max(0, y - radius); ny <= Math.min(height - 1, y + radius); ny += 1) {
+    for (let nx = Math.max(0, x - radius); nx <= Math.min(width - 1, x + radius); nx += 1) {
+      const pixel = ny * width + nx;
+      const index = pixel * 4;
+
+      if ((rgba[index + 3] ?? 0) < 245) {
+        continue;
+      }
+
+      const dx = nx - x;
+      const dy = ny - y;
+      const distance = dx * dx + dy * dy;
+
+      if (!best || distance < best.distance) {
+        best = {
+          r: rgba[index] ?? 0,
+          g: rgba[index + 1] ?? 0,
+          b: rgba[index + 2] ?? 0,
+          distance
+        };
+      }
+    }
+  }
+
+  return best;
+};
+
+const getSettingsBackgroundImageUrl = (settings: unknown): string | undefined => {
+  const backgroundSettings = getObject(getObject(settings).background);
+  const customBackgroundUrl = backgroundSettings.customBackgroundUrl;
+
+  return typeof customBackgroundUrl === "string" && customBackgroundUrl.trim()
+    ? customBackgroundUrl.trim()
+    : undefined;
+};
+
+const getEffectiveBackgroundImageUrl = (
+  backgroundImageUrl: string | undefined,
+  settings: unknown
+): string | undefined => {
+  if (backgroundImageUrl?.trim()) {
+    return backgroundImageUrl.trim();
+  }
+
+  return getSettingsBackgroundImageUrl(settings);
+};
+
+const wantsCustomBackground = (settings: unknown): boolean => {
+  const backgroundSettings = getObject(getObject(settings).background);
+
+  return backgroundSettings.source === "custom";
 };
 
 const getResizedAiAlpha = async (
@@ -1056,6 +1213,8 @@ export const processImageForProduct = async ({
   const framingSettings = getObject(processingSettings.framing);
   const shadowSettings = getObject(processingSettings.shadow);
   const lightingSettings = getObject(processingSettings.lighting);
+  const effectiveBackgroundImageUrl = getEffectiveBackgroundImageUrl(backgroundImageUrl, processingSettings);
+  const requiresCustomBackground = wantsCustomBackground(processingSettings);
   const overrideSettings = getObject(jobOverrides);
   const edgeToEdge = getObject(overrideSettings.edgeToEdge);
   const edgeLeftRequested = edgeToEdge.left === true;
@@ -1200,8 +1359,12 @@ export const processImageForProduct = async ({
 
   const shadow = await buildShadow(outputSize, outputSize, productBuffer, productWidth, productHeight, left, top, shadowSettings);
 
-  const backgroundBuffer = backgroundImageUrl || backgroundImageBuffer
-    ? await buildBackgroundFromImage(backgroundImageUrl, backgroundImageBuffer, backgroundImageContentType)
+  if (requiresCustomBackground && !effectiveBackgroundImageUrl && !backgroundImageBuffer) {
+    throw new Error("Custom background is selected but no custom background image was received. Save the background setting and reprocess this image.");
+  }
+
+  const backgroundBuffer = effectiveBackgroundImageUrl || backgroundImageBuffer
+    ? await buildBackgroundFromImage(effectiveBackgroundImageUrl, backgroundImageBuffer, backgroundImageContentType)
     : await buildBrandedBackground(background);
 
   const composites = [
