@@ -132,6 +132,89 @@ model PluginEvent {
   @@map("plugin_events")
 }
 
+model PluginProduct {
+  id                String           @id @default(uuid()) @db.Uuid
+  slug              String           @unique
+  name              String
+  description       String
+  currentVersion    String           @map("current_version")
+  downloadFilePath  String           @map("download_file_path")
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  downloads         PluginDownload[]
+  reviews           PluginReview[]
+
+  @@map("plugin_products")
+}
+
+model PluginLead {
+  id                String           @id @default(uuid()) @db.Uuid
+  email             String           @unique
+  name              String?
+  marketingConsent  Boolean          @default(false) @map("marketing_consent")
+  privacyAccepted   Boolean          @default(false) @map("privacy_accepted")
+  source            String?
+  utmSource         String?          @map("utm_source")
+  utmMedium         String?          @map("utm_medium")
+  utmCampaign       String?          @map("utm_campaign")
+  referrer          String?
+  ipHash            String?          @map("ip_hash")
+  userAgentHash     String?          @map("user_agent_hash")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  downloads         PluginDownload[]
+  reviews           PluginReview[]
+
+  @@index([email])
+  @@index([source])
+  @@map("plugin_leads")
+}
+
+model PluginDownload {
+  id              String        @id @default(uuid()) @db.Uuid
+  pluginId        String        @map("plugin_id") @db.Uuid
+  leadId          String        @map("lead_id") @db.Uuid
+  version         String
+  token           String        @unique
+  status          String        @default("requested")
+  requestedAt     DateTime      @default(now()) @map("requested_at")
+  startedAt       DateTime?     @map("started_at")
+  completedAt     DateTime?     @map("completed_at")
+  failedAt        DateTime?     @map("failed_at")
+  source          String?
+  ipHash          String?       @map("ip_hash")
+  userAgentHash   String?       @map("user_agent_hash")
+  plugin          PluginProduct @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  lead            PluginLead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([pluginId])
+  @@index([leadId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("plugin_downloads")
+}
+
+model PluginReview {
+  id                 String        @id @default(uuid()) @db.Uuid
+  pluginId           String        @map("plugin_id") @db.Uuid
+  leadId             String?       @map("lead_id") @db.Uuid
+  rating             Int
+  title              String
+  body               String
+  displayName        String        @map("display_name")
+  verifiedDownload   Boolean       @default(false) @map("verified_download")
+  status             String        @default("pending")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  approvedAt         DateTime?     @map("approved_at")
+  plugin             PluginProduct @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  lead               PluginLead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([pluginId])
+  @@index([leadId])
+  @@index([status])
+  @@index([rating])
+  @@map("plugin_reviews")
+}
+
 model FreeCreditGrant {
   id               String        @id @default(cuid())
   canonical_domain String

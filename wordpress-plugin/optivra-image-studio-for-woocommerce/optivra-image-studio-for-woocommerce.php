@@ -39,6 +39,15 @@ define('CIS_SUPPORT_EMAIL', 'support@optivra.app');
  */
 define('CIS_MINIMUM_PHP_VERSION', '8.0');
 
+add_action(
+	'before_woocommerce_init',
+	static function () {
+		if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', CIS_FILE, true);
+		}
+	}
+);
+
 /**
  * Check whether the current site meets plugin runtime requirements.
  *

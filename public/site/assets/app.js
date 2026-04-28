@@ -11,9 +11,9 @@ const pluginRelease = {
   version: "1.0.0",
   zipPath: "/downloads/optivra-image-studio-for-woocommerce-1.0.0.zip",
   fileSize: "60.9 KB",
-  sha256: "0BA7953FF2F17DBF411A51E5BBE6FA670B28D816332D49AA00E02783E89D4D97",
+  sha256: "1943114899991E36AC6D58B47B73D3341A8F9226363932F9AE03610F91C74AB5",
   wordpressOrgStatus: "WordPress.org review pending",
-  updatedAt: "2026-04-27"
+  updatedAt: "2026-04-28"
 };
 const gatewayRulesRelease = {
   name: "Payment Gateway Rules for WooCommerce",
