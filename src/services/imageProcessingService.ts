@@ -276,7 +276,7 @@ const buildPreservedProductCutout = async (
 
   const width = cutoutMetadata.width;
   const height = cutoutMetadata.height;
-  const alpha = await sharp(aiCutoutBuffer)
+  const aiAlpha = await sharp(aiCutoutBuffer)
     .ensureAlpha()
     .extractChannel("alpha")
     .raw()
@@ -291,11 +291,14 @@ const buildPreservedProductCutout = async (
         alpha: 0
       }
     })
-    .removeAlpha();
-  const [originalRgb, originalRaw] = await Promise.all([
-    originalImage.clone().png().toBuffer(),
+    .ensureAlpha();
+  const [originalRgb, originalRaw, originalRgba] = await Promise.all([
+    originalImage.clone().removeAlpha().png().toBuffer(),
+    originalImage.clone().removeAlpha().raw().toBuffer(),
     originalImage.clone().raw().toBuffer()
   ]);
+  const localAlpha = buildLocalForegroundAlpha(originalRgba, width, height);
+  const alpha = chooseBaseProductAlpha(aiAlpha, localAlpha);
   const expandedAlpha = await smoothAlphaMask(expandMaskWithOriginalForeground(originalRaw, alpha, width, height), width, height);
   const safeAlpha = getSafeAlphaMask(alpha, expandedAlpha);
 
@@ -309,6 +312,227 @@ const buildPreservedProductCutout = async (
     })
     .png()
     .toBuffer();
+};
+
+const chooseBaseProductAlpha = (aiAlpha: Buffer, localAlpha: Buffer): Buffer => {
+  const aiCoverage = getAlphaCoverage(aiAlpha);
+  const localCoverage = getAlphaCoverage(localAlpha);
+
+  if (localCoverage === 0 && aiCoverage === 0) {
+    throw new Error("Product cutout could not be detected. Try reprocessing this image or use a cleaner source photo.");
+  }
+
+  if (localCoverage > 0 && (aiCoverage < 2500 || aiCoverage < localCoverage * 0.35)) {
+    return localAlpha;
+  }
+
+  if (localCoverage > 0 && aiCoverage > localCoverage * 1.8) {
+    return localAlpha;
+  }
+
+  return aiCoverage > 0 ? aiAlpha : localAlpha;
+};
+
+const buildLocalForegroundAlpha = (rgba: Buffer, width: number, height: number): Buffer => {
+  const backgroundPalette = buildSourceBackgroundPalette(rgba, width, height);
+  const alpha = Buffer.alloc(width * height);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    const index = pixel * 4;
+    const sourceAlpha = rgba[index + 3] ?? 0;
+
+    if (sourceAlpha < 16) {
+      continue;
+    }
+
+    const r = rgba[index] ?? 0;
+    const g = rgba[index + 1] ?? 0;
+    const b = rgba[index + 2] ?? 0;
+    const distance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const isDarkProduct = luminance < 62 && distance > 22;
+    const isColouredProduct = saturation > 0.18 && distance > 34;
+    const isDistinctProduct = distance > 58 && luminance < 180;
+
+    if (isDarkProduct || isColouredProduct || isDistinctProduct) {
+      alpha[pixel] = 255;
+    }
+  }
+
+  return dilateAlphaMask(keepMainAlphaComponents(alpha, width, height), width, height, 1);
+};
+
+const buildSourceBackgroundPalette = (
+  rgba: Buffer,
+  width: number,
+  height: number
+): Array<{ r: number; g: number; b: number; count: number }> => {
+  const bins = new Map<string, { r: number; g: number; b: number; count: number }>();
+  const bounds = getSourceAlphaBounds(rgba, width, height);
+  const bandHeight = Math.max(10, Math.round((bounds.maxY - bounds.minY + 1) * 0.16));
+  const sideWidth = Math.max(10, Math.round((bounds.maxX - bounds.minX + 1) * 0.06));
+  const step = Math.max(1, Math.round(Math.min(width, height) / 160));
+
+  for (let y = bounds.minY; y <= bounds.maxY; y += step) {
+    for (let x = bounds.minX; x <= bounds.maxX; x += step) {
+      const isTopBand = y <= bounds.minY + bandHeight;
+      const isBottomBand = y >= bounds.maxY - bandHeight;
+      const isSideBand = x <= bounds.minX + sideWidth || x >= bounds.maxX - sideWidth;
+      const isBackgroundSampleArea = isTopBand || isBottomBand || (isSideBand && y < bounds.minY + bandHeight * 2);
+
+      if (!isBackgroundSampleArea) {
+        continue;
+      }
+
+      const index = (y * width + x) * 4;
+
+      if ((rgba[index + 3] ?? 0) < 16) {
+        continue;
+      }
+
+      const r = rgba[index] ?? 0;
+      const g = rgba[index + 1] ?? 0;
+      const b = rgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+      if (luminance < 70) {
+        continue;
+      }
+
+      const key = `${Math.round(r / 24)}:${Math.round(g / 24)}:${Math.round(b / 24)}`;
+      const bin = bins.get(key) ?? { r: 0, g: 0, b: 0, count: 0 };
+      bin.r += r;
+      bin.g += g;
+      bin.b += b;
+      bin.count += 1;
+      bins.set(key, bin);
+    }
+  }
+
+  return Array.from(bins.values())
+    .filter((bin) => bin.count >= 4)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12)
+    .map((bin) => ({
+      r: Math.round(bin.r / bin.count),
+      g: Math.round(bin.g / bin.count),
+      b: Math.round(bin.b / bin.count),
+      count: bin.count
+    }));
+};
+
+const getSourceAlphaBounds = (
+  rgba: Buffer,
+  width: number,
+  height: number
+): { minX: number; maxX: number; minY: number; maxY: number } => {
+  let minX = width;
+  let maxX = 0;
+  let minY = height;
+  let maxY = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = rgba[(y * width + x) * 4 + 3] ?? 0;
+
+      if (alpha < 16) {
+        continue;
+      }
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (minX > maxX || minY > maxY) {
+    return { minX: 0, maxX: width - 1, minY: 0, maxY: height - 1 };
+  }
+
+  return { minX, maxX, minY, maxY };
+};
+
+const keepMainAlphaComponents = (alpha: Buffer, width: number, height: number): Buffer => {
+  const visited = new Uint8Array(alpha.length);
+  const components: Array<{ pixels: number[]; count: number }> = [];
+
+  for (let start = 0; start < alpha.length; start += 1) {
+    if (visited[start] || (alpha[start] ?? 0) < 24) {
+      continue;
+    }
+
+    const stack = [start];
+    const pixels: number[] = [];
+    visited[start] = 1;
+
+    while (stack.length > 0) {
+      const pixel = stack.pop() as number;
+      pixels.push(pixel);
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const neighbours = [
+        x > 0 ? pixel - 1 : -1,
+        x < width - 1 ? pixel + 1 : -1,
+        y > 0 ? pixel - width : -1,
+        y < height - 1 ? pixel + width : -1
+      ];
+
+      for (const next of neighbours) {
+        if (next < 0 || visited[next] || (alpha[next] ?? 0) < 24) {
+          continue;
+        }
+
+        visited[next] = 1;
+        stack.push(next);
+      }
+    }
+
+    components.push({ pixels, count: pixels.length });
+  }
+
+  if (components.length === 0) {
+    return alpha;
+  }
+
+  const largest = components.reduce((best, component) => component.count > best.count ? component : best, components[0] as { pixels: number[]; count: number });
+  const minKeep = Math.max(400, largest.count * 0.025);
+  const kept = Buffer.alloc(alpha.length);
+
+  for (const component of components) {
+    if (component === largest || component.count >= minKeep) {
+      for (const pixel of component.pixels) {
+        kept[pixel] = 255;
+      }
+    }
+  }
+
+  return kept;
+};
+
+const dilateAlphaMask = (alpha: Buffer, width: number, height: number, radius: number): Buffer => {
+  const dilated = Buffer.from(alpha);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) >= 24) {
+        continue;
+      }
+
+      if (hasMaskedNeighbor(alpha, width, height, x, y, radius)) {
+        dilated[pixel] = 255;
+      }
+    }
+  }
+
+  return dilated;
 };
 
 const expandMaskWithOriginalForeground = (
