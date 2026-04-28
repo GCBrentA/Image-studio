@@ -765,7 +765,8 @@ function loadDownloads() {
   setText("download-plugin-status", pluginRelease.wordpressOrgStatus);
   setText("download-plugin-sha", pluginRelease.sha256);
   document.querySelectorAll("[data-download-zip]").forEach((node) => {
-    node.setAttribute("href", pluginRelease.zipPath);
+    const plugin = pluginFromTarget(node);
+    node.setAttribute("href", plugin === "payment_gateway_rules" ? gatewayRulesRelease.zipPath : pluginRelease.zipPath);
   });
 }
 
