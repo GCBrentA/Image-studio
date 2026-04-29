@@ -303,7 +303,7 @@ class Catalogue_Image_Studio_Plugin {
 			'process_gallery_images'  => true,
 			'process_category_images' => false,
 			'duplicate_detection'     => true,
-			'preserve_product_exactly' => true,
+			'preserve_product_exactly' => false,
 			'processing_mode'         => 'seo_product_feed_preserve',
 			'product_fit'             => 'auto',
 			'background_source'       => 'preset',
@@ -436,7 +436,7 @@ class Catalogue_Image_Studio_Plugin {
 		$settings['show_job_completion_alerts'] = $settings['show_completion_alerts'];
 		$settings['show_failed_alerts']    = array_key_exists('show_failed_alerts', $settings) ? (bool) $settings['show_failed_alerts'] : (bool) ($settings['show_failed_job_alerts'] ?? true);
 		$settings['show_failed_job_alerts'] = $settings['show_failed_alerts'];
-		$settings['preserve_product_exactly'] = array_key_exists('preserve_product_exactly', $settings) ? (bool) $settings['preserve_product_exactly'] : true;
+		$settings['preserve_product_exactly'] = array_key_exists('preserve_product_exactly', $settings) ? (bool) $settings['preserve_product_exactly'] : false;
 		$settings['processing_mode']      = isset($settings['processing_mode']) ? (string) $settings['processing_mode'] : 'seo_product_feed_preserve';
 		$settings['product_fit']          = isset($settings['product_fit']) ? (string) $settings['product_fit'] : (string) ($settings['default_scale_mode'] ?? 'auto');
 		$settings['auto_fail_product_altered'] = array_key_exists('auto_fail_product_altered', $settings) ? (bool) $settings['auto_fail_product_altered'] : true;

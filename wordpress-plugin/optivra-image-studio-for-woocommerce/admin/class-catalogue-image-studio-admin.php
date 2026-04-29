@@ -3984,8 +3984,8 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_toggle_setting('process_featured_images', __('Include featured/product images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue main product images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_featured_images'])); ?>
 					<?php $this->render_toggle_setting('process_gallery_images', __('Include gallery images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue WooCommerce gallery images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_gallery_images'])); ?>
 					<?php $this->render_toggle_setting('process_category_images', __('Include category thumbnail images', 'optivra-image-studio-for-woocommerce'), __('Allow scans to include product category thumbnails when selected.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_category_images'])); ?>
-					<?php $this->render_select_setting('processing_mode', __('Default processing mode', 'optivra-image-studio-for-woocommerce'), __('SEO/Product Feed Safe Mode with product preservation is recommended for main WooCommerce images.', 'optivra-image-studio-for-woocommerce'), $this->get_processing_modes(), (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve')); ?>
-					<?php $this->render_toggle_setting('preserve_product_exactly', __('Preserve product exactly', 'optivra-image-studio-for-woocommerce'), __('Prevents AI from regenerating or changing the product. Uses expert background removal and preserves the original product pixels while replacing only the background.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_product_exactly'])); ?>
+					<?php $this->render_select_setting('processing_mode', __('Default processing mode', 'optivra-image-studio-for-woocommerce'), __('Preserve Product + Clean/Replace Background is recommended for main WooCommerce images. It cleans the existing background when using a neutral preset, or replaces it when you choose a custom/background preset.', 'optivra-image-studio-for-woocommerce'), $this->get_processing_modes(), (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve')); ?>
+					<?php $this->render_toggle_setting('preserve_product_exactly', __('Strict product-pixel preservation', 'optivra-image-studio-for-woocommerce'), __('Optional stricter preserve-mode guard. When enabled, Optivra is more conservative about product pixels and may send more images to manual review instead of producing a result.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_product_exactly'])); ?>
 					<?php $this->render_toggle_setting('auto_fail_product_altered', __('Auto-fail if product appears altered', 'optivra-image-studio-for-woocommerce'), __('Failed preservation checks stop the image before it can be applied.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_fail_product_altered'])); ?>
 					<?php $this->render_toggle_setting('auto_fix_crop_spacing', __('Auto-fix crop and spacing', 'optivra-image-studio-for-woocommerce'), __('Optivra deterministically improves excessive whitespace after background replacement.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_fix_crop_spacing'])); ?>
 					<?php $this->render_toggle_setting('preserve_dark_detail', __('Preserve dark product detail', 'optivra-image-studio-for-woocommerce'), __('Avoid crushed blacks and heavy contrast changes on dark product parts.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_dark_detail'])); ?>
@@ -4758,7 +4758,7 @@ class Catalogue_Image_Studio_Admin {
 
 	private function get_processing_modes(): array {
 		return [
-			'seo_product_feed_preserve' => __('Preserve product + clean background', 'optivra-image-studio-for-woocommerce'),
+			'seo_product_feed_preserve' => __('Preserve Product + Clean/Replace Background', 'optivra-image-studio-for-woocommerce'),
 			'standard_ecommerce_cleanup' => __('Standard ecommerce cleanup', 'optivra-image-studio-for-woocommerce'),
 			'premium_studio_background' => __('Premium studio background', 'optivra-image-studio-for-woocommerce'),
 		];
@@ -5630,6 +5630,11 @@ class Catalogue_Image_Studio_Admin {
 
 	private function format_processing_mode(string $mode): string {
 		$mode = sanitize_key($mode);
+
+		$modes = $this->get_processing_modes();
+		if (isset($modes[$mode])) {
+			return (string) $modes[$mode];
+		}
 
 		return '' === $mode ? __('Not stored', 'optivra-image-studio-for-woocommerce') : ucwords(str_replace('_', ' ', $mode));
 	}

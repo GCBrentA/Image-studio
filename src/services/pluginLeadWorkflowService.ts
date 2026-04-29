@@ -6,6 +6,7 @@ import { env } from "../config/env";
 import { sendGa4ServerEvent } from "../lib/analytics/server";
 import { prisma } from "../utils/prisma";
 import { HttpError } from "../utils/httpError";
+import { sendPluginDownloadEmail, type EmailSendResult } from "./emailService";
 import { trackSiteAnalyticsEvent } from "./siteAnalyticsService";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -151,6 +152,11 @@ const publicRelease = (release: PluginReleaseRow) => ({
   requires_php_version: release.requires_php_version
 });
 
+const absoluteAppUrl = (relativePath: string): string => {
+  const base = (env.publicBaseUrl || env.appUrl || "https://www.optivra.app").replace(/\/+$/, "");
+  return `${base}/${relativePath.replace(/^\/+/, "")}`;
+};
+
 const requireRelease = async (pluginSlug: string, version?: string | null): Promise<PluginReleaseRow> => {
   const rows = await prisma.$queryRawUnsafe<PluginReleaseRow[]>(
     `
@@ -192,22 +198,44 @@ const recordEmailEvent = async (
   lead: Pick<LeadRow, "id" | "email_normalized" | "plugin_slug">,
   emailType: "download_link" | "setup_help" | "feedback_request" | "rating_request" | "update_notice" | "marketing",
   status: "queued" | "sent" | "failed" | "skipped",
-  skipReason?: string
+  summary?: string,
+  provider?: "smtp" | "resend" | "postmark" | "brevo" | null,
+  providerMessageId?: string
 ) => {
   await prisma.$executeRawUnsafe(
     `
       insert into public.plugin_email_events
-        (lead_id, plugin_slug, email_normalized, email_type, provider, status, skip_reason, sent_at)
-      values ($1::uuid, $2, $3, $4, $5, $6, $7, case when $6 = 'sent' then now() else null end)
+        (lead_id, plugin_slug, email_normalized, email_type, provider, provider_message_id, status, skip_reason, sent_at)
+      values ($1::uuid, $2, $3, $4, $5, $6, $7, $8, case when $7 = 'sent' then now() else null end)
     `,
     lead.id,
     lead.plugin_slug,
     lead.email_normalized,
     emailType,
-    process.env.RESEND_API_KEY ? "resend" : process.env.POSTMARK_SERVER_TOKEN ? "postmark" : process.env.BREVO_API_KEY ? "brevo" : null,
+    provider ?? null,
+    providerMessageId ?? null,
     status,
-    skipReason ?? null
+    summary ?? null
   );
+};
+
+const recordDownloadEmailResult = async (lead: LeadRow, result: EmailSendResult): Promise<void> => {
+  try {
+    await recordEmailEvent(
+      lead,
+      "download_link",
+      result.status,
+      result.summary,
+      result.provider,
+      result.providerMessageId
+    );
+  } catch (error) {
+    console.warn("Could not record plugin download email event.", {
+      status: result.status,
+      provider: result.provider,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
 };
 
 export const listPublicPluginReleases = async (pluginSlugInput?: unknown) => {
@@ -368,12 +396,17 @@ export const createPluginDownloadLeadRequest = async (
     throw new HttpError(500, "Could not create plugin download event.");
   }
 
-  await recordEmailEvent(
-    lead,
-    "download_link",
-    process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN || process.env.BREVO_API_KEY ? "queued" : "skipped",
-    process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN || process.env.BREVO_API_KEY ? undefined : "email_provider_not_configured"
-  );
+  const downloadUrl = `/api/plugins/download/${eventId}`;
+  const setupGuideUrl = pluginSlug === "optivra-image-studio"
+    ? "/docs/optivra-image-studio#installing"
+    : "/docs/payment-gateway-rules-for-woocommerce#installation";
+  const emailResult = await sendPluginDownloadEmail({
+    toEmail: email,
+    pluginName: release.plugin_name,
+    version: release.version,
+    downloadUrl: absoluteAppUrl(downloadUrl)
+  });
+  await recordDownloadEmailResult(lead, emailResult);
 
   const params = {
     plugin_slug: pluginSlug,
@@ -394,11 +427,10 @@ export const createPluginDownloadLeadRequest = async (
     plugin_slug: pluginSlug,
     plugin_name: release.plugin_name,
     version: release.version,
-    download_url: `/api/plugins/download/${eventId}`,
-    setup_guide_url: pluginSlug === "optivra-image-studio"
-      ? "/docs/optivra-image-studio#installing"
-      : "/docs/payment-gateway-rules-for-woocommerce#installation",
-    email_queued: Boolean(process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN || process.env.BREVO_API_KEY)
+    download_url: downloadUrl,
+    setup_guide_url: setupGuideUrl,
+    email_status: emailResult.status,
+    email_queued: emailResult.status === "sent"
   };
 };
 

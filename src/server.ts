@@ -3,6 +3,7 @@ import { PRODUCT_NAME } from "./config/product";
 import { app } from "./app";
 import { disconnectPrisma } from "./utils/prisma";
 import { validateBillingAtStartup } from "./services/stripeService";
+import { getEmailConfigurationStatus } from "./services/emailService";
 
 const server = app.listen(env.port, () => {
   console.info(`${PRODUCT_NAME} listening on port ${env.port}`);
@@ -12,6 +13,7 @@ const server = app.listen(env.port, () => {
     stripeCancelUrlConfigured: Boolean(env.stripeCancelUrl),
     webhookRouteMounted: "/api/stripe/webhook"
   });
+  console.info("Email configuration", getEmailConfigurationStatus());
   validateBillingAtStartup();
 });
 
