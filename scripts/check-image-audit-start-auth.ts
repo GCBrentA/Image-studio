@@ -11,7 +11,8 @@ const runPhpWordPressClientCheck = async (baseUrl: string, token: string): Promi
       env: {
         ...process.env,
         OPTIVRA_TEST_API_BASE_URL: baseUrl,
-        OPTIVRA_TEST_API_TOKEN: token
+        OPTIVRA_TEST_API_TOKEN: token,
+        OPTIVRA_TEST_INSTALL_ID: `audit-client-${Date.now()}`
       }
     });
     let stdout = "";

@@ -1115,7 +1115,7 @@ const buildRecommendations = (items: AuditItemRow[], issues: IssueDraft[]): Reco
 };
 
 const scoreAndPersistItems = async (scan: AuditScanRow, items: AuditItemRow[], issues: IssueDraft[]): Promise<void> => {
-  for (const item of items) {
+  const rows = items.map((item) => {
     const itemIssues = issues.filter((issue) => issue.itemId === item.id);
     const itemSeoScore = clampScore(100 - (
       itemIssues.filter((issue) => ["missing_alt_text", "weak_alt_text", "missing_image_title", "generic_filename"].includes(issue.issueType)).length * 22
@@ -1128,67 +1128,102 @@ const scoreAndPersistItems = async (scan: AuditScanRow, items: AuditItemRow[], i
     ));
     const ratio = aspectRatio(item);
 
-    await prisma.$executeRaw`
-      UPDATE "image_audit_items"
-      SET
-        "aspect_ratio" = ${ratio},
-        "quality_score" = ${itemQualityScore},
-        "seo_score" = ${itemSeoScore},
-        "consistency_score" = ${ratio ? 100 : null},
-        "performance_score" = ${itemPerformanceScore},
-        "google_readiness_score" = ${clampScore((itemSeoScore * 0.45) + (itemQualityScore * 0.35) + (itemPerformanceScore * 0.2))},
-        "issue_count" = ${itemIssues.length},
-        "highest_severity" = ${getHighestSeverity(itemIssues)},
-        "recommended_action" = ${itemIssues[0]?.recommendedAction ?? null},
-        "updated_at" = now()
-      WHERE "id" = ${item.id}::uuid
-        AND "scan_id" = ${scan.id}::uuid
-        AND "store_id" = ${scan.store_id}
-    `;
+    return Prisma.sql`(
+      ${item.id}::uuid,
+      ${ratio},
+      ${itemQualityScore},
+      ${itemSeoScore},
+      ${ratio ? 100 : null},
+      ${itemPerformanceScore},
+      ${clampScore((itemSeoScore * 0.45) + (itemQualityScore * 0.35) + (itemPerformanceScore * 0.2))},
+      ${itemIssues.length},
+      ${getHighestSeverity(itemIssues)},
+      ${itemIssues[0]?.recommendedAction ?? null}
+    )`;
+  });
+
+  if (rows.length === 0) {
+    return;
   }
+
+  await prisma.$executeRaw`
+    UPDATE "image_audit_items" AS item
+    SET
+      "aspect_ratio" = data."aspect_ratio",
+      "quality_score" = data."quality_score",
+      "seo_score" = data."seo_score",
+      "consistency_score" = data."consistency_score",
+      "performance_score" = data."performance_score",
+      "google_readiness_score" = data."google_readiness_score",
+      "issue_count" = data."issue_count",
+      "highest_severity" = data."highest_severity",
+      "recommended_action" = data."recommended_action",
+      "updated_at" = now()
+    FROM (
+      VALUES ${Prisma.join(rows)}
+    ) AS data(
+      "id",
+      "aspect_ratio",
+      "quality_score",
+      "seo_score",
+      "consistency_score",
+      "performance_score",
+      "google_readiness_score",
+      "issue_count",
+      "highest_severity",
+      "recommended_action"
+    )
+    WHERE item."id" = data."id"
+      AND item."scan_id" = ${scan.id}::uuid
+      AND item."store_id" = ${scan.store_id}
+  `;
 };
 
 const insertIssues = async (scan: AuditScanRow, issues: IssueDraft[]): Promise<void> => {
-  for (const issue of issues) {
-    await prisma.$executeRaw`
-      INSERT INTO "image_audit_issues" (
-        "scan_id",
-        "store_id",
-        "audit_item_id",
-        "product_id",
-        "image_id",
-        "issue_type",
-        "severity",
-        "title",
-        "description",
-        "recommended_action",
-        "action_type",
-        "confidence_score",
-        "metadata",
-        "status",
-        "created_at",
-        "updated_at"
-      )
-      VALUES (
-        ${scan.id}::uuid,
-        ${scan.store_id},
-        ${issue.itemId ?? null}::uuid,
-        ${issue.productId ?? null},
-        ${issue.imageId ?? null},
-        ${issue.issueType},
-        ${issue.severity},
-        ${issue.title},
-        ${issue.description},
-        ${issue.recommendedAction},
-        ${issue.actionType ?? null},
-        ${issue.confidenceScore ?? null},
-        ${jsonValue(issue.metadata)}::jsonb,
-        'open',
-        now(),
-        now()
-      )
-    `;
+  if (issues.length === 0) {
+    return;
   }
+
+  const rows = issues.map((issue) => Prisma.sql`(
+    ${scan.id}::uuid,
+    ${scan.store_id},
+    ${issue.itemId ?? null}::uuid,
+    ${issue.productId ?? null},
+    ${issue.imageId ?? null},
+    ${issue.issueType},
+    ${issue.severity},
+    ${issue.title},
+    ${issue.description},
+    ${issue.recommendedAction},
+    ${issue.actionType ?? null},
+    ${issue.confidenceScore ?? null},
+    ${jsonValue(issue.metadata)}::jsonb,
+    'open',
+    now(),
+    now()
+  )`);
+
+  await prisma.$executeRaw`
+    INSERT INTO "image_audit_issues" (
+      "scan_id",
+      "store_id",
+      "audit_item_id",
+      "product_id",
+      "image_id",
+      "issue_type",
+      "severity",
+      "title",
+      "description",
+      "recommended_action",
+      "action_type",
+      "confidence_score",
+      "metadata",
+      "status",
+      "created_at",
+      "updated_at"
+    )
+    VALUES ${Prisma.join(rows)}
+  `;
 };
 
 const insertInsights = async (scan: AuditScanRow, insights: InsightDraft[]): Promise<void> => {
