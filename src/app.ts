@@ -136,10 +136,9 @@ const registerImageStudioAuditRoutes = (prefix: string) => {
 };
 registerImageStudioAuditRoutes("/api/image-studio");
 registerImageStudioAuditRoutes("/api/api/image-studio");
+app.use(webRoutes);
 app.use(routes);
 app.use("/api", routes);
-
-app.use(webRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

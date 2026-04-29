@@ -711,6 +711,7 @@ document.addEventListener("click", (event) => {
   const logoutButton = event.target.closest("[data-auth-logout]");
   if (logoutButton) {
     event.preventDefault();
+    event.stopPropagation();
     handleHeaderAuthLogout();
     return;
   }
@@ -718,6 +719,7 @@ document.addEventListener("click", (event) => {
   const authTrigger = event.target.closest("[data-auth-account-trigger]");
   if (authTrigger) {
     event.preventDefault();
+    event.stopPropagation();
     toggleHeaderAccountMenu();
     return;
   }

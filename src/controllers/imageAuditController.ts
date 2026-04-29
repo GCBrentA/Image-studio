@@ -71,9 +71,12 @@ export const startImageAudit = async (
 
   try {
     const body = request.body as StartImageAuditRequest;
-    const storeId = typeof body.store_id === "string" && body.store_id.trim()
+    const requestedStoreId = typeof body.store_id === "string" && body.store_id.trim()
       ? body.store_id.trim()
-      : auth.siteId ?? "";
+      : "";
+    const storeId = auth.authType === "site_token"
+      ? auth.siteId ?? ""
+      : requestedStoreId || (auth.siteId ?? "");
 
     if (!storeId) {
       response.status(400).json({
@@ -89,7 +92,11 @@ export const startImageAudit = async (
       scanOptions: body.scan_options
     });
 
-    logAuditRoute(request, 201, { storeId, scanId: result.scan_id });
+    logAuditRoute(request, 201, {
+      storeId,
+      scanId: result.scan_id,
+      requestedStoreId: requestedStoreId && requestedStoreId !== storeId ? requestedStoreId : undefined
+    });
     response.status(201).json(result);
   } catch (error) {
     sendError(response, error);

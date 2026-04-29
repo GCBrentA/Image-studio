@@ -15,6 +15,8 @@ export const getUsage = async (
 
   response.status(200).json({
     ...(await getUsageForUser(request.auth.userId)),
+    store_id: request.auth.siteId,
+    site_id: request.auth.siteId,
     domain: request.auth.domain,
     canonical_domain: request.auth.canonicalDomain,
     claim_status: request.auth.claimStatus,
