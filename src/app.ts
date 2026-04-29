@@ -10,6 +10,7 @@ import { notFound } from "./middleware/notFound";
 import { staticDownloadAnalytics } from "./middleware/staticDownloadAnalytics";
 import { routes } from "./routes";
 import { billingWebhookRoutes } from "./routes/billingWebhookRoutes";
+import { imageAuditRoutes } from "./routes/imageAuditRoutes";
 import { webRoutes } from "./routes/webRoutes";
 
 export const app = express();
@@ -83,6 +84,9 @@ app.get("/account/dashboard", (request, response, next) => {
   next();
 });
 
+// Keep the Image Studio audit API explicitly mounted at the production plugin path.
+// This guards the WooCommerce scan flow against accidental nested /api router changes.
+app.use("/api/image-studio", imageAuditRoutes);
 app.use(routes);
 app.use("/api", routes);
 

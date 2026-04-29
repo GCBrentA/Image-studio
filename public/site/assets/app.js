@@ -5,8 +5,9 @@ const primaryNav = document.getElementById("primary-navigation");
 const tokenKey = "optivra_token";
 const PRODUCT_NAME = "Optivra Image Studio";
 const PRODUCT_NAME_WOOCOMMERCE = "Optivra Image Studio for WooCommerce";
-const PRODUCT_TAGLINE = "AI-powered product image optimisation for WooCommerce.";
+const PRODUCT_TAGLINE = "Product image intelligence for WooCommerce.";
 const pluginRelease = {
+  slug: "optivra-image-studio",
   name: "Optivra Image Studio for WooCommerce",
   version: "1.0.0",
   zipPath: "/downloads/optivra-image-studio-for-woocommerce-1.0.0.zip",
@@ -16,7 +17,8 @@ const pluginRelease = {
   updatedAt: "2026-04-29"
 };
 const gatewayRulesRelease = {
-  name: "Payment Gateway Rules for WooCommerce",
+  slug: "optivra-gateway-rules",
+  name: "Optivra Gateway Rules for WooCommerce",
   version: "1.0.0",
   zipPath: "/downloads/payment-gateway-rules-for-woocommerce-1.0.0.zip",
   fileSize: "177.5 KB",
@@ -278,9 +280,16 @@ function routeTo(path) {
   if (normalized === "/downloads") {
     loadDownloads();
   }
+  if (normalized === "/feedback") {
+    loadFeedbackPage();
+  }
+  if (normalized === "/unsubscribe") {
+    loadUnsubscribePage();
+  }
   if (normalized === "/blog" || normalized.startsWith("/blog/")) {
     renderBlog(normalized);
   }
+  renderExampleReportMocks();
   if (normalized === "/admin/plugin-analytics") {
     loadAdminAnalytics();
   }
@@ -312,14 +321,17 @@ function pageTitle(path) {
     if (article) return `${article.title} | Optivra`;
   }
   const names = {
-    "/": `${PRODUCT_NAME} | Optivra`,
+    "/": "Optivra | WooCommerce Product Image Intelligence",
     "/plugins": "Plugins | Optivra",
     "/woocommerce-plugins": "WooCommerce Plugins by Optivra | Checkout Rules and Image Optimisation",
-    "/optivra-image-studio": "Optivra Image Studio for WooCommerce | AI Product Image Optimisation",
-    "/payment-gateway-rules-for-woocommerce": "Payment Gateway Rules for WooCommerce | Control Checkout Payment Methods",
-    "/catalogue-image-studio": "Optivra Image Studio for WooCommerce | AI Product Image Optimisation",
-    "/pricing": "Pricing | Optivra",
+    "/optivra-image-studio": "Optivra Image Studio | WooCommerce Product Image SEO & AI Image Optimisation",
+    "/free-woocommerce-image-audit": "Free WooCommerce Product Image Audit | Optivra",
+    "/payment-gateway-rules-for-woocommerce": "Free WooCommerce Payment Gateway Rules Plugin | Optivra",
+    "/catalogue-image-studio": "Optivra Image Studio | WooCommerce Product Image SEO & AI Image Optimisation",
+    "/pricing": "Optivra Pricing | Free Image Audit & AI Image Processing Credits",
     "/downloads": "Download WooCommerce Plugins | Optivra",
+    "/feedback": "Optivra Plugin Feedback | Optivra",
+    "/unsubscribe": "Unsubscribe | Optivra",
     "/blog": "WooCommerce Image SEO Blog | Optivra",
     "/blog/how-to-optimise-woocommerce-product-images-for-seo": "How to Optimise WooCommerce Product Images for SEO | Optivra",
     "/blog/woocommerce-product-image-seo-checklist": "WooCommerce Product Image SEO Checklist | Optivra",
@@ -363,12 +375,15 @@ function pageDescription(path) {
     if (article) return article.meta;
   }
   const descriptions = {
-    "/": "AI-powered ecommerce tools for WooCommerce stores, starting with Optivra Image Studio for product image optimisation.",
+    "/": "Run a free WooCommerce Product Image Health Report, find image SEO, speed, consistency and product presentation issues, then fix priority product images safely with AI.",
     "/woocommerce-plugins": "Download WooCommerce plugins from Optivra, including Payment Gateway Rules for WooCommerce and Optivra Image Studio for product image optimisation and SEO metadata.",
-    "/optivra-image-studio": "Scan, enhance, review and publish WooCommerce product images with AI background replacement, smart framing and SEO-ready filenames, alt text, titles, captions and descriptions.",
-    "/payment-gateway-rules-for-woocommerce": "Create WooCommerce payment gateway rules to show or hide checkout payment methods based on country, shipping location, cart conditions, and store rules.",
-    "/pricing": "Compare Optivra Image Studio plans, monthly credits, and credit packs for WooCommerce product image optimisation.",
+    "/optivra-image-studio": "Scan, score and improve WooCommerce product images with Image Health Reports, SEO insights, safe AI background cleanup, review queues and rollback.",
+    "/free-woocommerce-image-audit": "Find missing alt text, oversized images, generic filenames, inconsistent backgrounds and product image issues with a free Product Image Health Report.",
+    "/payment-gateway-rules-for-woocommerce": "Control WooCommerce payment gateways by cart value, currency, country, shipping method, user role and more.",
+    "/pricing": "Start with a free Product Image Health Report. Use credits when Optivra processes, optimises or improves WooCommerce product images.",
     "/downloads": "Download Optivra WooCommerce plugins, including Optivra Image Studio and Payment Gateway Rules for WooCommerce.",
+    "/feedback": "Share private feedback about Optivra plugin downloads, setup, and WooCommerce plugin use.",
+    "/unsubscribe": "Update Optivra plugin email preferences without logging in.",
     "/docs/ai-image-studio": "Learn how to use Optivra Image Studio to scan, process, review, approve, and optimise WooCommerce product images.",
     "/docs/payment-gateway-rules-for-woocommerce": "Learn how to install Payment Gateway Rules for WooCommerce, create checkout gateway rules, test payment method visibility, and troubleshoot common issues.",
     "/blog": "WooCommerce image SEO guides covering alt text, product image metadata, background replacement, and AI product photography.",
@@ -387,6 +402,36 @@ function pageDescription(path) {
     "/support": "Contact Optivra support for Optivra Image Studio setup, billing, plugin, and product image processing help."
   };
   return descriptions[path] || descriptions["/"];
+}
+
+function renderExampleReportMocks() {
+  document.querySelectorAll("[data-example-report-mock]").forEach((node) => {
+    node.innerHTML = `
+      <article class="example-report-card" aria-label="Example Product Image Health Report preview">
+        <div class="example-report-header">
+          <div>
+            <p class="eyebrow">Example report preview</p>
+            <h2>Product Image Health Score</h2>
+            <p>Sample values only. Run your own free audit to see your catalogue.</p>
+          </div>
+          <div class="score-orb"><strong>64</strong><span>/100</span></div>
+        </div>
+        <div class="report-score-grid">
+          <div><span>Image SEO</span><strong>42/100</strong></div>
+          <div><span>Catalogue Consistency</span><strong>54/100</strong></div>
+          <div><span>Performance</span><strong>48/100</strong></div>
+        </div>
+        <div class="report-finding-list">
+          <span>184 missing alt text fields</span>
+          <span>211 oversized product images</span>
+          <span>91 inconsistent backgrounds</span>
+          <span>37 generic filenames</span>
+          <span>18-34 hours manual work found</span>
+        </div>
+        <a class="button primary" href="/free-woocommerce-image-audit" data-link data-analytics="click_run_free_audit">Run your own free audit</a>
+      </article>
+    `;
+  });
 }
 
 function pageRobots(path) {
@@ -429,10 +474,25 @@ function renderBlog(path) {
   if (path === "/blog") {
     const page = document.querySelector('[data-page="/blog"] .resources-page');
     if (!page) return;
+    const plannedTopics = [
+      "Free WooCommerce Product Image Audit: What to Check Before Optimising",
+      "WooCommerce Image SEO: Alt Text, Filenames and Product Feed Readiness",
+      "AI Background Removers vs WooCommerce Image Workflow Tools",
+      "How to Keep Product Images Accurate When Using AI",
+      "Why Inconsistent Product Images Hurt Ecommerce Trust",
+      "WooCommerce Product Image Health Score: What It Means",
+      "How to Prepare WooCommerce Product Images for Product Feeds",
+      "Why Review-Before-Replace Matters for AI Product Images"
+    ];
     page.innerHTML = `
       <p class="eyebrow">Resources</p>
       <h1>WooCommerce Product Image Optimisation Blog</h1>
-      <p class="lead">Practical guides for improving WooCommerce product photography, image SEO, backgrounds, metadata, and catalogue workflows.</p>
+      <p class="lead">Practical guides for WooCommerce Product Image Health Reports, image SEO, product-feed readiness, safe AI processing, backgrounds, metadata, and catalogue workflows.</p>
+      <div class="docs-actions">
+        <a class="button primary" href="/free-woocommerce-image-audit" data-link data-analytics="click_run_free_audit">Run Free Image Audit</a>
+        <a class="button ghost" href="/optivra-image-studio" data-link>Explore Image Studio</a>
+        <a class="button ghost" href="/docs" data-link>Read Docs</a>
+      </div>
       <div class="resource-grid blog-card-grid">
         ${blogArticles.map((article) => `
           <article class="resource-card blog-card">
@@ -444,6 +504,12 @@ function renderBlog(path) {
           </article>
         `).join("")}
       </div>
+      <section class="landing-section">
+        <h2>Planned Image Studio guides</h2>
+        <div class="mini-card-grid">
+          ${plannedTopics.map((topic) => `<div><strong>${escapeHtml(topic)}</strong><p>Coming soon, with links to the free audit, Image Studio workflow, pricing and docs.</p></div>`).join("")}
+        </div>
+      </section>
     `;
     return;
   }
@@ -474,11 +540,11 @@ function renderBlog(path) {
     </section>
     <section class="doc-callout tip">
       <strong>Try Optivra Image Studio for WooCommerce</strong>
-      <p>Scan product images, queue improvements, review before and after results, edit SEO metadata, and approve replacements from a practical WooCommerce workflow.</p>
+      <p>Run a free Product Image Health Report, queue priority fixes, review before and after results, edit SEO metadata, and approve replacements from a practical WooCommerce workflow.</p>
       <div class="docs-actions">
-        <a class="button primary" href="/downloads" data-link data-analytics="download_plugin_clicked">Download Plugin</a>
-        <a class="button ghost" href="/docs/ai-image-studio" data-link data-analytics="docs_opened">Read setup guide</a>
-        <a class="button ghost" href="/pricing" data-link data-analytics="pricing_plan_clicked">View pricing</a>
+        <a class="button primary" href="/free-woocommerce-image-audit" data-link data-analytics="click_run_free_audit">Run Free Image Audit</a>
+        <a class="button ghost" href="/optivra-image-studio" data-link>Explore Image Studio</a>
+        <a class="button ghost" href="/pricing" data-link data-analytics="click_pricing_plan">View pricing</a>
       </div>
     </section>
     <section>
@@ -535,7 +601,7 @@ const approvedAnalyticsEvents = new Set([
   "image_studio_page_view", "image_studio_hero_cta_click", "image_studio_feature_view", "image_studio_feature_click", "image_studio_before_after_view",
   "image_studio_demo_view", "image_studio_pricing_click", "image_studio_download_click", "image_studio_docs_click", "image_studio_faq_expand",
   "image_studio_preserve_mode_interest", "image_studio_background_generation_interest", "image_studio_seo_feature_interest", "image_studio_bulk_processing_interest",
-  "downloads_page_view", "plugin_download_click", "plugin_download_started", "plugin_download_completed", "plugin_download_failed",
+  "downloads_page_view", "plugin_download_click", "plugin_download_modal_open", "plugin_download_request_submit", "plugin_download_started", "plugin_download_completed", "plugin_download_failed", "plugin_feedback_submit",
   "download_email_capture_start", "download_email_capture_submit", "download_email_capture_error", "download_version_selected", "download_changelog_view",
   "pricing_page_view", "pricing_plan_view", "pricing_plan_expand", "pricing_plan_compare", "pricing_cta_click", "pricing_faq_expand",
   "pricing_monthly_selected", "pricing_yearly_selected", "checkout_started", "checkout_redirected", "checkout_success_landing", "checkout_cancelled", "checkout_error",
@@ -544,7 +610,9 @@ const approvedAnalyticsEvents = new Set([
   "blog_index_view", "blog_post_view", "blog_scroll_75", "blog_cta_click", "blog_related_post_click", "blog_category_click", "blog_author_click",
   "blog_exit_to_product", "blog_exit_to_download", "blog_exit_to_pricing",
   "support_page_view", "contact_form_start", "contact_form_submit", "contact_form_success", "contact_form_error", "support_email_click", "support_docs_click",
-  "shopify_embedded_app_loaded"
+  "shopify_embedded_app_loaded",
+  "click_run_free_audit", "click_view_example_report", "click_download_image_studio", "click_download_gateway_rules",
+  "click_pricing_plan", "click_credit_pack", "click_open_admin", "click_docs_getting_started", "click_support_contact"
 ]);
 
 const sensitiveAnalyticsKeyPattern = /(email|e_mail|phone|mobile|address|street|postcode|zip_code|postal|full_name|first_name|last_name|display_name|contact_name|license|licence|token|secret|password|api_key|apikey|openai|stripe|customer_id|session_id|checkout_session|payment_intent|key|raw|stack|trace|uploaded_image|image_url|source_image_url)/i;
@@ -657,9 +725,12 @@ function sanitizeAnalyticsParams(properties = {}) {
 
 function pluginFromTarget(target) {
   const href = target?.getAttribute?.("href") || "";
+  const explicit = target?.dataset?.pluginDownload || target?.dataset?.pluginSlug || "";
+  if (explicit.includes("gateway")) return "optivra-gateway-rules";
+  if (explicit.includes("image-studio")) return "optivra-image-studio";
   const path = location.pathname;
-  if (href.includes("payment-gateway-rules") || path.includes("payment-gateway-rules")) return "payment_gateway_rules";
-  if (href.includes("optivra-image-studio") || path.includes("optivra-image-studio")) return "optivra_image_studio";
+  if (href.includes("payment-gateway-rules") || href.includes("optivra-gateway-rules") || path.includes("payment-gateway-rules")) return "optivra-gateway-rules";
+  if (href.includes("optivra-image-studio") || path.includes("optivra-image-studio")) return "optivra-image-studio";
   return "woocommerce_plugins";
 }
 
@@ -670,6 +741,7 @@ function routeGroup(path = location.pathname) {
   if (normalized.startsWith("/docs")) return "docs";
   if (normalized.startsWith("/downloads")) return "downloads";
   if (normalized.startsWith("/pricing")) return "pricing";
+  if (normalized.startsWith("/free-woocommerce-image-audit")) return "free_image_audit";
   if (normalized.startsWith("/optivra-image-studio") || normalized.startsWith("/catalogue-image-studio")) return "product_image_studio";
   if (normalized.startsWith("/payment-gateway-rules")) return "product_payment_gateway_rules";
   if (normalized.startsWith("/woocommerce-plugins") || normalized.startsWith("/plugins")) return "plugins";
@@ -864,7 +936,7 @@ function trackPageView(path = location.pathname) {
       page_path: path,
       content_type: path.startsWith("/blog/") ? "blog_post" : path.startsWith("/docs") ? "docs" : "page",
       content_slug: contentSlug(path),
-      product_slug: path.includes("image-studio") ? "optivra_image_studio" : undefined,
+      product_slug: path.includes("image-studio") ? "optivra-image-studio" : undefined,
       funnel_stage: path === "/" || path.startsWith("/blog") ? "awareness" : "interest"
     });
   }
@@ -900,13 +972,14 @@ window.addEventListener("scroll", () => {
 function eventForExplicitAnalytics(value, target) {
   const route = routeGroup(location.pathname);
   const plugin = pluginFromTarget(target);
+  if (approvedAnalyticsEvents.has(value)) return value;
   if (value === "signup_clicked") return route === "home" ? "home_hero_cta_click" : "hero_cta_click";
   if (value === "download_plugin_clicked") {
     if (route === "home") return "home_download_cta_click";
-    if (plugin === "optivra_image_studio") return "image_studio_download_click";
+    if (plugin === "optivra-image-studio") return "image_studio_download_click";
     return "plugin_download_click";
   }
-  if (value === "docs_opened") return plugin === "optivra_image_studio" ? "image_studio_docs_click" : "docs_support_click";
+  if (value === "docs_opened") return plugin === "optivra-image-studio" ? "image_studio_docs_click" : "docs_support_click";
   if (value === "pricing_plan_clicked") return route === "home" ? "home_pricing_cta_click" : "pricing_cta_click";
   return sanitizeAnalyticsKey(value);
 }
@@ -925,11 +998,11 @@ function downloadParamsForTarget(target) {
   const plugin = pluginFromTarget(target);
   return {
     plugin_slug: plugin,
-    plugin_name: plugin === "payment_gateway_rules" ? "Payment Gateway Rules for WooCommerce" : "Optivra Image Studio",
-    plugin_version: plugin === "payment_gateway_rules" ? gatewayRulesRelease.version : pluginRelease.version,
+    plugin_name: plugin === "optivra-gateway-rules" ? "Optivra Gateway Rules for WooCommerce" : "Optivra Image Studio",
+    plugin_version: plugin === "optivra-gateway-rules" ? gatewayRulesRelease.version : pluginRelease.version,
     download_location: ctaLocation(target),
     download_type: "zip",
-    gated: false,
+    gated: true,
     funnel_stage: "conversion"
   };
 }
@@ -948,7 +1021,7 @@ function trackCheckoutLanding(path) {
 }
 
 document.addEventListener("click", (event) => {
-  const target = event.target.closest("a, button, [data-analytics], [data-download-zip], [data-plan], [data-pack]");
+  const target = event.target.closest("a, button, [data-analytics], [data-plugin-download], [data-download-zip], [data-plan], [data-pack]");
   if (!target) return;
 
   const explicitEvent = target.dataset?.analytics;
@@ -958,7 +1031,7 @@ document.addEventListener("click", (event) => {
     cta_text: target.textContent || "",
     page_path: location.pathname,
     plugin_slug: pluginFromTarget(target),
-    product_slug: pluginFromTarget(target) === "optivra_image_studio" ? "optivra_image_studio" : undefined,
+    product_slug: pluginFromTarget(target) === "optivra-image-studio" ? "optivra-image-studio" : undefined,
     funnel_stage: "interest"
   };
 
@@ -967,21 +1040,27 @@ document.addEventListener("click", (event) => {
   if (href.startsWith("http") && !href.includes(location.hostname)) trackEvent("outbound_click", props);
   if (href.startsWith("mailto:")) trackEvent("support_email_click", { ...props, funnel_stage: "intent" });
 
+  if (target.matches("[data-plugin-download]")) {
+    event.preventDefault();
+    openPluginDownloadModal(target.dataset.pluginDownload, target);
+    return;
+  }
+
   if (target.matches("[data-download-zip]")) {
-    const params = { ...props, ...downloadParamsForTarget(target) };
-    trackEvent("plugin_download_click", params);
-    trackEvent("plugin_download_started", params);
-    trackEvent("file_download", params);
+    event.preventDefault();
+    openPluginDownloadModal(pluginFromTarget(target), target);
     return;
   }
 
   if (target.matches("[data-plan]")) {
     trackEvent("pricing_cta_click", { ...props, plan_name: target.dataset.plan, plan_interval: "monthly", currency: "usd", funnel_stage: "intent" });
+    trackEvent("click_pricing_plan", { ...props, plan_name: target.dataset.plan, plan_interval: "monthly", currency: "usd", funnel_stage: "intent" });
     return;
   }
 
   if (target.matches("[data-pack]")) {
     trackEvent("pricing_cta_click", { ...props, plan_name: `credits_${target.dataset.pack}`, plan_interval: "one_time", currency: "usd", funnel_stage: "intent" });
+    trackEvent("click_credit_pack", { ...props, plan_name: `credits_${target.dataset.pack}`, plan_interval: "one_time", currency: "usd", funnel_stage: "intent" });
     return;
   }
 
@@ -1160,6 +1239,7 @@ function renderImageStudioDashboard(account, scans, latestReport) {
           <a class="button ghost" href="/downloads" data-link>Download plugin</a>
         </div>
       </section>
+      ${renderStoreConnectionPanel(account)}
       <section class="portal-card">
         <h2>No scan data yet</h2>
         <p class="muted-note">After a scan completes, this dashboard will show image health, recommendations, trends, queue health and ROI estimates.</p>
@@ -1194,6 +1274,8 @@ function renderImageStudioDashboard(account, scans, latestReport) {
       ${metricTile("Processing success rate", `${successRate}%`)}
     </section>
 
+    ${renderStoreConnectionPanel(account)}
+
     <section class="report-two-column">
       <section class="portal-card">
         <div class="portal-section-head"><div><h2>Top recommendations</h2><p>The next fixes most likely to improve catalogue quality.</p></div></div>
@@ -1208,6 +1290,45 @@ function renderImageStudioDashboard(account, scans, latestReport) {
     <section class="portal-card">
       <div class="portal-section-head"><div><h2>Processed Image History</h2><p>Recent processed images with Product Preservation Safety status and processing mode.</p></div></div>
       ${renderProcessedImageHistory(imageJobs)}
+    </section>
+  `;
+}
+
+function renderStoreConnectionPanel(account = {}) {
+  const sites = Array.isArray(account.connected_sites) ? account.connected_sites : [];
+  return `
+    <section class="portal-card store-connect-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Connect a WooCommerce store</h2>
+          <p>Generate a Site API Token, then paste it into the Optivra Image Studio plugin settings in WordPress. Existing tokens are never displayed again.</p>
+        </div>
+        <span class="status-badge ready">${sites.length ? `${sites.length} connected` : "Ready"}</span>
+      </div>
+      <div class="store-connect-grid">
+        <form class="site-connect-form" id="site-form">
+          <label>
+            Store domain
+            <input type="text" name="domain" placeholder="example.com" autocomplete="url" required />
+          </label>
+          <button class="button primary" type="submit">Generate Site API Token</button>
+          <p class="muted-note">Use your production domain for store verification. Staging and local stores can connect for testing.</p>
+          <pre class="token-output" id="new-token" aria-live="polite">Your new token will appear here once. Copy it into the WooCommerce plugin before leaving this page.</pre>
+        </form>
+        <div class="connected-sites-panel">
+          <h3>Connected stores</h3>
+          ${sites.length ? `
+            <div class="dash-list">
+              ${sites.map((site) => `
+                <div class="dash-item">
+                  <strong>${escapeHtml(site.domain || "WooCommerce store")}</strong><br>
+                  <small>${escapeHtml(site.api_token_status || "configured")} · connected ${escapeHtml(formatDate(site.created_at))}</small>
+                </div>
+              `).join("")}
+            </div>
+          ` : `<p class="muted-note">No connected stores yet. Generate a token above, then connect it from WordPress.</p>`}
+        </div>
+      </div>
     </section>
   `;
 }
@@ -2195,11 +2316,224 @@ function loadDownloads() {
   setText("download-plugin-updated", pluginRelease.updatedAt);
   setText("download-plugin-status", pluginRelease.wordpressOrgStatus);
   setText("download-plugin-sha", pluginRelease.sha256);
-  document.querySelectorAll("[data-download-zip]").forEach((node) => {
-    const plugin = pluginFromTarget(node);
-    node.setAttribute("href", plugin === "payment_gateway_rules" ? gatewayRulesRelease.zipPath : pluginRelease.zipPath);
-  });
+  const url = new URL(location.href);
+  const requestedPlugin = url.searchParams.get("plugin");
+  if (url.searchParams.get("download") === "1" && requestedPlugin) {
+    window.setTimeout(() => openPluginDownloadModal(requestedPlugin), 50);
+  }
 }
+
+function pluginReleaseBySlug(slug) {
+  return slug === "optivra-gateway-rules" ? gatewayRulesRelease : pluginRelease;
+}
+
+function openPluginDownloadModal(slug = "optivra-image-studio", target = null) {
+  const modal = document.getElementById("plugin-download-modal");
+  const form = document.getElementById("plugin-download-form");
+  const success = document.getElementById("plugin-download-success");
+  const message = document.getElementById("plugin-download-message");
+  const hidden = document.getElementById("download-plugin-slug");
+  const title = document.getElementById("download-modal-title");
+  const normalized = pluginFromTarget({ dataset: { pluginDownload: slug }, getAttribute: () => "" });
+  const release = pluginReleaseBySlug(normalized);
+  if (!modal || !form || !hidden) return;
+  hidden.value = normalized;
+  if (title) title.textContent = `Get ${release.name}`;
+  if (message) message.textContent = "";
+  if (success) success.hidden = true;
+  form.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("download-modal-open");
+  const params = { ...(target ? downloadParamsForTarget(target) : { plugin_slug: normalized, plugin_version: release.version, download_type: "zip", gated: true }), plugin_slug: normalized };
+  trackEvent("plugin_download_click", params);
+  trackEvent("plugin_download_modal_open", params);
+}
+
+function closePluginDownloadModal() {
+  const modal = document.getElementById("plugin-download-modal");
+  if (modal) modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("download-modal-open");
+}
+
+function currentCampaignParams() {
+  const attribution = attributionState(location.pathname);
+  return {
+    utm_source: attribution.lastTouch?.source || "",
+    utm_medium: attribution.lastTouch?.medium || "",
+    utm_campaign: attribution.lastTouch?.campaign || "",
+    utm_content: attribution.lastTouch?.content || "",
+    utm_term: attribution.lastTouch?.term || ""
+  };
+}
+
+document.querySelectorAll("[data-download-close]").forEach((node) => {
+  node.addEventListener("click", closePluginDownloadModal);
+});
+
+document.getElementById("plugin-download-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+  const button = form.querySelector("button[type='submit']");
+  const message = document.getElementById("plugin-download-message");
+  const pluginSlug = String(formData.get("plugin_slug") || "optivra-image-studio");
+  const release = pluginReleaseBySlug(pluginSlug);
+  const originalText = button?.textContent;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Preparing download...";
+    }
+    if (message) message.textContent = "";
+    trackEvent("plugin_download_request_submit", { plugin_slug: pluginSlug, plugin_version: release.version, gated: true, funnel_stage: "conversion" });
+    const body = await api("/api/plugins/download-request", {
+      method: "POST",
+      body: JSON.stringify({
+        email: formData.get("email"),
+        name: formData.get("name"),
+        store_url: formData.get("store_url"),
+        plugin_slug: pluginSlug,
+        consent_product_updates: formData.get("consent_product_updates") === "on",
+        consent_marketing: formData.get("consent_marketing") === "on",
+        consent_feedback: formData.get("consent_feedback") === "on",
+        source_page: location.pathname,
+        referrer: document.referrer,
+        ...currentCampaignParams()
+      })
+    });
+    const success = document.getElementById("plugin-download-success");
+    const direct = document.getElementById("plugin-download-direct");
+    const setup = document.getElementById("plugin-download-setup");
+    const copy = document.getElementById("plugin-download-success-copy");
+    if (direct) direct.href = body.download_url;
+    if (setup) setup.href = body.setup_guide_url || "/docs";
+    if (copy) copy.textContent = body.email_queued ? "Your download should start automatically. We have also queued an email with the link." : "Your download should start automatically. Email delivery is not configured yet, so keep this direct link handy.";
+    if (success) success.hidden = false;
+    form.hidden = true;
+    trackEvent("plugin_download_started", { plugin_slug: pluginSlug, plugin_version: body.version, download_type: "zip", gated: true, funnel_stage: "conversion" });
+    window.location.href = body.download_url;
+    window.setTimeout(() => {
+      api("/api/plugins/download-complete", {
+        method: "POST",
+        body: JSON.stringify({ event_id: body.event_id })
+      }).catch(() => undefined);
+      trackEvent("plugin_download_completed", { plugin_slug: pluginSlug, plugin_version: body.version, download_type: "zip", gated: true, funnel_stage: "conversion" });
+    }, 1800);
+  } catch (error) {
+    if (message) message.textContent = error.message;
+    trackEvent("plugin_download_failed", { plugin_slug: pluginSlug, plugin_version: release.version, error_category: "download_request", funnel_stage: "conversion" });
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+});
+
+function loadFeedbackPage() {
+  const url = new URL(location.href);
+  const token = url.searchParams.get("token") || "";
+  const plugin = url.searchParams.get("plugin") || "";
+  const tokenNode = document.getElementById("feedback-token");
+  const pluginSelect = document.querySelector("#plugin-feedback-form [name='plugin_slug']");
+  if (tokenNode) tokenNode.value = token;
+  if (pluginSelect && plugin) pluginSelect.value = pluginFromTarget({ dataset: { pluginDownload: plugin }, getAttribute: () => "" });
+}
+
+async function loadUnsubscribePage() {
+  const url = new URL(location.href);
+  const token = url.searchParams.get("token") || "";
+  const tokenNode = document.getElementById("unsubscribe-token");
+  const summary = document.getElementById("unsubscribe-summary");
+  if (tokenNode) tokenNode.value = token;
+  if (!token) {
+    if (summary) summary.textContent = "This unsubscribe link is missing a token. Contact support if you need help.";
+    return;
+  }
+  try {
+    const body = await api(`/api/plugins/unsubscribe?token=${encodeURIComponent(token)}`);
+    if (summary) summary.textContent = `Email preferences for ${body.email} and ${body.plugin_slug}.`;
+  } catch (error) {
+    if (summary) summary.textContent = error.message;
+  }
+}
+
+document.getElementById("plugin-unsubscribe-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const message = document.getElementById("plugin-unsubscribe-message");
+  const button = form.querySelector("button[type='submit']");
+  const originalText = button?.textContent;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Updating...";
+    }
+    const body = await api("/api/plugins/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({
+        token: data.get("token"),
+        scope: data.get("scope"),
+        reason: data.get("reason")
+      })
+    });
+    if (message) message.textContent = body.message || "Preferences updated.";
+  } catch (error) {
+    if (message) message.textContent = error.message;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+});
+
+document.getElementById("plugin-feedback-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const message = document.getElementById("plugin-feedback-message");
+  const reviewCta = document.getElementById("plugin-feedback-review-cta");
+  const reviewLink = document.getElementById("plugin-feedback-public-review");
+  const button = form.querySelector("button[type='submit']");
+  const originalText = button?.textContent;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Sending...";
+    }
+    if (message) message.textContent = "";
+    if (reviewCta) reviewCta.hidden = true;
+    const body = await api("/api/plugins/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        token: data.get("token"),
+        email: data.get("email"),
+        plugin_slug: data.get("plugin_slug"),
+        rating: data.get("rating"),
+        feedback_type: data.get("feedback_type"),
+        message: data.get("message"),
+        public_display_name: data.get("public_display_name"),
+        permission_to_use_testimonial: data.get("permission_to_use_testimonial") === "on"
+      })
+    });
+    if (message) message.textContent = body.message || "Thanks for your feedback.";
+    if (body.show_public_review_cta && reviewCta && reviewLink) {
+      reviewLink.href = body.public_review_url || "/support";
+      reviewCta.hidden = false;
+    }
+    trackEvent("plugin_feedback_submit", { plugin_slug: data.get("plugin_slug"), rating: data.get("rating") || 0, funnel_stage: "retention" });
+    form.reset();
+  } catch (error) {
+    if (message) message.textContent = error.message;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+});
 
 async function loadAdminAnalytics() {
   const denied = document.getElementById("admin-denied");
@@ -2216,11 +2550,14 @@ async function loadAdminAnalytics() {
   try {
     ensureAdminRangeControl();
     const range = document.getElementById("admin-range")?.value || "7";
-    const [overviewBody, storesBody, eventsBody, siteBody] = await Promise.all([
+    const [overviewBody, storesBody, eventsBody, siteBody, downloadSummaryBody, downloadEventsBody, feedbackBody] = await Promise.all([
       api(`/api/admin/plugin-analytics/overview?range=${encodeURIComponent(range)}`),
       api("/api/admin/plugin-analytics/stores"),
       api("/api/admin/plugin-analytics/events"),
-      api(`/api/admin/site-analytics/overview?range=${encodeURIComponent(range)}`)
+      api(`/api/admin/site-analytics/overview?range=${encodeURIComponent(range)}`),
+      api("/api/admin/plugins/downloads/summary"),
+      api("/api/admin/plugins/downloads/events"),
+      api("/api/admin/plugins/feedback")
     ]);
     const cards = overviewBody.overview?.cards || {};
     const emptyStates = overviewBody.overview?.empty_states || {};
@@ -2241,6 +2578,7 @@ async function loadAdminAnalytics() {
     renderEventMix(overviewBody.event_counts_30d || []);
     renderAdminTrends(overviewBody.trends || []);
     renderSiteAnalyticsOverview(siteBody.overview);
+    renderPluginDownloadAdmin(downloadSummaryBody.summary, downloadEventsBody.events || [], feedbackBody.feedback || []);
 
     const storeRows = document.getElementById("admin-store-rows");
     if (storeRows) {
@@ -2394,19 +2732,68 @@ function renderSiteAnalyticsOverview(overview) {
   renderRows("sources", overview.conversion_rate_by_source, (row) => `${row.source || "-"} - ${row.conversions || 0}/${row.visits || 0} (${formatPercent(row.conversion_rate)})`);
 }
 
-document.getElementById("site-form")?.addEventListener("submit", async (event) => {
+function renderPluginDownloadAdmin(summary, events, feedback) {
+  if (!summary) return;
+  const metrics = document.getElementById("admin-plugin-download-metrics");
+  if (metrics) {
+    const totals = summary.totals || {};
+    metrics.innerHTML = [
+      ["Total downloads", totals.downloads],
+      ["Completed", totals.completed],
+      ["Unique downloaders", totals.unique_downloaders],
+      ["Feedback", totals.feedback_count],
+      ["Average rating", Number(totals.average_rating || 0).toFixed(1)]
+    ].map(([label, value]) => `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? 0)}</strong></div>`).join("");
+  }
+  const renderAdminRows = (id, rows, formatter) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.innerHTML = rows?.length
+      ? `<div class="dash-list">${rows.slice(0, 12).map((row) => `<div class="dash-item">${formatter(row)}</div>`).join("")}</div>`
+      : `<p>No data yet.</p>`;
+  };
+  renderAdminRows("admin-plugin-downloads-by-plugin", summary.downloads_by_plugin || [], (row) => `${escapeHtml(row.plugin_slug)}<br><small>${escapeHtml(row.count)} downloads</small>`);
+  renderAdminRows("admin-plugin-downloads-by-version", summary.downloads_by_version || [], (row) => `${escapeHtml(row.plugin_slug)} ${escapeHtml(row.plugin_version)}<br><small>${escapeHtml(row.count)} downloads</small>`);
+  renderAdminRows("admin-plugin-downloads-by-source", summary.downloads_by_utm || [], (row) => `${escapeHtml(row.source || "direct")} ${row.campaign ? `- ${escapeHtml(row.campaign)}` : ""}<br><small>${escapeHtml(row.count)} downloads</small>`);
+  renderAdminRows("admin-plugin-feedback-summary", feedback || [], (row) => `${escapeHtml(row.plugin_slug)} ${row.rating ? `- ${escapeHtml(row.rating)}/5` : ""}<br><small>${escapeHtml(row.feedback_type)} - ${escapeHtml(formatDate(row.created_at))}</small>`);
+  renderAdminRows("admin-plugin-download-event-rows", events || [], (row) => `
+    <strong>${escapeHtml(row.email_normalized || "-")}</strong><br>
+    <small>${escapeHtml(row.plugin_slug)} ${escapeHtml(row.plugin_version)} - ${escapeHtml(row.download_status)} - ${escapeHtml(formatDate(row.created_at))}</small>
+  `);
+  renderAdminRows("admin-plugin-feedback-rows", feedback || [], (row) => `
+    <strong>${escapeHtml(row.email_normalized || "-")} ${row.rating ? `- ${escapeHtml(row.rating)}/5` : ""}</strong><br>
+    <small>${escapeHtml(row.plugin_slug)} - ${escapeHtml(row.feedback_type)} - ${escapeHtml(formatDate(row.created_at))}</small>
+    <p>${escapeHtml(row.message || "")}</p>
+  `);
+}
+
+document.addEventListener("submit", async (event) => {
+  const formNode = event.target.closest?.("#site-form");
+  if (!formNode) return;
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const form = new FormData(formNode);
+  const output = formNode.querySelector("#new-token") || document.getElementById("new-token");
+  const button = formNode.querySelector("button[type='submit']");
+  const originalText = button?.textContent || "Generate Site API Token";
   try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Generating...";
+    }
+    if (output) output.textContent = "Generating a new token...";
     const body = await api("/sites/connect", {
       method: "POST",
       body: JSON.stringify({ domain: form.get("domain") })
     });
-    document.getElementById("new-token").textContent = `New site token for ${body.site.domain}:\n${body.api_token}`;
+    if (output) output.textContent = `New site token for ${body.site.domain}:\n${body.api_token}\n\nCopy this token now. For safety, Optivra will not show it again.`;
     trackConversion("docs_api_token_interest", { cta_location: "site_connect", funnel_stage: "retention" });
-    await loadDashboard();
   } catch (error) {
-    document.getElementById("new-token").textContent = error.message;
+    if (output) output.textContent = error.message;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   }
 });
 

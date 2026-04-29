@@ -58,9 +58,15 @@
 	gap: 8px;
 	padding: 0;
 	border-bottom: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	max-width: 100%;
+	white-space: nowrap;
+	scrollbar-width: thin;
 }
 
 .optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-tabs .nav-tab {
+	flex: 0 0 auto;
 	margin-left: 0;
 	padding: 10px 16px;
 	border: 1px solid #e5e7eb;
@@ -1163,6 +1169,12 @@
 	--optivra-warning: #b54708;
 	--optivra-danger: #b42318;
 	--optivra-radius: 8px;
+	--optivra-primary: #245cff;
+	--optivra-primary-dark: #183ec2;
+	--optivra-bg: #f6f8fc;
+	--optivra-surface: #ffffff;
+	--optivra-border: #e5e7eb;
+	--optivra-text: #111827;
 	box-sizing: border-box;
 }
 
@@ -1205,14 +1217,21 @@
 	display: grid;
 	place-items: center;
 	flex: 0 0 auto;
-	width: 44px;
-	height: 44px;
-	border-radius: 12px;
-	background: linear-gradient(135deg, var(--optivra-purple), var(--optivra-brand));
-	color: #fff;
-	font-weight: 900;
-	font-size: 18px;
-	box-shadow: 0 14px 30px rgba(36, 92, 255, 0.22);
+	width: 118px;
+	height: 52px;
+	border-radius: 0;
+	background: transparent;
+	color: inherit;
+	box-shadow: none;
+	overflow: visible;
+}
+
+.optivra-admin-app .optivra-brand-mark img {
+	display: block;
+	width: 118px;
+	height: 52px;
+	object-fit: contain;
+	background: transparent;
 }
 
 .optivra-admin-app .optivra-kicker {
@@ -2067,6 +2086,310 @@
 	margin-top: 12px;
 }
 
+.optivra-admin-app .optivra-queue-page,
+.optivra-admin-app .optivra-seo-dashboard,
+.optivra-admin-app .optivra-account-page {
+	display: grid;
+	gap: 18px;
+}
+
+.optivra-admin-app .optivra-queue-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 14px;
+	flex-wrap: wrap;
+	margin: 0 0 16px;
+	padding: 14px;
+	background: var(--optivra-subtle);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-bulk-select,
+.optivra-admin-app .optivra-toolbar-controls,
+.optivra-admin-app .optivra-toolbar-controls label {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-toolbar-controls label > span {
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 850;
+	text-transform: uppercase;
+}
+
+.optivra-admin-app .optivra-toolbar-controls select {
+	min-height: 36px;
+	max-width: 260px;
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-toolbar-controls input[type="search"] {
+	min-height: 36px;
+	width: min(220px, 100%);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-queue-search {
+	flex: 1 1 180px;
+}
+
+.optivra-admin-app .optivra-selected-count {
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 800;
+}
+
+.optivra-admin-app .optivra-queue-list {
+	display: grid;
+	gap: 16px;
+}
+
+.optivra-admin-app .optivra-queue-card {
+	display: grid;
+	gap: 16px;
+	padding: 18px;
+	background: var(--optivra-card);
+	border: 1px solid var(--optivra-line);
+	border-radius: 12px;
+	box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07);
+	overflow: hidden;
+}
+
+.optivra-admin-app .optivra-queue-card-head,
+.optivra-admin-app .optivra-job-title-row,
+.optivra-admin-app .optivra-job-badges,
+.optivra-admin-app .optivra-job-submeta {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-queue-card-head {
+	justify-content: space-between;
+	padding-bottom: 14px;
+	border-bottom: 1px solid #eef2f7;
+}
+
+.optivra-admin-app .optivra-job-title {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-job-title strong {
+	color: var(--optivra-ink);
+	font-size: 16px;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+.optivra-admin-app .optivra-job-submeta,
+.optivra-admin-app .optivra-job-submeta a {
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-decoration: none;
+}
+
+.optivra-admin-app .optivra-job-select input[type="checkbox"],
+.optivra-admin-app .optivra-bulk-select input[type="checkbox"] {
+	position: static;
+	width: 18px;
+	height: 18px;
+	margin: 0;
+	border-radius: 5px;
+	appearance: auto;
+	-webkit-appearance: checkbox;
+	background: #fff;
+}
+
+.optivra-admin-app .optivra-job-select input[type="checkbox"]::after,
+.optivra-admin-app .optivra-bulk-select input[type="checkbox"]::after {
+	content: none;
+}
+
+.optivra-admin-app .optivra-queue-card-grid {
+	display: grid;
+	grid-template-columns: minmax(220px, 0.8fr) minmax(240px, 1fr) minmax(280px, 1.15fr) minmax(240px, 0.95fr);
+	gap: 14px;
+	align-items: start;
+}
+
+.optivra-admin-app .optivra-job-media-panel,
+.optivra-admin-app .optivra-job-status-panel,
+.optivra-admin-app .optivra-job-seo-panel,
+.optivra-admin-app .optivra-job-message-panel {
+	min-width: 0;
+	padding: 14px;
+	background: #fbfcff;
+	border: 1px solid #e8edf5;
+	border-radius: 10px;
+}
+
+.optivra-admin-app .optivra-job-media-panel {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.optivra-admin-app .optivra-thumb-card {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-thumb-card > span,
+.optivra-admin-app .optivra-job-status-panel h3,
+.optivra-admin-app .optivra-job-seo-panel h3,
+.optivra-admin-app .optivra-job-message-panel h3 {
+	margin: 0 0 8px;
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 850;
+	text-transform: uppercase;
+}
+
+.optivra-admin-app .optivra-job-message-panel p,
+.optivra-admin-app .optivra-validation-summary,
+.optivra-admin-app .optivra-job-diagnostics,
+.optivra-admin-app .catalogue-image-studio-help,
+.optivra-admin-app .catalogue-image-studio-warning {
+	overflow-wrap: anywhere;
+}
+
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields {
+	max-width: none;
+	width: 100%;
+}
+
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields input,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields textarea {
+	max-width: 100%;
+	border-radius: 8px;
+}
+
+.optivra-admin-app .optivra-failure-card {
+	padding: 12px;
+	background: #fff1f3;
+	border: 1px solid #fecdca;
+	border-radius: var(--optivra-radius);
+	color: #7a271a;
+}
+
+.optivra-admin-app .optivra-failure-card p {
+	margin: 6px 0 0;
+}
+
+.optivra-admin-app .optivra-job-origin {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-top: 10px;
+}
+
+.optivra-admin-app .optivra-info-callout {
+	padding: 16px;
+	background: linear-gradient(135deg, #eef4ff, #ffffff);
+	border: 1px solid #c7d7fe;
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-info-callout p {
+	margin: 6px 0 0;
+	color: var(--optivra-muted);
+}
+
+.optivra-admin-app .optivra-warning-callout {
+	background: #fffbeb;
+	border-color: #fde68a;
+}
+
+.optivra-admin-app .optivra-mini-status-list,
+.optivra-admin-app .optivra-template-list,
+.optivra-admin-app .optivra-action-grid,
+.optivra-admin-app .optivra-account-detail-grid,
+.optivra-admin-app .optivra-account-actions {
+	display: grid;
+	gap: 10px;
+}
+
+.optivra-admin-app .optivra-setting-status-row,
+.optivra-admin-app .optivra-template-list div,
+.optivra-admin-app .optivra-account-detail-grid div {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px;
+	background: var(--optivra-subtle);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-template-list span,
+.optivra-admin-app .optivra-account-detail-grid span {
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 850;
+	text-transform: uppercase;
+}
+
+.optivra-admin-app .optivra-template-list strong,
+.optivra-admin-app .optivra-account-detail-grid strong {
+	text-align: right;
+	overflow-wrap: anywhere;
+}
+
+.optivra-admin-app .optivra-action-grid,
+.optivra-admin-app .optivra-account-actions {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.optivra-admin-app .optivra-action-grid .button,
+.optivra-admin-app .optivra-account-actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 38px;
+	white-space: normal;
+	text-align: center;
+}
+
+.optivra-admin-app .optivra-account-detail-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	margin-top: 14px;
+}
+
+.optivra-admin-app .optivra-credit-panel {
+	display: grid;
+	gap: 8px;
+	padding: 14px;
+	background: var(--optivra-subtle);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-credit-panel small {
+	color: var(--optivra-muted);
+	font-weight: 700;
+}
+
+@media (max-width: 1280px) {
+	.optivra-admin-app .optivra-queue-card-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
 @media (max-width: 960px) {
 	.optivra-admin-app .optivra-app-header,
 	.optivra-admin-app .optivra-brand-block,
@@ -2094,7 +2417,12 @@
 	.optivra-admin-app .optivra-recommendations-hero,
 	.optivra-admin-app .optivra-rec-summary,
 	.optivra-admin-app .optivra-recommendation-toolbar,
-	.optivra-admin-app .optivra-recommendation-grid {
+	.optivra-admin-app .optivra-recommendation-grid,
+	.optivra-admin-app .optivra-queue-card-grid,
+	.optivra-admin-app .optivra-job-media-panel,
+	.optivra-admin-app .optivra-account-detail-grid,
+	.optivra-admin-app .optivra-action-grid,
+	.optivra-admin-app .optivra-account-actions {
 		grid-template-columns: 1fr;
 	}
 

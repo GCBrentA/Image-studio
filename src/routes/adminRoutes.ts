@@ -9,6 +9,11 @@ import {
 import { jwtAuth } from "../middleware/jwtAuth";
 import { requireDatabase } from "../middleware/requireDatabase";
 import { requireInternalAdmin } from "../middleware/requireInternalAdmin";
+import {
+  getPluginDownloadWorkflowEvents,
+  getPluginDownloadWorkflowSummary,
+  getPluginFeedbackAdmin
+} from "../services/pluginLeadWorkflowService";
 
 export const adminRoutes = Router();
 
@@ -36,4 +41,22 @@ adminRoutes.get("/plugin-analytics/stores/:id", (request, response, next) => {
 
 adminRoutes.get("/site-analytics/overview", (request, response, next) => {
   getAdminSiteAnalyticsOverview(request, response).catch(next);
+});
+
+adminRoutes.get("/plugins/downloads/summary", (_request, response, next) => {
+  getPluginDownloadWorkflowSummary()
+    .then((summary) => response.json({ ok: true, summary }))
+    .catch(next);
+});
+
+adminRoutes.get("/plugins/downloads/events", (_request, response, next) => {
+  getPluginDownloadWorkflowEvents()
+    .then((events) => response.json({ ok: true, events }))
+    .catch(next);
+});
+
+adminRoutes.get("/plugins/feedback", (_request, response, next) => {
+  getPluginFeedbackAdmin()
+    .then((feedback) => response.json({ ok: true, feedback }))
+    .catch(next);
 });

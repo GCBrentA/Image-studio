@@ -79,7 +79,16 @@ export const analyticsEventMap: AnalyticsEventGroup[] = [
       event("time_on_page_120s", "Visitor remained on a page for 120 seconds.", "client"),
       event("outbound_click", "Click to an external domain.", "client", ["cta_location", "cta_text"]),
       event("file_download", "Browser file download click.", "client", downloadParams),
-      event("error_viewed", "User-visible safe error category shown.", "client", ["error_category"])
+      event("error_viewed", "User-visible safe error category shown.", "client", ["error_category"]),
+      event("click_run_free_audit", "Free image audit CTA clicked.", "client", productParams, [], [], true),
+      event("click_view_example_report", "Example report CTA clicked.", "client", contentParams),
+      event("click_download_image_studio", "Image Studio plugin download CTA clicked.", "client", productParams, [], [], true),
+      event("click_download_gateway_rules", "Gateway Rules download CTA clicked.", "client", productParams),
+      event("click_pricing_plan", "Pricing plan CTA clicked.", "client", productParams, [], [], true),
+      event("click_credit_pack", "Credit pack CTA clicked.", "client", productParams, [], [], true),
+      event("click_open_admin", "Admin or portal CTA clicked.", "client"),
+      event("click_docs_getting_started", "Getting started docs CTA clicked.", "client", contentParams),
+      event("click_support_contact", "Support contact CTA clicked.", "client")
     ]
   },
   {
@@ -117,9 +126,12 @@ export const analyticsEventMap: AnalyticsEventGroup[] = [
     events: [
       event("downloads_page_view", "Downloads page viewed.", "client", downloadParams, ["page_path"]),
       event("plugin_download_click", "Plugin download CTA clicked.", "both", downloadParams, ["plugin_slug"], [], true),
+      event("plugin_download_modal_open", "Plugin download email capture modal opened.", "client", downloadParams, ["plugin_slug"]),
+      event("plugin_download_request_submit", "Plugin download request submitted after email capture.", "client", downloadParams, ["plugin_slug"]),
       event("plugin_download_started", "Plugin download started.", "both", downloadParams, ["plugin_slug"]),
       event("plugin_download_completed", "Plugin download completed.", "both", downloadParams, ["plugin_slug"], [], true),
       event("plugin_download_failed", "Plugin download failed.", "both", downloadParams, ["plugin_slug", "error_category"]),
+      event("plugin_feedback_submit", "Plugin feedback submitted.", "both", ["plugin_slug", "plugin_version", "feedback_type", "rating"]),
       event("download_email_capture_start", "Download email capture started.", "client", downloadParams),
       event("download_email_capture_submit", "Download email capture submitted without PII.", "client", downloadParams),
       event("download_email_capture_error", "Download email capture failed with safe category.", "client", downloadParams),
@@ -230,4 +242,3 @@ export const analyticsFunnels = {
 } as const;
 
 export const funnelStages = ["awareness", "interest", "consideration", "intent", "conversion", "retention"] as const;
-

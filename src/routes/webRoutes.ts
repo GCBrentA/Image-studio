@@ -25,9 +25,12 @@ const webPaths = new Set([
   "/woocommerce-plugins",
   "/catalogue-image-studio",
   "/optivra-image-studio",
+  "/free-woocommerce-image-audit",
   "/payment-gateway-rules-for-woocommerce",
   "/pricing",
   "/downloads",
+  "/feedback",
+  "/unsubscribe",
   "/resources",
   "/blog",
   ...blogSlugs.map((slug) => `/blog/${slug}`),
@@ -90,9 +93,12 @@ const isPublicAnalyticsPath = (requestPath: string): boolean => {
     normalizedPath === "/" ||
     normalizedPath === "/login" ||
     normalizedPath === "/optivra-image-studio" ||
+    normalizedPath === "/free-woocommerce-image-audit" ||
     normalizedPath === "/payment-gateway-rules-for-woocommerce" ||
     normalizedPath === "/woocommerce-plugins" ||
     normalizedPath === "/downloads" ||
+    normalizedPath === "/feedback" ||
+    normalizedPath === "/unsubscribe" ||
     normalizedPath === "/pricing" ||
     normalizedPath === "/support" ||
     normalizedPath === "/privacy" ||
@@ -159,7 +165,7 @@ const imageStudioJsonLd = [
     name: "Optivra Image Studio",
     applicationCategory: "BusinessApplication",
     operatingSystem: "WordPress, WooCommerce",
-    description: "WooCommerce product image optimisation with AI-powered background replacement, review workflows, and SEO-friendly image metadata.",
+    description: "WooCommerce product image intelligence with Product Image Health Reports, SEO insights, safe AI background cleanup, review queues, and rollback-aware workflows.",
     url: `${siteBaseUrl}/optivra-image-studio`,
     offers: {
       "@type": "Offer",
@@ -171,7 +177,7 @@ const imageStudioJsonLd = [
     "@context": "https://schema.org",
     "@type": "Product",
     name: "Optivra Image Studio for WooCommerce",
-    description: "AI-powered product image optimisation, background replacement, review workflow, and SEO metadata for WooCommerce.",
+    description: "Product Image Health Reports, safe AI image processing, review workflow, and SEO metadata for WooCommerce.",
     brand: {
       "@type": "Brand",
       name: "Optivra"
@@ -302,8 +308,8 @@ const metaForPath = (requestPath: string): PageMeta => {
 
   const meta: Record<string, PageMeta> = {
     "/": {
-      title: "Optivra | AI-Powered Ecommerce Tools for WooCommerce",
-      description: "Optivra builds AI-powered ecommerce tools for WooCommerce stores, including product image optimisation, SEO metadata, and catalogue workflow automation.",
+      title: "Optivra | WooCommerce Product Image Intelligence",
+      description: "Run a free WooCommerce Product Image Health Report, find image SEO, speed, consistency and product presentation issues, then fix priority product images safely with AI.",
       canonicalPath: "/",
       jsonLd: [organizationJsonLd, websiteJsonLd]
     },
@@ -319,14 +325,36 @@ const metaForPath = (requestPath: string): PageMeta => {
       ]
     },
     "/optivra-image-studio": {
-      title: "Optivra Image Studio for WooCommerce | AI Product Image Optimisation",
-      description: "Scan, enhance, review and publish WooCommerce product images with AI background replacement, smart framing and SEO-ready filenames, alt text, titles, captions and descriptions.",
+      title: "Optivra Image Studio | WooCommerce Product Image SEO & AI Image Optimisation",
+      description: "Scan, score and improve WooCommerce product images with Image Health Reports, SEO insights, safe AI background cleanup, review queues and rollback.",
       canonicalPath: "/optivra-image-studio",
       jsonLd: imageStudioJsonLd
     },
+    "/free-woocommerce-image-audit": {
+      title: "Free WooCommerce Product Image Audit | Optivra",
+      description: "Find missing alt text, oversized images, generic filenames, inconsistent backgrounds and product image issues with a free Product Image Health Report.",
+      canonicalPath: "/free-woocommerce-image-audit",
+      jsonLd: [
+        {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Free WooCommerce Product Image Health Report",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "WordPress, WooCommerce",
+          description: "Free WooCommerce product image audit for missing alt text, oversized images, generic filenames, consistency issues and product-feed readiness opportunities.",
+          url: `${siteBaseUrl}/free-woocommerce-image-audit`,
+          offers: {
+            "@type": "Offer",
+            priceCurrency: "USD",
+            price: "0"
+          }
+        },
+        faqJsonLd
+      ]
+    },
     "/payment-gateway-rules-for-woocommerce": {
-      title: "Payment Gateway Rules for WooCommerce | Control Checkout Payment Methods",
-      description: "Create WooCommerce payment gateway rules to show or hide checkout payment methods based on country, shipping location, cart conditions, and store rules.",
+      title: "Free WooCommerce Payment Gateway Rules Plugin | Optivra",
+      description: "Control WooCommerce payment gateways by cart value, currency, country, shipping method, user role and more.",
       canonicalPath: "/payment-gateway-rules-for-woocommerce",
       jsonLd: gatewayRulesJsonLd
     },
@@ -335,9 +363,19 @@ const metaForPath = (requestPath: string): PageMeta => {
       description: "Download Optivra WooCommerce plugins, including Optivra Image Studio and Payment Gateway Rules for WooCommerce.",
       canonicalPath: "/downloads"
     },
+    "/feedback": {
+      title: "Optivra Plugin Feedback | Optivra",
+      description: "Share private feedback about your Optivra WooCommerce plugin experience.",
+      canonicalPath: "/feedback"
+    },
+    "/unsubscribe": {
+      title: "Unsubscribe | Optivra",
+      description: "Update Optivra plugin email preferences without logging in.",
+      canonicalPath: "/unsubscribe"
+    },
     "/pricing": {
-      title: "Optivra Image Studio Pricing | WooCommerce Image Optimisation Plans",
-      description: "Choose an Optivra Image Studio plan for WooCommerce product image optimisation, AI background replacement, SEO metadata, and processing credits.",
+      title: "Optivra Pricing | Free Image Audit & AI Image Processing Credits",
+      description: "Start with a free Product Image Health Report. Use credits when Optivra processes, optimises or improves WooCommerce product images.",
       canonicalPath: "/pricing"
     },
     "/docs/ai-image-studio": {
@@ -509,8 +547,8 @@ const metaForPath = (requestPath: string): PageMeta => {
   };
 
   return meta[normalizedPath] ?? {
-    title: "Optivra | AI-Powered Ecommerce Tools for WooCommerce",
-    description: "Optivra builds AI-powered ecommerce tools for WooCommerce stores.",
+    title: "Optivra | WooCommerce Product Image Intelligence",
+    description: "Run a free WooCommerce Product Image Health Report and fix priority product image opportunities safely with AI.",
     canonicalPath: normalizedPath
   };
 };

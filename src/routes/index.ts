@@ -9,6 +9,7 @@ import { imageRoutes } from "./imageRoutes";
 import { siteRoutes } from "./siteRoutes";
 import { usageRoutes } from "./usageRoutes";
 import { pluginEventRoutes } from "./pluginEventRoutes";
+import { pluginDownloadRoutes } from "./pluginDownloadRoutes";
 import { analyticsRoutes } from "./analyticsRoutes";
 
 export const routes = Router();
@@ -22,5 +23,6 @@ routes.use("/image-studio", imageAuditRoutes);
 routes.use("/images", imageRoutes);
 routes.use("/sites", siteRoutes);
 routes.use("/plugin", pluginEventRoutes);
+routes.use("/plugins", pluginDownloadRoutes);
 routes.use("/usage", usageRoutes);
 routes.use("/analytics", analyticsRoutes);

@@ -148,6 +148,10 @@ register_activation_hook(CIS_FILE, 'catalogue_image_studio_activate');
 add_action(
 	'plugins_loaded',
 	static function () {
+		if (is_admin()) {
+			Catalogue_Image_Studio_Plugin::maybe_upgrade_schema();
+		}
+
 		$plugin = Catalogue_Image_Studio_Plugin::instance();
 
 		if ('' === (string) get_option('optivra_image_studio_install_id', '')) {

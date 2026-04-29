@@ -16,9 +16,11 @@
     "prisma:studio": "prisma studio",
     "test:analytics": "tsx scripts/check-analytics-rules.ts",
     "test:image-audit": "tsx scripts/check-image-audit-scoring.ts",
+    "test:image-audit-routes": "tsx scripts/check-image-audit-routes.ts",
     "test:audit-queue": "tsx scripts/check-audit-queue-rules.ts",
     "test:wordpress-api-url": "php scripts/check-wordpress-api-url.php",
     "test:csp": "tsx scripts/check-csp-rules.ts",
+    "test:plugin-downloads": "tsx scripts/check-plugin-download-workflow.ts",
     "test:preserve-debug": "node scripts/check-preserve-debug.js",
     "test:preserve-architecture": "tsx scripts/check-preserve-architecture.ts",
     "test:image-pipeline": "node scripts/check-image-pipeline-rules.js"

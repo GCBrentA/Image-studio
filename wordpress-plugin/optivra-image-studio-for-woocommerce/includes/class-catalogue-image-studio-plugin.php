@@ -10,6 +10,8 @@ if (! defined('ABSPATH')) {
 }
 
 class Catalogue_Image_Studio_Plugin {
+	private const SCHEMA_VERSION = '20260429_product_preservation_safety';
+
 	/**
 	 * Singleton instance.
 	 *
@@ -100,6 +102,7 @@ class Catalogue_Image_Studio_Plugin {
 	 */
 	public static function activate(): void {
 		self::create_tables();
+		update_option('catalogue_image_studio_schema_version', self::SCHEMA_VERSION, false);
 		$settings = get_option('catalogue_image_studio_settings', []);
 
 		if (! is_array($settings)) {
@@ -111,6 +114,20 @@ class Catalogue_Image_Studio_Plugin {
 			wp_parse_args($settings, self::default_settings()),
 			false
 		);
+	}
+
+	/**
+	 * Run additive schema updates for already-installed plugin copies.
+	 *
+	 * @return void
+	 */
+	public static function maybe_upgrade_schema(): void {
+		if (self::SCHEMA_VERSION === (string) get_option('catalogue_image_studio_schema_version', '')) {
+			return;
+		}
+
+		self::create_tables();
+		update_option('catalogue_image_studio_schema_version', self::SCHEMA_VERSION, false);
 	}
 
 	/**

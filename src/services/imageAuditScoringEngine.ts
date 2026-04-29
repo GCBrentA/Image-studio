@@ -82,6 +82,12 @@ export type AuditScoringItem = {
   image_available?: boolean | null;
   has_variation_image?: boolean | null;
   variation_image_expected?: boolean | null;
+  product_status?: string | null;
+  stock_status?: string | null;
+  product_price?: number | null;
+  product_revenue?: number | null;
+  product_sales_count?: number | null;
+  product_updated_at?: string | Date | null;
 };
 
 export type ScoreResult = {
@@ -231,6 +237,79 @@ export type AuditRecommendation = {
   estimated_minutes_saved_high: number;
   action_filter?: Record<string, unknown>;
   display_order: number;
+};
+
+export type RecommendedFirstImage = {
+  item_id?: string;
+  product_id: string;
+  product_name?: string | null;
+  product_sku?: string | null;
+  product_url?: string | null;
+  image_id?: string | null;
+  image_url?: string | null;
+  image_role?: string | null;
+  category_names?: string[];
+  issue_count: number;
+  issue_ids?: string[];
+  highest_severity: AuditSeverity;
+  priority_score: number;
+  reasons: string[];
+  estimated_impact: string;
+  recommended_action?: string | null;
+  selection_rank: number;
+};
+
+type ForecastScoreKey =
+  | "product_image_health_score"
+  | "seo_score"
+  | "image_quality_score"
+  | "catalogue_consistency_score"
+  | "performance_score"
+  | "completeness_score"
+  | "google_shopping_readiness_score";
+
+export type FixImpactForecast = {
+  baseline: {
+    product_image_health_score: number;
+    seo_score: number;
+    image_quality_score: number;
+    catalogue_consistency_score: number;
+    performance_score: number;
+    completeness_score: number;
+    google_shopping_readiness_score: number;
+  };
+  estimated: {
+    product_image_health_score: number;
+    seo_score: number;
+    image_quality_score: number;
+    catalogue_consistency_score: number;
+    performance_score: number;
+    completeness_score: number;
+    google_shopping_readiness_score: number;
+  };
+  deltas: {
+    product_image_health_score: number;
+    seo_score: number;
+    image_quality_score: number;
+    catalogue_consistency_score: number;
+    performance_score: number;
+    completeness_score: number;
+    google_shopping_readiness_score: number;
+  };
+  estimated_manual_minutes_low: number;
+  estimated_manual_minutes_high: number;
+  estimated_manual_hours_low: number;
+  estimated_manual_hours_high: number;
+  selected_issue_types: AuditIssueType[];
+  assumptions: string[];
+  recommendation_impacts: Array<{
+    title: string;
+    action_type: AuditActionType;
+    priority: Exclude<AuditSeverity, "info">;
+    estimated_images_affected: number;
+    issue_types: AuditIssueType[];
+    score_impacts: Partial<Record<ForecastScoreKey, number>>;
+  }>;
 };
 
 const modernExtensions = new Set(["webp", "avif"]);
@@ -1417,4 +1496,310 @@ export const generateRecommendations = (
   }
 
   return recommendations;
+};
+
+const severityWeight = (severity?: string | null): number => {
+  if (severity === "critical") return 100;
+  if (severity === "high") return 72;
+  if (severity === "medium") return 36;
+  if (severity === "low") return 14;
+  return 4;
+};
+
+const issueWeight = (issueType: AuditIssueType): number => {
+  const weights: Partial<Record<AuditIssueType, number>> = {
+    missing_main_image: 80,
+    failed_integrity_check: 72,
+    processing_failed: 62,
+    missing_alt_text: 48,
+    google_readiness_warning: 46,
+    oversized_file: 42,
+    huge_dimensions: 40,
+    inconsistent_aspect_ratio: 38,
+    too_tightly_cropped: 36,
+    too_small_in_frame: 34,
+    weak_alt_text: 30,
+    generic_filename: 24,
+    duplicate_filename: 20,
+    missing_webp: 22,
+    cluttered_background: 34,
+    inconsistent_background: 30,
+    watermark_or_text_overlay: 44,
+    poor_centering: 26,
+    inconsistent_product_scale: 26,
+    inconsistent_padding: 22,
+    low_resolution: 34,
+    likely_blurry: 32,
+    low_contrast: 22,
+    over_dark: 20,
+    over_bright: 20,
+    preserve_pixel_drift_warning: 58,
+    low_foreground_confidence: 34,
+    product_has_single_image: 18
+  };
+  return weights[issueType] ?? 12;
+};
+
+const issueLabel = (issueType: AuditIssueType): string => issueType.replaceAll("_", " ");
+
+const severityRank = (severity: AuditSeverity): number => {
+  if (severity === "critical") return 1;
+  if (severity === "high") return 2;
+  if (severity === "medium") return 3;
+  if (severity === "low") return 4;
+  return 5;
+};
+
+const categoryPriorityWeight = (
+  item: AuditScoringItem,
+  categoryScores: AuditCategoryScore[]
+): number => {
+  const names = new Set((item.category_names ?? []).map((name) => name.toLowerCase()));
+  const matched = categoryScores.filter((category) => names.has(category.category_name.toLowerCase()));
+  if (!matched.length) return 0;
+  return Math.max(...matched.map((category) => {
+    const priority = category.priority === "critical" ? 34 : category.priority === "high" ? 24 : category.priority === "medium" ? 12 : 4;
+    const weakScoreBoost = Math.max(0, 75 - category.health_score) * 0.4;
+    return priority + weakScoreBoost;
+  }));
+};
+
+const categoryReason = (
+  item: AuditScoringItem,
+  categoryScores: AuditCategoryScore[]
+): string | null => {
+  const names = new Set((item.category_names ?? []).map((name) => name.toLowerCase()));
+  const matched = categoryScores
+    .filter((category) => names.has(category.category_name.toLowerCase()))
+    .sort((a, b) => {
+      if (severityRank(a.priority) !== severityRank(b.priority)) return severityRank(a.priority) - severityRank(b.priority);
+      return a.health_score - b.health_score;
+    })[0];
+  return matched && (matched.priority === "critical" || matched.priority === "high" || matched.health_score < 70)
+    ? `Part of weak category: ${matched.category_name}`
+    : null;
+};
+
+const issueTypesFromRecommendation = (recommendation: AuditRecommendation): AuditIssueType[] => {
+  const raw = recommendation.action_filter?.issue_type;
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return values.filter((value): value is AuditIssueType => typeof value === "string");
+};
+
+const impactFromIssues = (issues: AuditIssue[]): string => {
+  const types = new Set(issues.map((issue) => issue.issue_type));
+  if (types.has("missing_main_image")) return "Critical presentation fix";
+  if (types.has("missing_alt_text") || types.has("weak_alt_text")) return "Estimated SEO score lift";
+  if (types.has("oversized_file") || types.has("huge_dimensions") || types.has("missing_webp")) return "Estimated performance lift";
+  if (types.has("inconsistent_aspect_ratio") || types.has("poor_centering") || types.has("too_small_in_frame") || types.has("too_tightly_cropped")) return "Estimated consistency and presentation lift";
+  if (types.has("google_readiness_warning") || types.has("watermark_or_text_overlay")) return "Product-feed readiness review";
+  if (types.has("cluttered_background") || types.has("inconsistent_background")) return "Cleaner catalogue presentation";
+  return "Manual review priority";
+};
+
+export const rankRecommendedFirstImages = (
+  items: AuditScoringItem[],
+  issues: AuditIssue[],
+  categoryScores: AuditCategoryScore[] = [],
+  limit = 50
+): RecommendedFirstImage[] => {
+  const issueByItem = new Map<string, AuditIssue[]>();
+  const issueByProduct = new Map<string, AuditIssue[]>();
+  for (const issue of issues) {
+    if (issue.item_id) {
+      issueByItem.set(issue.item_id, [...(issueByItem.get(issue.item_id) ?? []), issue]);
+    }
+    if (issue.product_id) {
+      issueByProduct.set(issue.product_id, [...(issueByProduct.get(issue.product_id) ?? []), issue]);
+    }
+  }
+
+  const ranked = items
+    .map<RecommendedFirstImage | null>((item) => {
+      const id = imageKey(item);
+      const matchedIssues = [
+        ...(issueByItem.get(item.id ?? id) ?? []),
+        ...(issueByProduct.get(item.product_id) ?? []).filter((issue) => !issue.item_id)
+      ];
+      const uniqueIssueKeys = new Set<string>();
+      const itemIssues = matchedIssues.filter((issue) => {
+        const key = `${issue.item_id ?? "product"}:${issue.issue_type}:${issue.severity}`;
+        if (uniqueIssueKeys.has(key)) return false;
+        uniqueIssueKeys.add(key);
+        return true;
+      });
+      if (!itemIssues.length) return null;
+
+      const role = imageRole(item);
+      const roleScore = role === "main" ? 120 : role === "variation" ? 76 : role === "gallery" ? 48 : role === "category" || role === "thumbnail" ? 36 : 24;
+      const highestSeverity = itemIssues
+        .map((issue) => issue.severity)
+        .sort((a, b) => severityRank(a) - severityRank(b))[0] ?? "info";
+      const issueScore = itemIssues.reduce((sum, issue) => sum + issueWeight(issue.issue_type) + severityWeight(issue.severity) * 0.25, 0);
+      const weakCategoryScore = categoryPriorityWeight(item, categoryScores);
+      const salesScore = Math.min(50, toNumber(item.product_sales_count) * 1.5);
+      const revenueScore = Math.min(60, toNumber(item.product_revenue) / 100);
+      const priceScore = Math.min(28, toNumber(item.product_price) / 10);
+      const activeScore = item.product_status && ["publish", "active"].includes(item.product_status.toLowerCase()) ? 14 : 0;
+      const stockScore = item.stock_status && ["instock", "in_stock", "in stock"].includes(item.stock_status.toLowerCase()) ? 14 : 0;
+      const updatedAt = item.product_updated_at ? new Date(item.product_updated_at).getTime() : 0;
+      const recentScore = updatedAt && Number.isFinite(updatedAt) && Date.now() - updatedAt < 1000 * 60 * 60 * 24 * 90 ? 10 : 0;
+      const priorityScore = Math.round(roleScore + issueScore + weakCategoryScore + salesScore + revenueScore + priceScore + activeScore + stockScore + recentScore);
+      const reasons = [
+        role === "main" ? "Main product image" : role === "variation" ? "Variation image" : role === "gallery" ? "Gallery image" : "Product image",
+        `${highestSeverity} severity issue`,
+        ...[...new Set(itemIssues.map((issue) => issue.issue_type))].slice(0, 4).map((type) => issueLabel(type)),
+        categoryReason(item, categoryScores),
+        salesScore > 0 || revenueScore > 0 ? "Sales or revenue signal available" : null,
+        priceScore > 0 ? "Higher priced product signal" : null,
+        stockScore > 0 ? "In-stock product" : null,
+        recentScore > 0 ? "Recently updated product" : null
+      ].filter((reason): reason is string => Boolean(reason));
+
+      return {
+        item_id: item.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        product_sku: item.product_sku,
+        product_url: item.product_url,
+        image_id: item.image_id ?? null,
+        image_url: item.image_url ?? null,
+        image_role: role,
+        category_names: item.category_names ?? [],
+        issue_count: itemIssues.length,
+        issue_ids: itemIssues.map((issue) => issue.metadata?.issue_id).filter((id): id is string => typeof id === "string"),
+        highest_severity: highestSeverity,
+        priority_score: priorityScore,
+        reasons,
+        estimated_impact: impactFromIssues(itemIssues),
+        recommended_action: itemIssues[0]?.recommended_action ?? null,
+        selection_rank: 0
+      } satisfies RecommendedFirstImage;
+    })
+    .filter((item): item is RecommendedFirstImage => Boolean(item))
+    .sort((a, b) => {
+      if (b.priority_score !== a.priority_score) return b.priority_score - a.priority_score;
+      if (severityRank(a.highest_severity) !== severityRank(b.highest_severity)) return severityRank(a.highest_severity) - severityRank(b.highest_severity);
+      return b.issue_count - a.issue_count;
+    })
+    .slice(0, Math.max(1, limit))
+    .map((item, index) => ({ ...item, selection_rank: index + 1 }));
+
+  return ranked;
+};
+
+const issueSetFromRecommendations = (recommendations: AuditRecommendation[]): Set<AuditIssueType> => {
+  const issueTypes = new Set<AuditIssueType>();
+  for (const recommendation of recommendations) {
+    for (const type of issueTypesFromRecommendation(recommendation)) {
+      issueTypes.add(type);
+    }
+  }
+  if (!issueTypes.size) {
+    [
+      "missing_alt_text",
+      "weak_alt_text",
+      "generic_filename",
+      "duplicate_filename",
+      "oversized_file",
+      "huge_dimensions",
+      "missing_webp",
+      "inconsistent_aspect_ratio",
+      "inconsistent_background",
+      "too_small_in_frame",
+      "too_tightly_cropped",
+      "poor_centering",
+      "google_readiness_warning",
+      "watermark_or_text_overlay",
+      "missing_main_image"
+    ].forEach((type) => issueTypes.add(type as AuditIssueType));
+  }
+  return issueTypes;
+};
+
+const scoreImpactForTypes = (
+  issues: AuditIssue[],
+  issueTypes: Set<AuditIssueType>
+): Partial<Record<ForecastScoreKey, number>> => {
+  const count = (types: AuditIssueType[]): number => issues.filter((issue) => issueTypes.has(issue.issue_type) && types.includes(issue.issue_type)).length;
+  return {
+    seo_score: Math.min(36, count(["missing_alt_text", "weak_alt_text"]) * 3 + count(["generic_filename", "duplicate_filename"]) * 1.2),
+    performance_score: Math.min(30, count(["oversized_file", "huge_dimensions", "missing_webp"]) * 2.2),
+    catalogue_consistency_score: Math.min(28, count(["inconsistent_aspect_ratio", "inconsistent_background", "inconsistent_product_scale", "inconsistent_padding", "poor_centering"]) * 2.4),
+    image_quality_score: Math.min(22, count(["cluttered_background", "low_resolution", "likely_blurry", "low_contrast", "over_dark", "over_bright", "too_small_in_frame", "too_tightly_cropped"]) * 1.8),
+    completeness_score: Math.min(18, count(["missing_main_image", "product_has_single_image"]) * 4),
+    google_shopping_readiness_score: Math.min(28, count(["google_readiness_warning", "watermark_or_text_overlay", "too_tightly_cropped", "low_resolution"]) * 2.5)
+  };
+};
+
+export const calculateFixImpactForecast = (
+  metrics: AuditMetrics,
+  issues: AuditIssue[],
+  recommendations: AuditRecommendation[] = []
+): FixImpactForecast => {
+  const selectedIssueTypes = issueSetFromRecommendations(recommendations);
+  const selectedIssues = issues.filter((issue) => selectedIssueTypes.has(issue.issue_type));
+  const impact = scoreImpactForTypes(issues, selectedIssueTypes);
+  const estimated = {
+    seo_score: clampScore(metrics.seo_score + (impact.seo_score ?? 0)),
+    image_quality_score: clampScore(metrics.image_quality_score + (impact.image_quality_score ?? 0)),
+    catalogue_consistency_score: clampScore(metrics.catalogue_consistency_score + (impact.catalogue_consistency_score ?? 0)),
+    performance_score: clampScore(metrics.performance_score + (impact.performance_score ?? 0)),
+    completeness_score: clampScore(metrics.completeness_score + (impact.completeness_score ?? 0)),
+    google_shopping_readiness_score: clampScore(metrics.google_shopping_readiness_score + (impact.google_shopping_readiness_score ?? 0)),
+    product_image_health_score: 0
+  };
+  estimated.product_image_health_score = clampScore(
+    estimated.seo_score * 0.25 +
+    estimated.image_quality_score * 0.25 +
+    estimated.catalogue_consistency_score * 0.2 +
+    estimated.performance_score * 0.2 +
+    estimated.completeness_score * 0.1
+  );
+  const baseline = {
+    product_image_health_score: metrics.product_image_health_score,
+    seo_score: metrics.seo_score,
+    image_quality_score: metrics.image_quality_score,
+    catalogue_consistency_score: metrics.catalogue_consistency_score,
+    performance_score: metrics.performance_score,
+    completeness_score: metrics.completeness_score,
+    google_shopping_readiness_score: metrics.google_shopping_readiness_score
+  };
+  const roi = calculateRoiEstimate(selectedIssues, []);
+  const recommendation_impacts = recommendations.map((recommendation) => {
+    const issueTypes = issueTypesFromRecommendation(recommendation);
+    return {
+      title: recommendation.title,
+      action_type: recommendation.action_type,
+      priority: recommendation.priority,
+      estimated_images_affected: recommendation.estimated_images_affected,
+      issue_types: issueTypes,
+      score_impacts: scoreImpactForTypes(issues, new Set(issueTypes))
+    };
+  });
+
+  return {
+    baseline,
+    estimated,
+    deltas: {
+      product_image_health_score: clampScore(estimated.product_image_health_score - baseline.product_image_health_score),
+      seo_score: clampScore(estimated.seo_score - baseline.seo_score),
+      image_quality_score: clampScore(estimated.image_quality_score - baseline.image_quality_score),
+      catalogue_consistency_score: clampScore(estimated.catalogue_consistency_score - baseline.catalogue_consistency_score),
+      performance_score: clampScore(estimated.performance_score - baseline.performance_score),
+      completeness_score: clampScore(estimated.completeness_score - baseline.completeness_score),
+      google_shopping_readiness_score: clampScore(estimated.google_shopping_readiness_score - baseline.google_shopping_readiness_score)
+    },
+    estimated_manual_minutes_low: roi.estimated_manual_minutes_low,
+    estimated_manual_minutes_high: roi.estimated_manual_minutes_high,
+    estimated_manual_hours_low: Number((roi.estimated_manual_minutes_low / 60).toFixed(1)),
+    estimated_manual_hours_high: Number((roi.estimated_manual_minutes_high / 60).toFixed(1)),
+    selected_issue_types: [...selectedIssueTypes],
+    assumptions: [
+      "Estimated score lift is conservative and based on issue types that selected recommendations are expected to resolve.",
+      "This forecast does not promise SEO ranking improvement, conversion lift, or product-feed approval.",
+      "Sales, revenue, price, stock and recency are used only when WooCommerce data is available; otherwise ranking falls back to severity, image role and category priority."
+    ],
+    recommendation_impacts
+  };
 };

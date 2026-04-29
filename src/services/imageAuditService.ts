@@ -4,10 +4,12 @@ import type { ImageStudioAuthContext } from "../middleware/imageStudioAuth";
 import type { ImageAuditActionType, ImageAuditItemInput, ImageAuditSeverity } from "../types/imageAudit";
 import {
   calculateAuditMetrics,
+  calculateFixImpactForecast,
   generateCategoryScores,
   generateInsights as generateAuditInsights,
   generateIssues as generateAuditIssues,
   generateRecommendations as generateAuditRecommendations,
+  rankRecommendedFirstImages,
   type AuditCategoryScore,
   type AuditIssue,
   type AuditMetrics,
@@ -62,6 +64,22 @@ type AuditItemRow = {
   alt_text: string | null;
   image_title: string | null;
   caption: string | null;
+  aspect_ratio?: number | null;
+  background_style?: string | null;
+  detected_product_bbox?: unknown;
+  product_area_ratio?: number | null;
+  brightness_score?: number | null;
+  contrast_score?: number | null;
+  sharpness_score?: number | null;
+  clutter_score?: number | null;
+  quality_score?: number | null;
+  seo_score?: number | null;
+  consistency_score?: number | null;
+  performance_score?: number | null;
+  google_readiness_score?: number | null;
+  issue_count?: number | null;
+  highest_severity?: string | null;
+  recommended_action?: string | null;
 };
 
 type ScoreBundle = {
@@ -190,7 +208,15 @@ const toScoringItem = (item: AuditItemRow): AuditScoringItem => ({
   file_size_bytes: item.file_size_bytes,
   alt_text: item.alt_text,
   image_title: item.image_title,
-  caption: item.caption
+  caption: item.caption,
+  aspect_ratio: item.aspect_ratio,
+  background_style: item.background_style,
+  detected_product_bbox: item.detected_product_bbox,
+  product_area_ratio: item.product_area_ratio,
+  brightness_score: item.brightness_score,
+  contrast_score: item.contrast_score,
+  sharpness_score: item.sharpness_score,
+  clutter_score: item.clutter_score
 });
 
 const toScoreBundle = (metrics: AuditMetrics): ScoreBundle => ({
@@ -461,6 +487,29 @@ const serializeRecord = (row: Record<string, unknown> | null): Record<string, un
       typeof value === "bigint" ? Number(value) : value instanceof Date ? value.toISOString() : value
     ])
   );
+};
+
+const numberFromRecord = (row: Record<string, unknown> | null | undefined, key: string, fallback: number): number => {
+  const value = row?.[key];
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return fallback;
+};
+
+const metricsForForecast = (
+  row: Record<string, unknown> | null | undefined,
+  fallback: AuditMetrics
+): AuditMetrics => {
+  const merged = { ...fallback };
+  for (const key of Object.keys(fallback) as Array<keyof AuditMetrics>) {
+    if (typeof fallback[key] === "number") {
+      (merged as Record<string, unknown>)[key] = numberFromRecord(row, String(key), fallback[key] as number);
+    } else if (row?.[String(key)] !== undefined) {
+      (merged as Record<string, unknown>)[key] = row[String(key)];
+    }
+  }
+  return merged;
 };
 
 const requireUuid = (value: string): string => {
@@ -1745,7 +1794,7 @@ export const getAuditReport = async (
       "display_order" ASC
     LIMIT ${recommendationLimit}
   `;
-  const categoryScores = options.topOnly ? [] : await prisma.$queryRaw<Array<Record<string, unknown>>>`
+  const categoryScores = await prisma.$queryRaw<Array<Record<string, unknown>>>`
     SELECT *
     FROM "image_audit_category_scores"
     WHERE "scan_id" = ${scan.id}::uuid
@@ -1759,38 +1808,86 @@ export const getAuditReport = async (
       END,
       "issue_count" DESC
   `;
-  const topItems = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT
-      "id"::text,
-      "product_id",
-      "product_name",
-      "product_url",
-      "product_sku",
-      "image_id",
-      "image_url",
-      "image_role",
-      "issue_count",
-      "highest_severity",
-      "recommended_action",
-      "seo_score",
-      "quality_score",
-      "performance_score",
-      "google_readiness_score"
+  const allItems = await prisma.$queryRaw<AuditItemRow[]>`
+    SELECT *
     FROM "image_audit_items"
     WHERE "scan_id" = ${scan.id}::uuid
       AND "store_id" = ${scan.store_id}
-      AND "issue_count" > 0
-    ORDER BY
-      CASE "highest_severity"
-        WHEN 'critical' THEN 1
-        WHEN 'high' THEN 2
-        WHEN 'medium' THEN 3
-        WHEN 'low' THEN 4
-        ELSE 5
-      END,
-      "issue_count" DESC
-    LIMIT 20
+    ORDER BY "created_at" ASC
   `;
+  const allIssues = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT
+      "id"::text,
+      "audit_item_id"::text,
+      "product_id",
+      "image_id",
+      "issue_type",
+      "severity",
+      "title",
+      "description",
+      "recommended_action",
+      "action_type",
+      "confidence_score",
+      "metadata"
+    FROM "image_audit_issues"
+    WHERE "scan_id" = ${scan.id}::uuid
+      AND "store_id" = ${scan.store_id}
+      AND "status" <> 'ignored'
+  `;
+  const reportItems = allItems.map(toScoringItem);
+  const reportIssues = allIssues.map((issue): AuditIssue => {
+    const metadata = typeof issue.metadata === "object" && issue.metadata !== null && !Array.isArray(issue.metadata)
+      ? issue.metadata as Record<string, unknown>
+      : {};
+    return {
+      item_id: typeof issue.audit_item_id === "string" ? issue.audit_item_id : undefined,
+      product_id: typeof issue.product_id === "string" ? issue.product_id : undefined,
+      image_id: typeof issue.image_id === "string" ? issue.image_id : null,
+      issue_type: String(issue.issue_type) as AuditIssue["issue_type"],
+      severity: String(issue.severity) as AuditIssue["severity"],
+      title: String(issue.title ?? ""),
+      description: String(issue.description ?? ""),
+      recommended_action: String(issue.recommended_action ?? ""),
+      action_type: issue.action_type ? String(issue.action_type) as AuditIssue["action_type"] : undefined,
+      confidence_score: numberFromRecord(issue, "confidence_score", 0),
+      metadata: { ...metadata, issue_id: issue.id }
+    };
+  });
+  const categoryModels: AuditCategoryScore[] = categoryScores.map((category) => ({
+    category_id: typeof category.category_id === "string" ? category.category_id : null,
+    category_name: String(category.category_name ?? "Uncategorised"),
+    products_scanned: numberFromRecord(category, "products_scanned", 0),
+    images_scanned: numberFromRecord(category, "images_scanned", 0),
+    health_score: numberFromRecord(category, "health_score", 0),
+    seo_score: numberFromRecord(category, "seo_score", 0),
+    quality_score: numberFromRecord(category, "quality_score", 0),
+    consistency_score: numberFromRecord(category, "consistency_score", 0),
+    performance_score: numberFromRecord(category, "performance_score", 0),
+    priority: String(category.priority ?? "medium") as AuditCategoryScore["priority"],
+    issue_count: numberFromRecord(category, "issue_count", 0),
+    critical_issue_count: numberFromRecord(category, "critical_issue_count", 0),
+    high_issue_count: numberFromRecord(category, "high_issue_count", 0),
+    medium_issue_count: numberFromRecord(category, "medium_issue_count", 0),
+    low_issue_count: numberFromRecord(category, "low_issue_count", 0),
+    top_issue_type: typeof category.top_issue_type === "string" ? category.top_issue_type as AuditCategoryScore["top_issue_type"] : null,
+    recommendation: typeof category.recommendation === "string" ? category.recommendation : null
+  }));
+  const recommendationModels: AuditRecommendation[] = recommendations.map((recommendation, index) => ({
+    title: String(recommendation.title ?? "Recommended fix"),
+    description: String(recommendation.description ?? ""),
+    priority: String(recommendation.priority ?? "medium") as AuditRecommendation["priority"],
+    action_type: String(recommendation.action_type ?? "manual_review") as AuditRecommendation["action_type"],
+    estimated_images_affected: numberFromRecord(recommendation, "estimated_images_affected", 0),
+    estimated_minutes_saved_low: numberFromRecord(recommendation, "estimated_minutes_saved_low", 0),
+    estimated_minutes_saved_high: numberFromRecord(recommendation, "estimated_minutes_saved_high", 0),
+    action_filter: typeof recommendation.action_filter === "object" && recommendation.action_filter !== null && !Array.isArray(recommendation.action_filter)
+      ? recommendation.action_filter as Record<string, unknown>
+      : {},
+    display_order: numberFromRecord(recommendation, "display_order", index + 1)
+  }));
+  const forecastMetrics = metricsForForecast(metricRows[0], calculateAuditMetrics(reportItems));
+  const recommendedFirst50 = rankRecommendedFirstImages(reportItems, reportIssues, categoryModels, 50);
+  const fixImpactForecast = calculateFixImpactForecast(forecastMetrics, reportIssues, recommendationModels);
 
   return {
     scan: serializeRecord(scan),
@@ -1799,7 +1896,9 @@ export const getAuditReport = async (
     [options.topOnly ? "top_recommendations" : "recommendations"]: recommendations.map(serializeRecord),
     ...(options.topOnly ? {} : { category_scores: categoryScores.map(serializeRecord) }),
     issue_summary: await getIssueSummary(scan),
-    top_items_needing_attention: topItems.map(serializeRecord)
+    top_items_needing_attention: recommendedFirst50.slice(0, 20),
+    recommended_first_50_images: recommendedFirst50,
+    fix_impact_forecast: fixImpactForecast
   };
 };
 
