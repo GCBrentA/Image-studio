@@ -1,5 +1,5 @@
 import cors from "cors";
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import path from "path";
 import { optivraContentSecurityPolicyDirectives } from "./config/contentSecurityPolicy";
@@ -103,34 +103,34 @@ app.get("/account/dashboard", (request, response, next) => {
 app.use("/api/image-studio", imageAuditRoutes);
 const requireImageStudioAuth = [requireDatabase, imageStudioAuth];
 const registerImageStudioAuditRoutes = (prefix: string) => {
-  app.post(`${prefix}/audits/start`, requireImageStudioAuth, (request, response, next) => {
+  app.post(`${prefix}/audits/start`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     startImageAudit(request, response).catch(next);
   });
-  app.get(`${prefix}/audits/latest`, requireImageStudioAuth, (request, response, next) => {
+  app.get(`${prefix}/audits/latest`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     getLatestImageAudit(request, response).catch(next);
   });
-  app.post(`${prefix}/audits/:scan_id/items`, requireImageStudioAuth, (request, response, next) => {
+  app.post(`${prefix}/audits/:scan_id/items`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     addImageAuditItems(request, response).catch(next);
   });
-  app.post(`${prefix}/audits/:scan_id/complete`, requireImageStudioAuth, (request, response, next) => {
+  app.post(`${prefix}/audits/:scan_id/complete`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     completeImageAudit(request, response).catch(next);
   });
-  app.get(`${prefix}/audits/:scan_id`, requireImageStudioAuth, (request, response, next) => {
+  app.get(`${prefix}/audits/:scan_id`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     getImageAuditReport(request, response).catch(next);
   });
-  app.get(`${prefix}/audits/:scan_id/issues`, requireImageStudioAuth, (request, response, next) => {
+  app.get(`${prefix}/audits/:scan_id/issues`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     listImageAuditIssues(request, response).catch(next);
   });
-  app.get(`${prefix}/audits/:scan_id/items`, requireImageStudioAuth, (request, response, next) => {
+  app.get(`${prefix}/audits/:scan_id/items`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     listImageAuditItems(request, response).catch(next);
   });
-  app.post(`${prefix}/audits/:scan_id/issues/ignore`, requireImageStudioAuth, (request, response, next) => {
+  app.post(`${prefix}/audits/:scan_id/issues/ignore`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     ignoreImageAuditIssues(request, response).catch(next);
   });
-  app.post(`${prefix}/audits/:scan_id/issues/queue`, requireImageStudioAuth, (request, response, next) => {
+  app.post(`${prefix}/audits/:scan_id/issues/queue`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     queueImageAuditIssues(request, response).catch(next);
   });
-  app.post(`${prefix}/audits/:scan_id/queue-recommendation`, requireImageStudioAuth, (request, response, next) => {
+  app.post(`${prefix}/audits/:scan_id/queue-recommendation`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     queueImageAuditRecommendation(request, response).catch(next);
   });
 };
