@@ -43,11 +43,9 @@
         <a href="/docs" data-link>Docs</a>
         <a href="/support" data-link>Support</a>
         <a href="/admin/plugin-analytics" data-link data-admin-only hidden>Admin</a>
+        <div class="mobile-account-shortcuts" id="mobile-account-shortcuts" hidden aria-label="Account actions"></div>
       </nav>
-      <div class="header-actions">
-        <a class="button ghost" href="/login" data-link data-analytics="click_open_admin">Login</a>
-        <a class="button primary" href="/free-woocommerce-image-audit" data-link data-analytics="click_run_free_audit">Run Free Audit</a>
-      </div>
+      <div class="header-actions" id="header-auth-actions" aria-live="polite"></div>
     </header>
 
     <main>
@@ -930,30 +928,32 @@
         <div class="download-modal__backdrop" data-download-close></div>
         <div class="download-modal__dialog" role="dialog" aria-modal="true">
           <button class="download-modal__close" type="button" data-download-close aria-label="Close download form">×</button>
-          <p class="eyebrow">Free plugin download</p>
-          <h2 id="download-modal-title">Get your Optivra plugin download</h2>
-          <p id="download-modal-copy">Enter your email and we will start the download, send setup help, and keep you in control of follow-up messages.</p>
-          <form id="plugin-download-form" class="download-lead-form">
-            <input type="hidden" name="plugin_slug" id="download-plugin-slug" value="optivra-image-studio" />
-            <label>Email address <input type="email" name="email" required autocomplete="email" /></label>
-            <label>Name <input type="text" name="name" autocomplete="name" /></label>
-            <label>Store URL <input type="url" name="store_url" placeholder="https://example.com" /></label>
-            <label class="checkbox-row"><input type="checkbox" name="consent_product_updates" checked /> Send me plugin setup help and important product updates.</label>
-            <label class="checkbox-row"><input type="checkbox" name="consent_marketing" /> Send me occasional Optivra tips, feature updates and offers.</label>
-            <label class="checkbox-row"><input type="checkbox" name="consent_feedback" checked /> I am happy to receive a follow-up asking for feedback.</label>
-            <p class="privacy-note">We use your email to send the download link, setup help, product updates, and feedback requests according to your choices. You can unsubscribe at any time.</p>
-            <div class="form-actions">
-              <button class="button primary" type="submit">Get Download Link</button>
-              <button class="button ghost" type="button" data-download-close>Cancel</button>
-            </div>
-            <p class="form-message" id="plugin-download-message"></p>
-          </form>
-          <div class="download-success" id="plugin-download-success" hidden>
-            <h3>Download ready</h3>
-            <p id="plugin-download-success-copy">Your download should start automatically.</p>
-            <div class="download-actions">
-              <a class="button primary" id="plugin-download-direct" href="#">Direct download</a>
-              <a class="button ghost" id="plugin-download-setup" href="/docs" data-link>Setup guide</a>
+          <div class="download-modal__content">
+            <p class="eyebrow">Free plugin download</p>
+            <h2 id="download-modal-title">Get your Optivra plugin download</h2>
+            <p id="download-modal-copy">Enter your email and we will start the download, send setup help, and keep you in control of follow-up messages.</p>
+            <form id="plugin-download-form" class="download-lead-form">
+              <input type="hidden" name="plugin_slug" id="download-plugin-slug" value="optivra-image-studio" />
+              <label>Email address <input type="email" name="email" required autocomplete="email" /></label>
+              <label>Name <input type="text" name="name" autocomplete="name" /></label>
+              <label>Store URL <input type="url" name="store_url" placeholder="https://example.com" /></label>
+              <label class="checkbox-row"><input type="checkbox" name="consent_product_updates" checked /> Send me plugin setup help and important product updates.</label>
+              <label class="checkbox-row"><input type="checkbox" name="consent_marketing" /> Send me occasional Optivra tips, feature updates and offers.</label>
+              <label class="checkbox-row"><input type="checkbox" name="consent_feedback" checked /> I am happy to receive a follow-up asking for feedback.</label>
+              <p class="privacy-note">We use your email to send the download link, setup help, product updates, and feedback requests according to your choices. You can unsubscribe at any time.</p>
+              <div class="form-actions">
+                <button class="button primary" type="submit">Get Download Link</button>
+                <button class="button ghost" type="button" data-download-close>Cancel</button>
+              </div>
+              <p class="form-message" id="plugin-download-message"></p>
+            </form>
+            <div class="download-success" id="plugin-download-success" hidden>
+              <h3>Download ready</h3>
+              <p id="plugin-download-success-copy">Your download should start automatically.</p>
+              <div class="download-actions">
+                <a class="button primary" id="plugin-download-direct" href="#">Direct download</a>
+                <a class="button ghost" id="plugin-download-setup" href="/docs" data-link>Setup guide</a>
+              </div>
             </div>
           </div>
         </div>

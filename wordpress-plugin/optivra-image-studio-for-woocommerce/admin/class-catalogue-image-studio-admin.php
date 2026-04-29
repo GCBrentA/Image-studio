@@ -564,8 +564,12 @@ class Catalogue_Image_Studio_Admin {
 		$settings['api_token'] = ('' !== $posted_token && $posted_token !== $placeholder_token && false === strpos($posted_token, '*'))
 			? $posted_token
 			: (string) $settings['api_token'];
-		$settings['api_base_url_override']   = isset($input['api_base_url_override']) ? esc_url_raw((string) $input['api_base_url_override']) : (string) ($settings['api_base_url_override'] ?? '');
-		$settings['api_base_url']            = '' !== (string) $settings['api_base_url_override'] ? (string) $settings['api_base_url_override'] : (string) $defaults['api_base_url'];
+		$settings['api_base_url_override'] = isset($input['api_base_url_override'])
+			? Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $input['api_base_url_override'])
+			: Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) ($settings['api_base_url_override'] ?? ''));
+		$settings['api_base_url']          = '' !== (string) $settings['api_base_url_override']
+			? (string) $settings['api_base_url_override']
+			: Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $defaults['api_base_url']);
 		$settings['require_approval']        = ! empty($input['require_approval']);
 		$settings['approval_required']       = $settings['require_approval'];
 		$settings['auto_process_new_images'] = ! empty($input['auto_process_new_images']);
@@ -5060,7 +5064,12 @@ class Catalogue_Image_Studio_Admin {
 			}
 		}
 
-		return untrailingslashit((string) ($settings['api_base_url'] ?? 'https://www.optivra.app'));
+		$api_base_url = (string) ($settings['api_base_url'] ?? 'https://www.optivra.app');
+		if (class_exists('Catalogue_Image_Studio_SaaSClient')) {
+			$api_base_url = Catalogue_Image_Studio_SaaSClient::normalize_api_base_url($api_base_url);
+		}
+
+		return untrailingslashit($api_base_url ?: 'https://www.optivra.app');
 	}
 
 	private function normalize_account_url(string $url, string $fallback_path): string {

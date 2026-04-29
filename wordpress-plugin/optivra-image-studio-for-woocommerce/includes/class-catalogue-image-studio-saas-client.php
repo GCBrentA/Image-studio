@@ -17,7 +17,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	private Catalogue_Image_Studio_Logger $logger;
 
 	public function __construct(string $api_base_url, string $api_token, Catalogue_Image_Studio_Logger $logger) {
-		$this->api_base_url = untrailingslashit($api_base_url);
+		$this->api_base_url = self::normalize_api_base_url($api_base_url);
 		$this->api_token    = $api_token;
 		$this->logger       = $logger;
 	}
@@ -28,23 +28,106 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * The recommended base URL is the site origin, for example https://www.optivra.app.
 	 * This helper also supports older overrides that include /api without creating /api/api.
 	 */
-	public static function build_api_url_for_base(string $api_base_url, string $endpoint): string {
-		$base = rtrim(trim($api_base_url), '/');
-		$path = '/' . ltrim(trim($endpoint), '/');
+	public static function normalize_api_base_url(string $api_base_url): string {
+		$base = trim(esc_url_raw($api_base_url));
 
 		if ('' === $base) {
-			return $path;
+			return '';
 		}
 
-		$base_path = (string) parse_url($base, PHP_URL_PATH);
-		$base_path = rtrim($base_path, '/');
-		if ('' !== $base_path && 0 === strpos($path, $base_path . '/')) {
-			$path = substr($path, strlen($base_path));
-		} elseif ('/api' === $base_path && 0 === strpos($path, '/api/')) {
-			$path = substr($path, 4);
+		$base_parts = wp_parse_url($base);
+		if (false === $base_parts || empty($base_parts['scheme']) || empty($base_parts['host'])) {
+			return untrailingslashit($base);
 		}
 
-		return $base . $path;
+		$base_path = isset($base_parts['path']) ? (string) $base_parts['path'] : '';
+		$base_path = strtolower(trim($base_path, '/'));
+		if ('' !== $base_path) {
+			$segments = array_values(array_filter(explode('/', $base_path), 'strlen'));
+			while (! empty($segments) && 'api' === end($segments)) {
+				array_pop($segments);
+			}
+			$base_path = '' === implode('/', $segments) ? '' : '/' . implode('/', $segments);
+		}
+
+		$normalized_base = $base_parts['scheme'] . '://' . $base_parts['host'];
+		if (isset($base_parts['port']) && '' !== (string) $base_parts['port']) {
+			$normalized_base .= ':' . (string) $base_parts['port'];
+		}
+
+		return untrailingslashit($normalized_base . $base_path);
+	}
+
+	public static function build_api_url_for_base(string $api_base_url, string $endpoint): string {
+		$base = self::normalize_api_base_url($api_base_url);
+		$base = untrailingslashit(trim($base));
+		$endpoint = trim($endpoint);
+
+		$endpoint_parts = wp_parse_url($endpoint);
+		$endpoint_path  = isset($endpoint_parts['path']) ? (string) $endpoint_parts['path'] : '';
+		$endpoint_path  = '/' . ltrim($endpoint_path, '/');
+		while (preg_match('#^/api(?:/|$)#', $endpoint_path)) {
+			$endpoint_path = '/' . ltrim((string) preg_replace('#^/api(?:/|$)#', '', $endpoint_path), '/');
+		}
+		if ('/' === $endpoint_path) {
+			$endpoint_path = '';
+		}
+		$endpoint_path = preg_replace('#/+#', '/', $endpoint_path);
+		if (is_string($endpoint_path)) {
+			$endpoint_path = '/' . ltrim($endpoint_path, '/');
+		}
+
+		$query = isset($endpoint_parts['query']) ? '?' . trim((string) $endpoint_parts['query']) : '';
+		$fragment = isset($endpoint_parts['fragment']) ? '#' . trim((string) $endpoint_parts['fragment']) : '';
+		$final_path = '/api' . $endpoint_path . $query . $fragment;
+		$endpoint_path = self::collapse_duplicate_api_prefix($final_path);
+		$final_path   = $endpoint_path;
+
+		if ('' === $base) {
+			return $final_path;
+		}
+
+		$url = $base . $final_path;
+
+		return $url;
+	}
+
+	private static function collapse_duplicate_api_prefix(string $path): string {
+		if ('' === $path) {
+			return '/api';
+		}
+
+		while (false !== strpos($path, '/api/api')) {
+			$path = preg_replace('#/api/api#', '/api', $path);
+		}
+
+		$path = preg_replace('#/+#', '/', $path);
+		return $path;
+	}
+
+	private function normalize_request_url(string $path, string $method): string {
+		$url = $this->build_api_url($path);
+		if (false === strpos($url, '/api/api/') && ! preg_match('#/api/api$#', $url)) {
+			return $url;
+		}
+
+		$before = $url;
+		while (preg_match('#/api/api(?=/|$)#', $url)) {
+			$url = preg_replace('#/api/api(?=/|$)#', '/api', $url);
+		}
+		$url = preg_replace('#/+#', '/', $url);
+
+		$this->logger->warning(
+			'Optivra API URL normalized to remove duplicate /api segment.',
+			[
+				'method'        => strtoupper($method),
+				'endpoint_path' => $path,
+				'original_url'  => $before,
+				'normalized_url'=> $url,
+			]
+		);
+
+		return $url;
 	}
 
 	/**
@@ -62,7 +145,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			);
 		}
 
-		$url = $this->build_api_url('/images/process');
+		$url = $this->normalize_request_url('/images/process', 'POST');
 		$response = wp_remote_post(
 			$url,
 			[
@@ -151,7 +234,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			);
 		}
 
-		$url = $this->build_api_url('/usage');
+		$url = $this->normalize_request_url('/usage', 'GET');
 		$response = wp_remote_get(
 			$url,
 			[
@@ -209,7 +292,8 @@ class Catalogue_Image_Studio_SaaSClient {
 				'source'       => 'woocommerce',
 				'scan_options' => $scan_options,
 			],
-			30
+			30,
+			true
 		);
 	}
 
@@ -453,7 +537,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			return;
 		}
 
-		$url = $this->build_api_url('/api/plugin/events');
+		$url = $this->normalize_request_url('/api/plugin/events', 'POST');
 		$response = wp_remote_post(
 			$url,
 			[
@@ -630,7 +714,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * @param int                 $timeout Timeout seconds.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	private function request_json(string $method, string $path, array $payload = [], int $timeout = 30) {
+	private function request_json(string $method, string $path, array $payload = [], int $timeout = 30, bool $log_response_body = false) {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
 				'catalogue_image_studio_missing_api_settings',
@@ -649,10 +733,10 @@ class Catalogue_Image_Studio_SaaSClient {
 		if ('POST' === strtoupper($method)) {
 			$args['headers']['Content-Type'] = 'application/json';
 			$args['body'] = wp_json_encode($payload);
-			$url = $this->build_api_url($path);
+			$url = $this->normalize_request_url($path, 'POST');
 			$response = wp_remote_post($url, $args);
 		} else {
-			$url = $this->build_api_url($path);
+			$url = $this->normalize_request_url($path, 'GET');
 			$response = wp_remote_get($url, $args);
 		}
 		$this->log_http_request(
@@ -682,7 +766,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		$status_code = (int) wp_remote_retrieve_response_code($response);
 		$body        = (string) wp_remote_retrieve_body($response);
 		$decoded     = json_decode($body, true);
-		$response_body_debug = $this->sanitize_response_body_for_debug($body);
+			$response_body_debug = $this->sanitize_response_body_for_debug($body);
 
 		if (! is_array($decoded)) {
 			return new WP_Error(
@@ -705,6 +789,18 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
+			if ($log_response_body && ! empty($response_body_debug)) {
+				$this->logger->error(
+					'Optivra audit route may have returned an unexpected payload.',
+					[
+						'method'        => strtoupper($method),
+						'url'           => $url,
+						'endpoint_path' => $path,
+						'status'        => $status_code,
+						'response_body' => $response_body_debug,
+					]
+				);
+			}
 			$error_data = [
 				'method'             => strtoupper($method),
 				'url'                => $url,

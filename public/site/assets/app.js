@@ -211,6 +211,9 @@ const blogArticles = [
 ];
 let currentUser = null;
 let currentUserLoaded = false;
+let headerAccountMenuOpen = false;
+const authActionsRoot = document.getElementById("header-auth-actions");
+const mobileHeaderShortcuts = document.getElementById("mobile-account-shortcuts");
 
 function token() {
   return localStorage.getItem(tokenKey) || "";
@@ -218,6 +221,141 @@ function token() {
 
 function setToken(value) {
   localStorage.setItem(tokenKey, value);
+}
+
+function userDisplayName(user = {}) {
+  const firstName = String(user.first_name || "").trim();
+  const displayName = String(user.display_name || user.name || "").trim();
+  const email = String(user.email || "").trim();
+  if (displayName) return displayName;
+  if (firstName) return firstName;
+  if (email) return email.split("@")[0] || "Account";
+  return "Account";
+}
+
+function userDisplayLabel(user = {}) {
+  const name = userDisplayName(user);
+  return name.length > 18 ? `${name.slice(0, 16)}…` : name;
+}
+
+function userInitials(user = {}) {
+  const primary = userDisplayName(user);
+  if (!primary || primary === "Account") return "AU";
+  const parts = String(primary).trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+}
+
+function closeHeaderAccountMenu() {
+  if (!headerActionsRoot) return;
+  const menu = headerActionsRoot.querySelector("#header-account-menu");
+  const trigger = headerActionsRoot.querySelector("#header-account-trigger");
+  if (menu) menu.hidden = true;
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+  headerAccountMenuOpen = false;
+}
+
+function toggleHeaderAccountMenu() {
+  if (!headerActionsRoot) return;
+  const menu = headerActionsRoot.querySelector("#header-account-menu");
+  const trigger = headerActionsRoot.querySelector("#header-account-trigger");
+  if (!menu || !trigger) return;
+  headerAccountMenuOpen = !headerAccountMenuOpen;
+  menu.hidden = !headerAccountMenuOpen;
+  trigger.setAttribute("aria-expanded", String(headerAccountMenuOpen));
+}
+
+function updateMobileAuthShortcuts() {
+  if (!mobileHeaderShortcuts) return;
+
+  if (!currentUserLoaded) {
+    mobileHeaderShortcuts.hidden = true;
+    mobileHeaderShortcuts.innerHTML = "";
+    return;
+  }
+
+  if (!currentUser) {
+    mobileHeaderShortcuts.hidden = true;
+    mobileHeaderShortcuts.innerHTML = "";
+    return;
+  }
+
+  const portalHref = "/dashboard";
+  mobileHeaderShortcuts.hidden = false;
+  mobileHeaderShortcuts.innerHTML = `
+    <div class="mobile-auth-title">Account</div>
+    <a href="${portalHref}" data-link>Portal</a>
+    <a href="/account" data-link>My Account</a>
+    <a href="/account/billing" data-link>Billing</a>
+    <a href="/support" data-link>Support</a>
+    <button type="button" data-auth-logout>Log out</button>
+  `;
+}
+
+function updateAuthActions() {
+  if (!authActionsRoot) return;
+  if (!currentUserLoaded) {
+    authActionsRoot.innerHTML = `
+      <div class="header-auth-loading" role="status" aria-live="polite" aria-label="Checking your account session">
+        <span class="header-skeleton-pill"></span>
+      </div>
+    `;
+    return;
+  }
+
+  if (!currentUser) {
+    authActionsRoot.innerHTML = `
+      <a class="button ghost" href="/login" data-link data-analytics="click_open_admin">Login</a>
+      <a class="button primary" href="/free-woocommerce-image-audit" data-link data-analytics="click_run_free_audit">Run Free Audit</a>
+    `;
+    closeHeaderAccountMenu();
+    updateMobileAuthShortcuts();
+    return;
+  }
+
+  const accountName = userDisplayName(currentUser);
+  const accountLabel = userDisplayLabel(currentUser);
+  const signedInLine = String(currentUser.email || currentUser.display_name || accountName || "account");
+  const portalHref = "/dashboard";
+  const menuId = "header-account-menu";
+  const triggerId = "header-account-trigger";
+  const avatar = userInitials(currentUser);
+
+  authActionsRoot.innerHTML = `
+    <a class="button ghost header-portal-btn" href="${portalHref}" data-link aria-label="Open portal">Portal</a>
+    <div class="account-menu-wrap">
+      <button id="${triggerId}" class="account-chip" type="button" data-auth-account-trigger aria-expanded="false" aria-controls="${menuId}" aria-haspopup="menu" aria-label="Open account menu">
+        <span class="account-avatar" aria-hidden="true">${escapeHtml(avatar)}</span>
+        <span class="account-chip-text" title="${escapeHtml(accountName)}">${escapeHtml(accountLabel)}</span>
+        <span class="account-chip-caret" aria-hidden="true">&#9662;</span>
+      </button>
+      <div id="${menuId}" class="account-dropdown" hidden>
+        <p class="account-meta">Signed in as</p>
+        <p class="account-meta-value" title="${escapeHtml(signedInLine)}">${escapeHtml(signedInLine)}</p>
+        <a href="/account" data-link>My Account</a>
+        <a href="${portalHref}" data-link>Portal / Dashboard</a>
+        <a href="/account/billing" data-link>Billing</a>
+        <a href="/settings" data-link>Connected Stores</a>
+        <a href="/downloads" data-link>Downloads</a>
+        <a href="/support" data-link>Support</a>
+        <button type="button" data-auth-logout>Log out</button>
+      </div>
+    </div>
+  `;
+  updateMobileAuthShortcuts();
+}
+
+function handleHeaderAuthLogout() {
+  setToken("");
+  currentUser = null;
+  currentUserLoaded = true;
+  updateAdminVisibility();
+  closeHeaderAccountMenu();
+  updateAuthActions();
+  history.pushState({}, "", "/");
+  routeTo("/");
 }
 
 function routeTo(path) {
@@ -570,6 +708,26 @@ function slugify(value) {
 }
 
 document.addEventListener("click", (event) => {
+  const logoutButton = event.target.closest("[data-auth-logout]");
+  if (logoutButton) {
+    event.preventDefault();
+    handleHeaderAuthLogout();
+    return;
+  }
+
+  const authTrigger = event.target.closest("[data-auth-account-trigger]");
+  if (authTrigger) {
+    event.preventDefault();
+    toggleHeaderAccountMenu();
+    return;
+  }
+
+  if (headerActionsRoot && !headerActionsRoot.contains(event.target)) {
+    closeHeaderAccountMenu();
+  } else if (event.target.closest(".account-dropdown a")) {
+    closeHeaderAccountMenu();
+  }
+
   const link = event.target.closest("[data-link]");
   if (!link) return;
   const href = link.getAttribute("href");
@@ -592,12 +750,24 @@ menuToggle?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.target && event.target.closest("#header-account-trigger") && (event.key === "Enter" || event.key === " " || event.key === "ArrowDown")) {
+    event.preventDefault();
+    toggleHeaderAccountMenu();
+    return;
+  }
   if (event.key === "Escape") {
     closeMobileMenu();
+    closeHeaderAccountMenu();
+  }
+  if (event.key === "Tab" && headerAccountMenuOpen && authActionsRoot && !authActionsRoot.contains(document.activeElement)) {
+    closeHeaderAccountMenu();
   }
 });
 
 document.addEventListener("click", (event) => {
+  if (headerAccountMenuOpen && headerActionsRoot && !headerActionsRoot.contains(event.target) && !event.target.closest(".account-dropdown")) {
+    closeHeaderAccountMenu();
+  }
   if (!document.body.classList.contains("mobile-menu-open")) return;
   if (event.target.closest(".site-header")) return;
   closeMobileMenu();
@@ -1150,6 +1320,7 @@ async function submitAuth(path) {
     setToken(body.token);
     currentUser = body.user || null;
     currentUserLoaded = true;
+    updateAuthActions();
     updateAdminVisibility();
     if (path === "/auth/register") {
       trackConversion("hero_cta_click", { page_path: location.pathname, cta_location: "register_success", funnel_stage: "conversion" });
@@ -2689,7 +2860,9 @@ async function loadCurrentUser() {
   if (!token()) {
     currentUser = null;
     currentUserLoaded = true;
+    closeHeaderAccountMenu();
     updateAdminVisibility();
+    updateAuthActions();
     return null;
   }
 
@@ -2705,6 +2878,7 @@ async function loadCurrentUser() {
   }
 
   currentUserLoaded = true;
+  updateAuthActions();
   updateAdminVisibility();
   return currentUser;
 }
@@ -2748,6 +2922,7 @@ function openPluginDownloadModal(slug = "optivra-image-studio", target = null) {
   const message = document.getElementById("plugin-download-message");
   const hidden = document.getElementById("download-plugin-slug");
   const title = document.getElementById("download-modal-title");
+  const emailInput = form?.querySelector("input[name='email']");
   const normalized = pluginFromTarget({ dataset: { pluginDownload: slug }, getAttribute: () => "" });
   const release = pluginReleaseBySlug(normalized);
   if (!modal || !form || !hidden) return;
@@ -2758,6 +2933,9 @@ function openPluginDownloadModal(slug = "optivra-image-studio", target = null) {
   form.hidden = false;
   modal.setAttribute("aria-hidden", "false");
   document.body.classList.add("download-modal-open");
+  window.setTimeout(() => {
+    emailInput?.focus({ preventScroll: true });
+  }, 0);
   const params = { ...(target ? downloadParamsForTarget(target) : { plugin_slug: normalized, plugin_version: release.version, download_type: "zip", gated: true }), plugin_slug: normalized };
   trackEvent("plugin_download_click", params);
   trackEvent("plugin_download_modal_open", params);
@@ -2782,6 +2960,13 @@ function currentCampaignParams() {
 
 document.querySelectorAll("[data-download-close]").forEach((node) => {
   node.addEventListener("click", closePluginDownloadModal);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const modal = document.getElementById("plugin-download-modal");
+  if (!modal || modal.getAttribute("aria-hidden") === "true") return;
+  closePluginDownloadModal();
 });
 
 document.getElementById("plugin-download-form")?.addEventListener("submit", async (event) => {
@@ -3517,4 +3702,5 @@ async function openPortal() {
   const body = await api("/api/billing/create-portal-session", { method: "POST", body: "{}" });
   location.href = body.url;
 }
+updateAuthActions();
 loadCurrentUser().finally(() => routeTo(location.pathname));

@@ -402,12 +402,14 @@ class Catalogue_Image_Studio_Plugin {
 	public function get_settings(): array {
 		$settings = get_option($this->option_name, []);
 		$settings = is_array($settings) ? $settings : [];
+		$raw_settings = $settings;
 		$settings = wp_parse_args($settings, $this->get_default_settings());
 
-		$settings['api_base_url_override'] = isset($settings['api_base_url_override']) ? (string) $settings['api_base_url_override'] : '';
+		$normalized_override = isset($settings['api_base_url_override']) ? Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $settings['api_base_url_override']) : '';
+		$settings['api_base_url_override'] = $normalized_override;
 		$settings['api_base_url']          = '' !== $settings['api_base_url_override']
 			? $settings['api_base_url_override']
-			: (string) $this->get_default_settings()['api_base_url'];
+			: Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $this->get_default_settings()['api_base_url']);
 
 		$settings['require_approval']      = array_key_exists('require_approval', $settings) ? (bool) $settings['require_approval'] : (bool) ($settings['approval_required'] ?? true);
 		$settings['approval_required']     = $settings['require_approval'];
@@ -440,6 +442,16 @@ class Catalogue_Image_Studio_Plugin {
 		$settings['auto_fail_product_altered'] = array_key_exists('auto_fail_product_altered', $settings) ? (bool) $settings['auto_fail_product_altered'] : true;
 		$settings['auto_fix_crop_spacing'] = array_key_exists('auto_fix_crop_spacing', $settings) ? (bool) $settings['auto_fix_crop_spacing'] : true;
 		$settings['preserve_dark_detail'] = array_key_exists('preserve_dark_detail', $settings) ? (bool) $settings['preserve_dark_detail'] : true;
+
+		$stored_override = isset($raw_settings['api_base_url_override']) ? (string) $raw_settings['api_base_url_override'] : '';
+		$stored_base = isset($raw_settings['api_base_url']) ? (string) $raw_settings['api_base_url'] : '';
+		$normalized_base = '' !== $settings['api_base_url_override'] ? $settings['api_base_url_override'] : Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $this->get_default_settings()['api_base_url']);
+
+		if (($stored_override !== (string) $normalized_override) || ($stored_base !== (string) $normalized_base)) {
+			$raw_settings['api_base_url_override'] = $normalized_override;
+			$raw_settings['api_base_url']          = $normalized_base;
+			update_option($this->option_name, wp_parse_args($raw_settings, $settings), false);
+		}
 
 		return $settings;
 	}
