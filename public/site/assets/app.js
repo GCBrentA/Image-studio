@@ -2057,6 +2057,50 @@ function renderTopImages(items) {
   `;
 }
 
+function sanitizeHealthReportExport(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeHealthReportExport(item));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const hiddenKeys = new Set([
+    "id",
+    "store_id",
+    "scan_id",
+    "audit_item_id",
+    "recommendation_id",
+    "issue_id",
+    "user_id",
+    "connected_store_id",
+    "metadata",
+    "debug",
+    "debug_json",
+    "validation_json",
+    "preserve_debug",
+    "raw",
+    "sha",
+    "checksum",
+    "token",
+    "api_token"
+  ]);
+
+  return Object.entries(value).reduce((clean, [key, item]) => {
+    const normalized = String(key).toLowerCase();
+    if (
+      hiddenKeys.has(normalized) ||
+      normalized.endsWith("_id") ||
+      normalized.includes("token") ||
+      normalized.includes("secret")
+    ) {
+      return clean;
+    }
+    clean[key] = sanitizeHealthReportExport(item);
+    return clean;
+  }, {});
+}
+
 function metricTile(label, value) {
   return `<div class="metric-tile"><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatNumber(value))}</strong></div>`;
 }
@@ -3187,7 +3231,7 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-report-export]")) {
     event.preventDefault();
     const report = window.optivraCurrentReport || {};
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(sanitizeHealthReportExport(report), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;

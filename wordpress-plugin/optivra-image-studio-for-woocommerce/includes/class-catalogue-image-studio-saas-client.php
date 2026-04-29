@@ -37,7 +37,10 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		$base_path = (string) parse_url($base, PHP_URL_PATH);
-		if ('/api' === rtrim($base_path, '/') && 0 === strpos($path, '/api/')) {
+		$base_path = rtrim($base_path, '/');
+		if ('' !== $base_path && 0 === strpos($path, $base_path . '/')) {
+			$path = substr($path, strlen($base_path));
+		} elseif ('/api' === $base_path && 0 === strpos($path, '/api/')) {
 			$path = substr($path, 4);
 		}
 
@@ -532,19 +535,90 @@ class Catalogue_Image_Studio_SaaSClient {
 		return ! empty($settings['debug_mode']);
 	}
 
-	private function log_http_request(string $method, string $url, ?int $status_code): void {
+	private function log_http_request(string $method, string $url, ?int $status_code, array $context = []): void {
 		if (! $this->debug_mode_enabled()) {
 			return;
 		}
 
+		$context = $this->sanitize_debug_context($context);
+		$context = array_merge(
+			[
+				'method'             => strtoupper($method),
+				'url'                => $url,
+				'status'             => null === $status_code ? 'network_error' : $status_code,
+				'auth_token_present' => '' !== $this->api_token,
+			],
+			$context
+		);
+
 		$this->logger->info(
 			'Optivra API request.',
-			[
-				'method' => strtoupper($method),
-				'url'    => $url,
-				'status' => null === $status_code ? 'network_error' : $status_code,
-			]
+			$context
 		);
+	}
+
+	private function sanitize_debug_context(array $context): array {
+		$blocked = ['authorization', 'api_token', 'token', 'password', 'secret', 'key'];
+		$output = [];
+
+		foreach ($context as $key => $value) {
+			$key = sanitize_key((string) $key);
+			if ('' === $key || in_array($key, $blocked, true) || false !== strpos($key, 'token') || false !== strpos($key, 'secret')) {
+				if ('auth_token_present' === $key) {
+					$output[$key] = (bool) $value;
+				}
+				continue;
+			}
+
+			if (is_bool($value) || is_int($value) || is_float($value) || null === $value) {
+				$output[$key] = $value;
+				continue;
+			}
+
+			if (is_scalar($value)) {
+				$output[$key] = sanitize_textarea_field(substr((string) $value, 0, 1500));
+			}
+		}
+
+		return $output;
+	}
+
+	private function sanitize_response_body_for_debug(string $body): string {
+		$body = trim($body);
+		if (strlen($body) > 1500) {
+			$body = substr($body, 0, 1500) . '...';
+		}
+
+		$body = preg_replace('/(authorization|api[_-]?token|token|secret|password|key)"?\s*[:=]\s*"[^"]+"/i', '$1:"[redacted]"', $body);
+
+		return sanitize_textarea_field((string) $body);
+	}
+
+	private function build_http_error_message(int $status_code, array $decoded, string $fallback): string {
+		$backend_message = $this->get_error_message($decoded, $fallback);
+
+		if (401 === $status_code || 403 === $status_code) {
+			return __('Connection/authentication failed. Reconnect Optivra.', 'optivra-image-studio-for-woocommerce') . ' ' . $backend_message;
+		}
+
+		if (400 === $status_code) {
+			return $backend_message;
+		}
+
+		if ($status_code >= 500) {
+			$request_id = '';
+			if (isset($decoded['request_id']) && is_scalar($decoded['request_id'])) {
+				$request_id = sanitize_text_field((string) $decoded['request_id']);
+			} elseif (isset($decoded['requestId']) && is_scalar($decoded['requestId'])) {
+				$request_id = sanitize_text_field((string) $decoded['requestId']);
+			}
+
+			return $request_id
+				? sprintf(__('Backend error. Request ID: %s', 'optivra-image-studio-for-woocommerce'), $request_id)
+				: __('Backend error. Please try again or contact Optivra support.', 'optivra-image-studio-for-woocommerce');
+		}
+
+		return $backend_message;
 	}
 
 	/**
@@ -581,9 +655,26 @@ class Catalogue_Image_Studio_SaaSClient {
 			$url = $this->build_api_url($path);
 			$response = wp_remote_get($url, $args);
 		}
-		$this->log_http_request(strtoupper($method), $url, is_wp_error($response) ? null : (int) wp_remote_retrieve_response_code($response));
+		$this->log_http_request(
+			strtoupper($method),
+			$url,
+			is_wp_error($response) ? null : (int) wp_remote_retrieve_response_code($response),
+			[
+				'endpoint_path' => $path,
+			]
+		);
 
 		if (is_wp_error($response)) {
+			$response->add_data(
+				[
+					'method'             => strtoupper($method),
+					'url'                => $url,
+					'endpoint_path'      => $path,
+					'status_code'        => null,
+					'auth_token_present' => '' !== $this->api_token,
+					'response_body'      => '',
+				]
+			);
 			$this->logger->error('Optivra API request failed.', ['url' => $url, 'message' => $response->get_error_message()]);
 			return $response;
 		}
@@ -591,6 +682,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		$status_code = (int) wp_remote_retrieve_response_code($response);
 		$body        = (string) wp_remote_retrieve_body($response);
 		$decoded     = json_decode($body, true);
+		$response_body_debug = $this->sanitize_response_body_for_debug($body);
 
 		if (! is_array($decoded)) {
 			return new WP_Error(
@@ -600,15 +692,33 @@ class Catalogue_Image_Studio_SaaSClient {
 					__('Optivra returned an unexpected response for %2$s (HTTP %1$d).', 'optivra-image-studio-for-woocommerce'),
 					$status_code,
 					$path
-				)
+				),
+				[
+					'method'             => strtoupper($method),
+					'url'                => $url,
+					'endpoint_path'      => $path,
+					'status_code'        => $status_code,
+					'auth_token_present' => '' !== $this->api_token,
+					'response_body'      => $response_body_debug,
+				]
 			);
 		}
 
 		if ($status_code < 200 || $status_code >= 300) {
+			$error_data = [
+				'method'             => strtoupper($method),
+				'url'                => $url,
+				'endpoint_path'      => $path,
+				'status_code'        => $status_code,
+				'auth_token_present' => '' !== $this->api_token,
+				'response_body'      => $response_body_debug,
+			];
+			$this->log_http_request(strtoupper($method), $url, $status_code, $error_data);
+
 			return new WP_Error(
 				'catalogue_image_studio_api_error',
-				$this->get_error_message($decoded, __('Optivra could not complete the audit request.', 'optivra-image-studio-for-woocommerce')),
-				['status_code' => $status_code]
+				$this->build_http_error_message($status_code, $decoded, __('Optivra could not complete the audit request.', 'optivra-image-studio-for-woocommerce')),
+				$error_data
 			);
 		}
 

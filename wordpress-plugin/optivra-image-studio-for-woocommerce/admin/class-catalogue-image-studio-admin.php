@@ -1341,7 +1341,7 @@ class Catalogue_Image_Studio_Admin {
 
 		$usage = $this->get_usage();
 		if (is_wp_error($usage)) {
-			$this->send_audit_error($usage->get_error_message());
+			$this->send_audit_wp_error($usage);
 		}
 
 		$store_id = $this->get_audit_store_id(is_array($usage) ? $usage : []);
@@ -1354,7 +1354,7 @@ class Catalogue_Image_Studio_Admin {
 
 		$result = $this->plugin->client()->start_image_audit($store_id, $scan_options);
 		if (is_wp_error($result)) {
-			$this->send_audit_error($result->get_error_message());
+			$this->send_audit_wp_error($result, ['store_id' => $store_id]);
 		}
 
 		$scan_id = $this->extract_scan_id(is_array($result) ? $result : []);
@@ -1412,7 +1412,7 @@ class Catalogue_Image_Studio_Admin {
 				$progress['message'] = $result->get_error_message();
 				$progress['errors'][] = $result->get_error_message();
 				$this->save_audit_progress($progress);
-				$this->send_audit_error($result->get_error_message());
+				$this->send_audit_wp_error($result, ['scan_id' => $scan_id]);
 			}
 		}
 
@@ -1452,7 +1452,7 @@ class Catalogue_Image_Studio_Admin {
 			$progress['message'] = $result->get_error_message();
 			$this->save_audit_progress($progress);
 			update_option('optivra_scan_in_progress', false, false);
-			$this->send_audit_error($result->get_error_message());
+			$this->send_audit_wp_error($result, ['scan_id' => $scan_id]);
 		}
 
 		$summary = is_array($result) ? $result : [];
@@ -1858,8 +1858,64 @@ class Catalogue_Image_Studio_Admin {
 		<?php
 	}
 
-	private function send_audit_error(string $message): void {
-		wp_send_json_error(['message' => esc_html($message)], 400);
+	private function send_audit_error(string $message, array $debug = []): void {
+		$payload = ['message' => sanitize_textarea_field($message)];
+		$settings = $this->plugin->get_settings();
+
+		if (! empty($settings['debug_mode']) && ! empty($debug)) {
+			$payload['debug'] = $this->sanitize_audit_error_debug($debug);
+			$lines = [];
+			foreach ($payload['debug'] as $key => $value) {
+				if (is_bool($value)) {
+					$value = $value ? 'yes' : 'no';
+				}
+				if (is_scalar($value) && '' !== (string) $value) {
+					$lines[] = sprintf('%s: %s', str_replace('_', ' ', (string) $key), (string) $value);
+				}
+			}
+			if (! empty($lines)) {
+				$payload['message'] .= "\n\n" . __('Debug details:', 'optivra-image-studio-for-woocommerce') . "\n" . sanitize_textarea_field(implode("\n", $lines));
+			}
+		}
+
+		wp_send_json_error($payload, 400);
+	}
+
+	private function send_audit_wp_error(WP_Error $error, array $context = []): void {
+		$data = $error->get_error_data();
+		$data = is_array($data) ? $data : [];
+		$debug = array_merge($data, $context);
+		$this->send_audit_error($error->get_error_message(), $debug);
+	}
+
+	private function sanitize_audit_error_debug(array $debug): array {
+		$allowed = [
+			'method',
+			'url',
+			'endpoint_path',
+			'status_code',
+			'auth_token_present',
+			'response_body',
+			'store_id',
+			'scan_id',
+		];
+		$output = [];
+
+		foreach ($allowed as $key) {
+			if (! array_key_exists($key, $debug)) {
+				continue;
+			}
+			$value = $debug[$key];
+			if (is_bool($value) || is_int($value) || is_float($value) || null === $value) {
+				$output[$key] = $value;
+				continue;
+			}
+			if (is_scalar($value)) {
+				$output[$key] = sanitize_textarea_field(substr((string) $value, 0, 1500));
+			}
+		}
+
+		return $output;
 	}
 
 	/**

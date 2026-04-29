@@ -31,6 +31,16 @@ $cases = [
 		'/usage',
 		'https://www.optivra.app/api/usage',
 	],
+	[
+		'https://www.optivra.app/api/image-studio',
+		'/api/image-studio/audits/start',
+		'https://www.optivra.app/api/image-studio/audits/start',
+	],
+	[
+		'https://www.optivra.app/api/image-studio/',
+		'audits/start',
+		'https://www.optivra.app/api/image-studio/audits/start',
+	],
 ];
 
 foreach ($cases as [$base, $endpoint, $expected]) {
