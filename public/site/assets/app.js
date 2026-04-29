@@ -546,6 +546,29 @@ function analyticsReady(path = location.pathname) {
   return Boolean(window.optivraAnalytics?.enabled && isPublicAnalyticsPath(path));
 }
 
+window.optivraAnalyticsDebug = function optivraAnalyticsDebug() {
+  let consentState = "granted";
+  try {
+    consentState = localStorage.getItem("optivra_analytics_consent") || "granted";
+  } catch {
+    consentState = "storage_unavailable";
+  }
+  const ga4MeasurementId = window.optivraAnalytics?.measurementId || "";
+  const googleTagId = window.optivraAnalytics?.googleTagId || "";
+  const gtagLoaded = Boolean(window.optivraAnalytics?.gtagLoaded);
+  const analyticsEnabled = Boolean(window.optivraAnalytics?.enabled);
+  return {
+    ga4MeasurementId,
+    googleTagId,
+    gtagLoaded,
+    dataLayerLength: Array.isArray(window.dataLayer) ? window.dataLayer.length : 0,
+    lastPageViewPath: analyticsState.lastPagePath,
+    analyticsEnabled,
+    consentState,
+    cspLikelyBlocking: Boolean(analyticsEnabled && (ga4MeasurementId || googleTagId) && !gtagLoaded)
+  };
+};
+
 function sanitizeAnalyticsKey(key) {
   return String(key || "")
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")

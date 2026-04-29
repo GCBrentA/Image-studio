@@ -2,6 +2,8 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import path from "path";
+import { optivraContentSecurityPolicyDirectives } from "./config/contentSecurityPolicy";
+import { env } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { logger } from "./middleware/logger";
 import { notFound } from "./middleware/notFound";
@@ -17,16 +19,7 @@ app.set("trust proxy", 1);
 
 app.use(helmet({
   contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com"],
-      styleSrc: ["'self'"],
-      connectSrc: ["'self'", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-      frameAncestors: ["'self'"]
-    }
+    directives: optivraContentSecurityPolicyDirectives(env)
   }
 }));
 

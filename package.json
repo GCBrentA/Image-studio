@@ -15,6 +15,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "test:analytics": "tsx scripts/check-analytics-rules.ts",
+    "test:csp": "tsx scripts/check-csp-rules.ts",
     "test:preserve-debug": "node scripts/check-preserve-debug.js",
     "test:preserve-architecture": "tsx scripts/check-preserve-architecture.ts",
     "test:image-pipeline": "node scripts/check-image-pipeline-rules.js"

@@ -499,7 +499,9 @@ const renderAnalyticsSnippet = (requestPath: string): string => {
         gtmId: "${gtmId}",
         environment: "${escapeHtml(env.nodeEnv)}",
         debug: ${debugEnabled ? "true" : "false"},
-        serverEndpoint: "/api/analytics/events"
+        serverEndpoint: "/api/analytics/events",
+        gtagLoaded: false,
+        gtagLoadError: false
       };
       window.dataLayer = window.dataLayer || [];
       function gtag(){window.dataLayer.push(arguments);}
@@ -519,6 +521,9 @@ const renderAnalyticsSnippet = (requestPath: string): string => {
           var tag = document.createElement("script");
           tag.async = true;
           tag.src = "https://www.googletagmanager.com/gtag/js?id=${primaryTagId}";
+          tag.dataset.optivraAnalyticsTag = "gtag";
+          tag.onload = function(){ window.optivraAnalytics.gtagLoaded = true; };
+          tag.onerror = function(){ window.optivraAnalytics.gtagLoadError = true; };
           document.head.appendChild(tag);
           gtag("js", new Date());
           ${gaEnabled ? `gtag("config", "${measurementId}", { page_path: window.location.pathname, anonymize_ip: true, send_page_view: false });` : ""}
