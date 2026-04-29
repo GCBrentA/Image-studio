@@ -277,6 +277,9 @@ function routeTo(path) {
   if (normalized === "/settings") {
     loadSettingsPage();
   }
+  if (normalized === "/support") {
+    loadSupportPage();
+  }
   if (["/seo-tools"].includes(normalized)) {
     renderPortalPlaceholder(normalized);
   }
@@ -1685,6 +1688,102 @@ function renderPortalLoading(label) {
   return `<section class="portal-loading"><span></span>${escapeHtml(label)}</section>`;
 }
 
+function renderBillingContent() {
+  return `
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Plan and credit usage</h2>
+          <p>Manage your Optivra Image Studio plan, monthly credits, top-ups and Stripe billing portal.</p>
+        </div>
+        <div class="dashboard-actions">
+          <button class="button ghost" id="portal-button">Manage Billing</button>
+        </div>
+      </div>
+      <div class="metric-card-grid">
+        <div class="metric-tile"><span>Current plan</span><strong id="billing-plan">Loading...</strong></div>
+        <div class="metric-tile"><span>Status</span><strong id="billing-status">-</strong></div>
+        <div class="metric-tile"><span>Credits</span><strong id="billing-credits">-</strong></div>
+        <div class="metric-tile"><span>Credits used</span><strong id="billing-used">-</strong></div>
+        <div class="metric-tile"><span>Reset date</span><strong id="billing-reset">-</strong></div>
+      </div>
+      <div class="meter billing-meter"><div id="billing-meter"></div></div>
+      <p class="muted-note">Billing is handled through Stripe. Saved API tokens are never displayed here.</p>
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Upgrade plan</h2>
+          <p>Plans include platform access, reports, queue workflow, safety checks, review tools and image processing credits.</p>
+        </div>
+      </div>
+      <div class="pricing-grid compact-pricing">
+        <article class="price-card"><h2>Optivra Image Studio Starter</h2><strong>$19 USD/month</strong><p>20 credits monthly.</p><button data-plan="starter">Subscribe</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Growth</h2><strong>$69 USD/month</strong><p>100 credits monthly.</p><button data-plan="growth">Upgrade</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Pro</h2><strong>$159 USD/month</strong><p>500 credits monthly.</p><button data-plan="pro">Upgrade</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Agency</h2><strong>$429 USD/month</strong><p>1,500 credits monthly.</p><button data-plan="agency">Upgrade</button></article>
+      </div>
+    </section>
+
+    <section class="portal-card" id="buy-credits">
+      <div class="portal-section-head">
+        <div>
+          <h2>Buy Extra Credits</h2>
+          <p>Use credit packs as top-ups when a catalogue batch needs more image processing capacity.</p>
+        </div>
+      </div>
+      <p class="form-message" id="billing-message"></p>
+      <div class="pricing-grid compact-pricing credit-pack-grid">
+        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>25 Credits</h2><strong>$10 USD</strong><p>Small top-up for a quick batch.</p><button class="button primary" data-pack="small">Buy Credits</button></article>
+        <article class="price-card credit-pack-card featured"><p class="eyebrow">Optivra Image Studio Credits</p><h2>100 Credits</h2><strong>$35 USD</strong><p>Medium pack for a catalogue pass.</p><button class="button primary" data-pack="medium">Buy Credits</button></article>
+        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>300 Credits</h2><strong>$90 USD</strong><p>Large pack for growing stores.</p><button class="button primary" data-pack="large">Buy Credits</button></article>
+        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>1000 Credits</h2><strong>$250 USD</strong><p>Agency pack for high-volume work.</p><button class="button primary" data-pack="agency">Buy Credits</button></article>
+      </div>
+    </section>
+  `;
+}
+
+function renderSupportContent() {
+  return `
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Get help with Image Studio</h2>
+          <p>Optivra does not automatically replace product images unless your settings allow it. You can review outputs before publishing.</p>
+        </div>
+        <div class="dashboard-actions">
+          <a class="button primary" href="/docs/ai-image-studio" data-link data-analytics="click_docs_getting_started">Read Image Studio docs</a>
+          <a class="button ghost" href="mailto:support@optivra.app" data-analytics="click_support_contact">Contact support</a>
+        </div>
+      </div>
+    </section>
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Common issues</h2><p>Include your store domain, plugin version, scan status and a short description when contacting support.</p></div></div>
+      <div class="mini-card-grid">
+        <div><strong>Scan not finding products</strong><p>Check WooCommerce product status, image permissions and plugin connection.</p></div>
+        <div><strong>API token not connecting</strong><p>Reconnect Optivra and confirm the saved token is masked, present and current.</p></div>
+        <div><strong>Image processing failed</strong><p>Review the safety status and failure reason before retrying.</p></div>
+        <div><strong>Product changed in AI output</strong><p>Use Preserve Product or Smart Safe and keep review-before-replace enabled.</p></div>
+        <div><strong>Credits after failed safety check</strong><p>Unsafe outputs should not auto-replace images; include the job status if you need billing help.</p></div>
+        <div><strong>Debug export</strong><p>Enable debug mode only when requested, then share the safe debug bundle without tokens.</p></div>
+      </div>
+    </section>
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Gateway Rules support</h2>
+          <p>For checkout visibility issues, include WordPress, WooCommerce, PHP and plugin versions, active gateways, the rule, expected behaviour and actual behaviour.</p>
+        </div>
+        <div class="dashboard-actions">
+          <a class="button ghost" href="/docs/payment-gateway-rules-for-woocommerce" data-link>Read Gateway Rules docs</a>
+          <a class="button ghost" href="/payment-gateway-rules-for-woocommerce" data-link>Plugin overview</a>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderReportsList(scans) {
   if (!scans.length) {
     return `
@@ -2493,9 +2592,25 @@ function renderPortalPlaceholder(path) {
 }
 
 async function loadBilling() {
+  const page = document.querySelector('[data-page="/account/billing"]');
   if (!token()) {
-    setText("billing-plan", "Login required");
+    if (page) {
+      page.innerHTML = `
+        <div class="page-band prose">
+          <p class="eyebrow">Billing</p>
+          <h1>Login required</h1>
+          <p>Log in to manage your Optivra Image Studio plan, credits and billing portal.</p>
+          <a class="button primary" href="/login" data-link>Login</a>
+        </div>
+      `;
+    } else {
+      setText("billing-plan", "Login required");
+    }
     return;
+  }
+
+  if (page) {
+    page.innerHTML = portalShell("Billing & Credits", "Manage your Optivra Image Studio plan, credits and Stripe billing portal.", "billing", renderBillingContent());
   }
 
   try {
@@ -2519,6 +2634,25 @@ async function loadBilling() {
   } catch (error) {
     setText("billing-plan", error.message);
   }
+}
+
+function loadSupportPage() {
+  const page = document.querySelector('[data-page="/support"]');
+  if (!page) return;
+
+  if (token()) {
+    page.innerHTML = portalShell("Support", "Get help with Image Studio, Gateway Rules, billing, setup and product image processing.", "support", renderSupportContent());
+    return;
+  }
+
+  page.innerHTML = `
+    <div class="page-band prose">
+      <p class="eyebrow">Support</p>
+      <h1>Get help with Optivra</h1>
+      <p class="lead">Optivra does not automatically replace product images unless your settings allow it. You can review outputs before publishing.</p>
+      ${renderSupportContent()}
+    </div>
+  `;
 }
 
 function setText(id, value) {
@@ -3267,6 +3401,13 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const portalButton = event.target.closest("#portal-button, #portal-button-secondary");
+  if (portalButton) {
+    event.preventDefault();
+    await openPortal();
+    return;
+  }
+
   const planButton = event.target.closest("[data-plan]");
   const packButton = event.target.closest("[data-pack]");
   if (planButton) {
@@ -3376,7 +3517,4 @@ async function openPortal() {
   const body = await api("/api/billing/create-portal-session", { method: "POST", body: "{}" });
   location.href = body.url;
 }
-document.getElementById("portal-button")?.addEventListener("click", openPortal);
-document.getElementById("portal-button-secondary")?.addEventListener("click", openPortal);
-
 loadCurrentUser().finally(() => routeTo(location.pathname));
