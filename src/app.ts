@@ -102,36 +102,40 @@ app.get("/account/dashboard", (request, response, next) => {
 // This guards the WooCommerce scan flow against accidental nested /api router changes.
 app.use("/api/image-studio", imageAuditRoutes);
 const requireImageStudioAuth = [requireDatabase, imageStudioAuth];
-app.post("/api/image-studio/audits/start", requireImageStudioAuth, (request, response, next) => {
-  startImageAudit(request, response).catch(next);
-});
-app.get("/api/image-studio/audits/latest", requireImageStudioAuth, (request, response, next) => {
-  getLatestImageAudit(request, response).catch(next);
-});
-app.post("/api/image-studio/audits/:scan_id/items", requireImageStudioAuth, (request, response, next) => {
-  addImageAuditItems(request, response).catch(next);
-});
-app.post("/api/image-studio/audits/:scan_id/complete", requireImageStudioAuth, (request, response, next) => {
-  completeImageAudit(request, response).catch(next);
-});
-app.get("/api/image-studio/audits/:scan_id", requireImageStudioAuth, (request, response, next) => {
-  getImageAuditReport(request, response).catch(next);
-});
-app.get("/api/image-studio/audits/:scan_id/issues", requireImageStudioAuth, (request, response, next) => {
-  listImageAuditIssues(request, response).catch(next);
-});
-app.get("/api/image-studio/audits/:scan_id/items", requireImageStudioAuth, (request, response, next) => {
-  listImageAuditItems(request, response).catch(next);
-});
-app.post("/api/image-studio/audits/:scan_id/issues/ignore", requireImageStudioAuth, (request, response, next) => {
-  ignoreImageAuditIssues(request, response).catch(next);
-});
-app.post("/api/image-studio/audits/:scan_id/issues/queue", requireImageStudioAuth, (request, response, next) => {
-  queueImageAuditIssues(request, response).catch(next);
-});
-app.post("/api/image-studio/audits/:scan_id/queue-recommendation", requireImageStudioAuth, (request, response, next) => {
-  queueImageAuditRecommendation(request, response).catch(next);
-});
+const registerImageStudioAuditRoutes = (prefix: string) => {
+  app.post(`${prefix}/audits/start`, requireImageStudioAuth, (request, response, next) => {
+    startImageAudit(request, response).catch(next);
+  });
+  app.get(`${prefix}/audits/latest`, requireImageStudioAuth, (request, response, next) => {
+    getLatestImageAudit(request, response).catch(next);
+  });
+  app.post(`${prefix}/audits/:scan_id/items`, requireImageStudioAuth, (request, response, next) => {
+    addImageAuditItems(request, response).catch(next);
+  });
+  app.post(`${prefix}/audits/:scan_id/complete`, requireImageStudioAuth, (request, response, next) => {
+    completeImageAudit(request, response).catch(next);
+  });
+  app.get(`${prefix}/audits/:scan_id`, requireImageStudioAuth, (request, response, next) => {
+    getImageAuditReport(request, response).catch(next);
+  });
+  app.get(`${prefix}/audits/:scan_id/issues`, requireImageStudioAuth, (request, response, next) => {
+    listImageAuditIssues(request, response).catch(next);
+  });
+  app.get(`${prefix}/audits/:scan_id/items`, requireImageStudioAuth, (request, response, next) => {
+    listImageAuditItems(request, response).catch(next);
+  });
+  app.post(`${prefix}/audits/:scan_id/issues/ignore`, requireImageStudioAuth, (request, response, next) => {
+    ignoreImageAuditIssues(request, response).catch(next);
+  });
+  app.post(`${prefix}/audits/:scan_id/issues/queue`, requireImageStudioAuth, (request, response, next) => {
+    queueImageAuditIssues(request, response).catch(next);
+  });
+  app.post(`${prefix}/audits/:scan_id/queue-recommendation`, requireImageStudioAuth, (request, response, next) => {
+    queueImageAuditRecommendation(request, response).catch(next);
+  });
+};
+registerImageStudioAuditRoutes("/api/image-studio");
+registerImageStudioAuditRoutes("/api/api/image-studio");
 app.use(routes);
 app.use("/api", routes);
 
