@@ -40,7 +40,7 @@ class Catalogue_Image_Studio_SaaSClient {
 		$response = wp_remote_post(
 			$this->api_base_url . '/images/process',
 			[
-				'timeout' => 90,
+				'timeout' => 240,
 				'headers' => [
 					'Authorization' => 'Bearer ' . $this->api_token,
 					'Content-Type'  => 'application/json',

@@ -1,4 +1,8 @@
+import { spawn } from "child_process";
 import { env } from "../config/env";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import os from "os";
+import path from "path";
 
 export type BackgroundRemovalMode = "preserve-mask" | "preserve-mask-refined" | "flexible-cutout";
 
@@ -73,3 +77,65 @@ export const removeImageBackground = async (
 
   return Buffer.from(imageBase64, "base64");
 };
+
+export const removeImageBackgroundWithSpecialistModel = async (
+  imageBuffer: Buffer,
+  contentType = "image/jpeg"
+): Promise<Buffer> => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "optivra-imgly-"));
+  const inputPath = path.join(tempDir, "source-image");
+  const outputPath = path.join(tempDir, "foreground.png");
+  const workerPath = path.resolve(process.cwd(), "scripts", "imgly-background-removal-worker.js");
+
+  try {
+    await writeFile(inputPath, imageBuffer);
+    await runSpecialistWorker(workerPath, inputPath, outputPath, contentType);
+
+    return await readFile(outputPath);
+  } finally {
+    await rm(tempDir, {
+      recursive: true,
+      force: true
+    }).catch(() => undefined);
+  }
+};
+
+const runSpecialistWorker = (
+  workerPath: string,
+  inputPath: string,
+  outputPath: string,
+  contentType: string
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [workerPath, inputPath, outputPath, contentType], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Specialist background-removal worker timed out."));
+    }, 180000);
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      const message = Buffer.concat(stderr).toString("utf8").trim() ||
+        Buffer.concat(stdout).toString("utf8").trim() ||
+        `Specialist background-removal worker exited with code ${code ?? "unknown"}.`;
+      reject(new Error(message));
+    });
+  });

@@ -4,7 +4,7 @@ import path from "path";
 import sharp from "sharp";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
-import { removeImageBackground } from "./backgroundRemovalService";
+import { removeImageBackground, removeImageBackgroundWithSpecialistModel } from "./backgroundRemovalService";
 import {
   createStorageSignedUrl,
   storageBuckets,
@@ -158,6 +158,8 @@ export const getPreserveDebugFromError = (error: unknown): PreserveDebugInfo | u
 type PreserveDebugContext = {
   userId: string;
   imageJobId: string;
+  specialistSourceBuffer: Buffer;
+  specialistSourceContentType: string;
   originalStoragePath: string;
   originalContentType: string;
   sourceDimensions: {
@@ -484,7 +486,8 @@ const processImagePreserveMode = async (
 
   console.info("Image preserve-mode masking started", {
     imageJobId: context.imageJobId,
-    provider: "openai:gpt-image-1",
+    provider: "imgly:background-removal-node:medium",
+    fallbackProvider: "openai:gpt-image-1:preserve-mask-refined",
     fallbackMode: context.fallbackMode,
     sourceWidth: context.sourceDimensions.width,
     sourceHeight: context.sourceDimensions.height,
@@ -492,17 +495,26 @@ const processImagePreserveMode = async (
     workingHeight: workingDimensions.height
   });
 
-  const runAiMaskAttempt = async (mode: "preserve-mask" | "preserve-mask-refined", attempt: number): Promise<CutoutResult> => {
-    debug.finalStatus = attempt === 1 ? "masking" : "refining_edges";
+  const runMaskAttempt = async (
+    provider: string,
+    attempt: number,
+    stage: "masking" | "refining_edges",
+    getMaskCutoutBuffer: () => Promise<Buffer>,
+    alphaAlignment: "source-contain" | "square-fill"
+  ): Promise<CutoutResult> => {
+    debug.finalStatus = stage;
     debug.attempts = attempt;
-    debug.provider = `openai:gpt-image-1:${mode}`;
-    const aiCutoutBuffer = await removeImageBackground(openAiInput, mode);
+    debug.provider = provider;
+    const aiCutoutBuffer = await getMaskCutoutBuffer();
     await validateImage(aiCutoutBuffer);
     const aiResultDimensions = await getImageDimensions(aiCutoutBuffer);
     debug.aiResultDimensions = aiResultDimensions;
     await uploadPreserveDebugAsset(context, debug, "ai_cutout", `attempt-${attempt}-ai-cutout-${randomUUID()}.png`, aiCutoutBuffer, "image/png");
 
-    const aiAlpha = await getResizedAiAlpha(aiCutoutBuffer, workingDimensions.width, workingDimensions.height);
+    const extractedAlpha = alphaAlignment === "source-contain"
+      ? await getSourceAlignedAlpha(aiCutoutBuffer, workingDimensions.width, workingDimensions.height)
+      : await getResizedAiAlpha(aiCutoutBuffer, workingDimensions.width, workingDimensions.height);
+    const aiAlpha = prepareProviderAlphaForPreserve(provider, extractedAlpha, workingDimensions.width, workingDimensions.height);
     const maskDiagnostics = analyzeAlphaMask(aiAlpha, workingDimensions.width, workingDimensions.height);
     debug.mask = maskDiagnostics;
     await uploadPreserveDebugAsset(
@@ -516,7 +528,7 @@ const processImagePreserveMode = async (
 
     if (!maskDiagnostics.passed) {
       throw new PreserveModeProcessingError(
-        `Preserve mode rejected the ${attempt === 1 ? "primary" : "refined"} AI mask: ${maskDiagnostics.failureReasons.join("; ")}`,
+        `Preserve mode rejected the ${attempt === 1 ? "primary" : "refined"} mask from ${provider}: ${maskDiagnostics.failureReasons.join("; ")}`,
         {
           ...debug,
           failureReason: maskDiagnostics.failureReasons.join("; "),
@@ -528,7 +540,7 @@ const processImagePreserveMode = async (
     const result = await buildPreservedProductCutoutFromAlpha(
       preservedOriginalBuffer,
       aiAlpha,
-      `openai:gpt-image-1:${mode}`,
+      provider,
       attempt,
       {
         allowLocalAssist: false,
@@ -577,9 +589,35 @@ const processImagePreserveMode = async (
 
   const errors: string[] = [];
 
-  for (const [mode, attempt] of [["preserve-mask", 1], ["preserve-mask-refined", 2]] as const) {
+  const attempts = [
+    {
+      provider: "imgly:background-removal-node:medium",
+      attempt: 1,
+      stage: "masking" as const,
+      alphaAlignment: "source-contain" as const,
+      getMaskCutoutBuffer: () => removeImageBackgroundWithSpecialistModel(
+        context.specialistSourceBuffer,
+        context.specialistSourceContentType
+      )
+    },
+    {
+      provider: "openai:gpt-image-1:preserve-mask-refined",
+      attempt: 2,
+      stage: "refining_edges" as const,
+      alphaAlignment: "square-fill" as const,
+      getMaskCutoutBuffer: () => removeImageBackground(openAiInput, "preserve-mask-refined")
+    }
+  ];
+
+  for (const attemptConfig of attempts) {
     try {
-      return await runAiMaskAttempt(mode, attempt);
+      return await runMaskAttempt(
+        attemptConfig.provider,
+        attemptConfig.attempt,
+        attemptConfig.stage,
+        attemptConfig.getMaskCutoutBuffer,
+        attemptConfig.alphaAlignment
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown preserve mask error";
       errors.push(message);
@@ -589,7 +627,8 @@ const processImagePreserveMode = async (
       }
       console.warn("Image preserve-mode AI mask rejected", {
         imageJobId: context.imageJobId,
-        attempt,
+        attempt: attemptConfig.attempt,
+        provider: attemptConfig.provider,
         fallbackMode: context.fallbackMode,
         error: message,
         alphaCoveragePercent: debug.mask?.alphaCoveragePercent,
@@ -743,10 +782,8 @@ const buildPreservedProductCutoutFromAlpha = async (
   const width = originalMetadata.width;
   const height = originalMetadata.height;
   const originalImage = sharp(preservedOriginalBuffer).ensureAlpha();
-  const [originalRaw, originalRgba] = await Promise.all([
-    originalImage.clone().removeAlpha().raw().toBuffer(),
-    originalImage.clone().raw().toBuffer()
-  ]);
+  const originalRgba = await originalImage.clone().raw().toBuffer();
+  const originalRaw = rgbaToRgb(originalRgba);
   const localAlpha = options.allowLocalAssist ? buildLocalForegroundAlpha(originalRgba, width, height) : null;
   const alpha = localAlpha ? chooseBaseProductAlpha(candidateAlpha, localAlpha) : candidateAlpha;
   const initialMaskDiagnostics = options.prevalidatedMask ?? analyzeAlphaMask(alpha, width, height);
@@ -758,9 +795,12 @@ const buildPreservedProductCutoutFromAlpha = async (
   const assistedAlpha = options.allowLocalAssist
     ? expandMaskWithOriginalForeground(originalRaw, alpha, width, height)
     : alpha;
-  const expandedAlpha = await smoothAlphaMask(assistedAlpha, width, height);
-  const safeAlpha = options.allowLocalAssist ? getSafeAlphaMask(alpha, expandedAlpha) : expandedAlpha;
-  const finalMaskDiagnostics = analyzeAlphaMask(safeAlpha, width, height);
+  const safeAlpha = options.allowLocalAssist
+    ? getSafeAlphaMask(alpha, await smoothAlphaMask(assistedAlpha, width, height))
+    : alpha;
+  const finalMaskDiagnostics = options.allowLocalAssist
+    ? analyzeAlphaMask(safeAlpha, width, height)
+    : initialMaskDiagnostics;
 
   if (!finalMaskDiagnostics.passed) {
     throw new Error(`Preserve mode rejected the refined product mask: ${finalMaskDiagnostics.failureReasons.join("; ")}`);
@@ -878,6 +918,21 @@ const getCutoutVisualPresence = (
   };
 };
 
+const rgbaToRgb = (rgba: Buffer): Buffer => {
+  const pixelCount = Math.floor(rgba.length / 4);
+  const rgb = Buffer.alloc(pixelCount * 3);
+
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const sourceIndex = pixel * 4;
+    const targetIndex = pixel * 3;
+    rgb[targetIndex] = rgba[sourceIndex] ?? 0;
+    rgb[targetIndex + 1] = rgba[sourceIndex + 1] ?? 0;
+    rgb[targetIndex + 2] = rgba[sourceIndex + 2] ?? 0;
+  }
+
+  return rgb;
+};
+
 const validatePreservedForegroundIntegrity = async (
   preservedOriginalBuffer: Buffer,
   cutoutBuffer: Buffer
@@ -889,7 +944,7 @@ const validatePreservedForegroundIntegrity = async (
   }
 
   const [originalRgb, cutoutRgba] = await Promise.all([
-    sharp(preservedOriginalBuffer).ensureAlpha().removeAlpha().raw().toBuffer(),
+    sharp(preservedOriginalBuffer).ensureAlpha().raw().toBuffer().then(rgbaToRgb),
     sharp(cutoutBuffer)
       .ensureAlpha()
       .resize(metadata.width, metadata.height, {
@@ -1058,17 +1113,72 @@ const getResizedAiAlpha = async (
   aiCutoutBuffer: Buffer,
   width: number,
   height: number
-): Promise<Buffer> =>
-  sharp(aiCutoutBuffer)
-    .ensureAlpha()
-    .extractChannel("alpha")
-    .resize(width, height, {
+): Promise<Buffer> => {
+  const metadata = await sharp(aiCutoutBuffer).metadata();
+  const alpha = sharp(aiCutoutBuffer).ensureAlpha().extractChannel("alpha");
+  const needsResize = metadata.width !== width || metadata.height !== height;
+  const resized = needsResize
+    ? alpha.resize(width, height, {
       fit: "fill",
       kernel: sharp.kernel.lanczos3
     })
-    .blur(0.3)
+    : alpha;
+
+  return (needsResize ? resized.blur(0.3) : resized)
     .raw()
     .toBuffer();
+};
+
+const getSourceAlignedAlpha = async (
+  cutoutBuffer: Buffer,
+  width: number,
+  height: number
+): Promise<Buffer> => {
+  const metadata = await sharp(cutoutBuffer).metadata();
+  const alpha = sharp(cutoutBuffer).ensureAlpha().extractChannel("alpha");
+
+  if (metadata.width === width && metadata.height === height) {
+    return alpha.raw().toBuffer();
+  }
+
+  return alpha
+    .resize({
+      width,
+      height,
+      fit: "contain",
+      withoutEnlargement: false,
+      background: {
+        r: 0,
+        g: 0,
+        b: 0
+      }
+    })
+    .raw()
+    .toBuffer();
+};
+
+const prepareProviderAlphaForPreserve = (
+  provider: string,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  if (!provider.startsWith("imgly:")) {
+    return alpha;
+  }
+
+  return keepMainAlphaComponents(thresholdAlphaMask(alpha, 160), width, height);
+};
+
+const thresholdAlphaMask = (alpha: Buffer, threshold: number): Buffer => {
+  const thresholded = Buffer.alloc(alpha.length);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    thresholded[pixel] = (alpha[pixel] ?? 0) >= threshold ? 255 : 0;
+  }
+
+  return thresholded;
+};
 
 const chooseBaseProductAlpha = (aiAlpha: Buffer, localAlpha: Buffer): Buffer => {
   const aiCoverage = getAlphaCoverage(aiAlpha);
@@ -2212,6 +2322,8 @@ export const processImageForProduct = async ({
     ? await processImagePreserveMode(preservedOriginalInput, openAiInput, {
         userId,
         imageJobId,
+        specialistSourceBuffer: originalImage.buffer,
+        specialistSourceContentType: originalImage.contentType,
         originalStoragePath,
         originalContentType: originalImage.contentType,
         sourceDimensions: originalImageDimensions,
@@ -2313,6 +2425,8 @@ export const processImageForProduct = async ({
     const preserveContext = {
       userId,
       imageJobId,
+      specialistSourceBuffer: originalImage.buffer,
+      specialistSourceContentType: originalImage.contentType,
       originalStoragePath,
       originalContentType: originalImage.contentType,
       sourceDimensions: originalImageDimensions,

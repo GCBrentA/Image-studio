@@ -27,6 +27,7 @@
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "@imgly/background-removal-node": "^1.4.5",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.104.1",
     "cors": "^2.8.5",
