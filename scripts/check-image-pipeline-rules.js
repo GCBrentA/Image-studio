@@ -23,15 +23,21 @@ assert.match(imageProcessing, /Product foreground touches the canvas safe bounda
 assert.match(imageProcessing, /outputValidation\.status === "Failed"/, "failed validation stops processing");
 assert.match(imageProcessing, /throw new PreserveModeProcessingError\(failureReason/, "preserve failed validation is not uploaded as success");
 assert.match(imageProcessing, /repairInteriorProductDropouts/, "preserve mode has an interior dropout repair stage");
+assert.match(imageProcessing, /validatePreserveModeProgrammatic/, "preserve mode has strict programmatic validation");
+assert.match(imageProcessing, /runPreserveVisionQa/, "preserve mode has strict vision QA");
 assert.match(imageProcessing, /secondOpinionForegroundPercent[\s\S]*productLikePercent[\s\S]*backgroundLikePercent[\s\S]*bridgesForeground/, "interior dropout repair uses structural and second-opinion evidence");
 assert.match(imageProcessing, /originalRgb[\s\S]*repairedAlpha\[pixel\] = 255/, "interior restoration restores original source pixels through the preserve alpha mask");
+assert.match(imageProcessing, /applyApprovedAlphaToOriginalPixels/, "final preserve product layer is original pixels cut by an approved alpha mask");
 assert.match(imageProcessing, /Interior product dropout remains after repair/, "unresolved interior product dropout fails validation");
 assert.match(imageProcessing, /interior_dropout_overlay[\s\S]*restored_region_overlay[\s\S]*final_repaired_cutout/, "preserve debug saves interior dropout repair artifacts");
+assert.match(imageProcessing, /edge_halo_overlay[\s\S]*connected_components_overlay[\s\S]*product_cutout_checkerboard/, "preserve debug saves edge and checkerboard artifacts");
 assert.match(imageProcessing, /getBackgroundMarkSuspicion[\s\S]*background logo or watermark/, "preserve masks with internal background logos are rejected before completion");
 assert.match(imageProcessing, /openAiImageEditModel[\s\S]*openAiImageEditQuality[\s\S]*openAiImageEditSize/, "model, quality and size are tracked in safe logging");
 assert.doesNotMatch(imageProcessing, /console\.(info|warn|error)\([\s\S]{0,400}openAiApiKey/, "safe logging does not include API key");
 
 assert.match(backgroundRemoval, /openAiImageEditEndpoint = "https:\/\/api\.openai\.com\/v1\/images\/edits"/, "OpenAI image edit endpoint is explicit");
+assert.match(backgroundRemoval, /openAiImageEditModel = env\.imageEditModel/, "OpenAI image edit model is environment driven");
+assert.match(backgroundRemoval, /buildOpenAiBackgroundOnlyPrompt/, "background-only prompt is separated from product cutout logic");
 assert.match(backgroundRemoval, /openAiImageEditQuality = "high"/, "OpenAI quality is high");
 assert.match(backgroundRemoval, /openAiImageEditSize = "1024x1024"/, "OpenAI size is 1024x1024");
 

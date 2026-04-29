@@ -13,6 +13,15 @@ import {
   removeImageBackgroundWithSpecialistModel
 } from "./backgroundRemovalService";
 import {
+  combinePreserveQaResults,
+  type PreserveModeProgrammaticValidation,
+  validatePreserveModeProgrammatic
+} from "./preserveModeValidationService";
+import {
+  runPreserveVisionQa,
+  type PreserveVisionQaResult
+} from "./preserveVisionQaService";
+import {
   createStorageSignedUrl,
   storageBuckets,
   uploadStorageObject
@@ -109,7 +118,14 @@ export type OutputQualityValidation = {
     interiorDropout: ValidationStatus;
     edgeQuality: ValidationStatus;
     shadow: ValidationStatus;
+    programmaticValidation?: ValidationStatus;
+    visionQa?: ValidationStatus;
   };
+  scores?: Partial<PreserveModeProgrammaticValidation["scores"]> & {
+    visionQaEcommerce?: number;
+  };
+  programmaticValidation?: Omit<PreserveModeProgrammaticValidation, "overlays">;
+  visionQa?: PreserveVisionQaResult;
   warnings: string[];
   failureReasons: string[];
 };
@@ -148,13 +164,26 @@ export type PreserveDebugAsset = {
   kind:
     | "original_source"
     | "ai_cutout"
+    | "raw_mask"
+    | "cleaned_mask"
     | "alpha_mask"
+    | "alpha_mask_preview"
+    | "product_cutout_checkerboard"
+    | "edge_inspection_ring"
+    | "edge_halo_overlay"
+    | "connected_components_overlay"
+    | "dropout_overlay"
     | "interior_dropout_overlay"
     | "restored_region_overlay"
     | "final_repaired_cutout"
     | "preserved_cutout"
+    | "generated_background"
+    | "shadow_layer"
     | "final_composite"
-    | "background_only_comparison";
+    | "final_qa_comparison"
+    | "background_only_comparison"
+    | "validation_json"
+    | "vision_qa_json";
   bucket: string;
   path: string;
   url: string | null;
@@ -236,8 +265,23 @@ export type PreserveDebugInfo = {
   backgroundOnlyBlockerTriggered: boolean;
   rgbIntegrity: PreserveRgbIntegrity;
   interiorDropout: InteriorDropoutDiagnostics | null;
+  sourceAnalysis?: SourceAnalysis;
+  programmaticValidation?: PreserveModeProgrammaticValidation;
+  visionQa?: PreserveVisionQaResult;
   outputValidation?: OutputQualityValidation;
   assets: PreserveDebugAsset[];
+};
+
+export type SourceAnalysis = {
+  width: number;
+  height: number;
+  aspectRatio: number;
+  productBounds: ProductBounds | null;
+  productOrientation: ProductOrientation;
+  alphaCoveragePercent: number;
+  dominantBackgroundColours: Array<{ r: number; g: number; b: number; count: number }>;
+  productBrightnessRange: { min: number; max: number; mean: number };
+  likelyShadowArea: { x: number; y: number; width: number; height: number } | null;
 };
 
 class PreserveModeProcessingError extends Error {
@@ -247,6 +291,16 @@ class PreserveModeProcessingError extends Error {
     super(message);
     this.name = "PreserveModeProcessingError";
     this.preserveDebug = preserveDebug;
+  }
+}
+
+class PreserveModeProgrammaticValidationError extends Error {
+  public readonly validation: PreserveModeProgrammaticValidation;
+
+  public constructor(message: string, validation: PreserveModeProgrammaticValidation) {
+    super(message);
+    this.name = "PreserveModeProgrammaticValidationError";
+    this.validation = validation;
   }
 }
 
@@ -500,6 +554,68 @@ const getImageDimensions = async (imageBuffer: Buffer): Promise<{ width: number;
   };
 };
 
+const analyzeSourceImageForPreserveMode = async (preservedOriginalBuffer: Buffer): Promise<SourceAnalysis> => {
+  const metadata = await sharp(preservedOriginalBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Source image analysis failed because dimensions could not be read.");
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(preservedOriginalBuffer).ensureAlpha().raw().toBuffer();
+  const rgb = rgbaToRgb(rgba);
+  const localAlpha = buildLocalForegroundAlpha(rgba, width, height);
+  const bounds = getAlphaBounds(localAlpha, width, height, 24);
+  const productBounds = bounds
+    ? { minX: bounds.minX, maxX: bounds.maxX, minY: bounds.minY, maxY: bounds.maxY, width: bounds.width, height: bounds.height }
+    : null;
+  const productOrientation = productBounds
+    ? productBounds.width / Math.max(1, productBounds.height) > 1.25
+      ? "horizontal"
+      : productBounds.height / Math.max(1, productBounds.width) > 1.25
+        ? "tall"
+        : "square"
+    : "square";
+  let minBrightness = 255;
+  let maxBrightness = 0;
+  let totalBrightness = 0;
+  let brightnessPixels = 0;
+
+  for (let pixel = 0; pixel < localAlpha.length; pixel += 1) {
+    if ((localAlpha[pixel] ?? 0) < 24) continue;
+    const index = pixel * 3;
+    const brightness = 0.2126 * (rgb[index] ?? 0) + 0.7152 * (rgb[index + 1] ?? 0) + 0.0722 * (rgb[index + 2] ?? 0);
+    minBrightness = Math.min(minBrightness, brightness);
+    maxBrightness = Math.max(maxBrightness, brightness);
+    totalBrightness += brightness;
+    brightnessPixels += 1;
+  }
+
+  return {
+    width,
+    height,
+    aspectRatio: Number((width / height).toFixed(4)),
+    productBounds,
+    productOrientation,
+    alphaCoveragePercent: Number(((getAlphaCoverage(localAlpha) / (width * height)) * 100).toFixed(3)),
+    dominantBackgroundColours: buildBackgroundPalette(rgb, localAlpha, width, height).map((colour) => ({ ...colour, count: 0 })),
+    productBrightnessRange: {
+      min: Number((brightnessPixels ? minBrightness : 0).toFixed(2)),
+      max: Number((brightnessPixels ? maxBrightness : 0).toFixed(2)),
+      mean: Number((brightnessPixels ? totalBrightness / brightnessPixels : 0).toFixed(2))
+    },
+    likelyShadowArea: productBounds
+      ? {
+          x: productBounds.minX,
+          y: Math.min(height - 1, productBounds.maxY),
+          width: productBounds.width,
+          height: Math.max(1, Math.round(productBounds.height * 0.12))
+        }
+      : null
+  };
+};
+
 const normalizeImageForOpenAi = async (imageBuffer: Buffer): Promise<Buffer> =>
   sharp(imageBuffer)
     .rotate()
@@ -545,7 +661,7 @@ const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResu
   return {
     cutout: aiCutout,
     debugCutout: aiCutout,
-    provider: "openai:gpt-image-1:flexible-cutout",
+    provider: `openai:${openAiImageEditModel}:flexible-cutout`,
     attempts: 1,
     validation: {
       alphaCoverage: await getImageAlphaCoverage(aiCutout),
@@ -560,6 +676,7 @@ const processImagePreserveMode = async (
   context: PreserveDebugContext
 ): Promise<CutoutResult> => {
   const workingDimensions = await getImageDimensions(preservedOriginalBuffer);
+  const sourceAnalysis = await analyzeSourceImageForPreserveMode(preservedOriginalBuffer);
   const debug: PreserveDebugInfo = {
     preserveMode: true,
     promptVersion: ecommercePreservePromptVersion,
@@ -581,6 +698,7 @@ const processImagePreserveMode = async (
       alphaCoverage: null
     },
     interiorDropout: null,
+    sourceAnalysis,
     assets: []
   };
   await addExistingPreserveDebugAsset(debug, "original_source", storageBuckets.originalImages, context.originalStoragePath, context.originalContentType);
@@ -588,12 +706,13 @@ const processImagePreserveMode = async (
   console.info("Image preserve-mode masking started", {
     imageJobId: context.imageJobId,
     provider: "imgly:background-removal-node:medium",
-    fallbackProvider: "openai:gpt-image-1:preserve-mask-refined",
+    fallbackProvider: `openai:${openAiImageEditModel}:preserve-mask-refined`,
     fallbackMode: context.fallbackMode,
     sourceWidth: context.sourceDimensions.width,
     sourceHeight: context.sourceDimensions.height,
     workingWidth: workingDimensions.width,
-    workingHeight: workingDimensions.height
+    workingHeight: workingDimensions.height,
+    sourceAnalysis
   });
 
   const runMaskAttempt = async (
@@ -654,11 +773,41 @@ const processImagePreserveMode = async (
     debug.maskSource = "ai_mask";
     debug.mask = result.preserveDebug?.mask ?? maskDiagnostics;
     debug.interiorDropout = result.preserveDebug?.interiorDropout ?? null;
+    debug.programmaticValidation = result.preserveDebug?.programmaticValidation;
     debug.rgbIntegrity = {
       passed: true,
       foregroundMeanDelta: result.validation.foregroundMeanDelta,
       alphaCoverage: result.validation.alphaCoverage
     };
+    const programmaticOverlays = result.preserveDebug?.programmaticValidation?.overlays;
+    if (programmaticOverlays?.edgeInspectionRing) {
+      await uploadPreserveDebugAsset(context, debug, "edge_inspection_ring", `attempt-${attempt}-edge-inspection-ring-${randomUUID()}.png`, programmaticOverlays.edgeInspectionRing, "image/png");
+    }
+    if (programmaticOverlays?.edgeHaloOverlay) {
+      await uploadPreserveDebugAsset(context, debug, "edge_halo_overlay", `attempt-${attempt}-edge-halo-overlay-${randomUUID()}.png`, programmaticOverlays.edgeHaloOverlay, "image/png");
+    }
+    if (programmaticOverlays?.connectedComponentsOverlay) {
+      await uploadPreserveDebugAsset(context, debug, "connected_components_overlay", `attempt-${attempt}-connected-components-overlay-${randomUUID()}.png`, programmaticOverlays.connectedComponentsOverlay, "image/png");
+    }
+    if (programmaticOverlays?.alphaMaskPreview) {
+      await uploadPreserveDebugAsset(context, debug, "alpha_mask_preview", `attempt-${attempt}-alpha-mask-preview-${randomUUID()}.png`, programmaticOverlays.alphaMaskPreview, "image/png");
+    }
+    if (programmaticOverlays?.checkerboardPreview) {
+      await uploadPreserveDebugAsset(context, debug, "product_cutout_checkerboard", `attempt-${attempt}-checkerboard-preview-${randomUUID()}.png`, programmaticOverlays.checkerboardPreview, "image/png");
+    }
+    if (result.preserveDebug?.programmaticValidation) {
+      await uploadPreserveDebugAsset(
+        context,
+        debug,
+        "validation_json",
+        `attempt-${attempt}-programmatic-validation-${randomUUID()}.json`,
+        Buffer.from(JSON.stringify({
+          ...result.preserveDebug.programmaticValidation,
+          overlays: undefined
+        }, null, 2)),
+        "application/json"
+      );
+    }
     if (result.debugInteriorDropoutOverlay) {
       await uploadPreserveDebugAsset(
         context,
@@ -734,7 +883,7 @@ const processImagePreserveMode = async (
       )
     },
     {
-      provider: "openai:gpt-image-1:preserve-mask-refined",
+      provider: `openai:${openAiImageEditModel}:preserve-mask-refined`,
       attempt: 2,
       stage: "refining_edges" as const,
       alphaAlignment: "square-fill" as const,
@@ -757,6 +906,36 @@ const processImagePreserveMode = async (
       const errorDebug = getPreserveDebugFromError(error);
       if (errorDebug) {
         Object.assign(debug, errorDebug);
+      }
+      if (error instanceof PreserveModeProgrammaticValidationError) {
+        debug.programmaticValidation = error.validation;
+        const overlays = error.validation.overlays;
+        if (overlays.edgeInspectionRing) {
+          await uploadPreserveDebugAsset(context, debug, "edge_inspection_ring", `attempt-${attemptConfig.attempt}-failed-edge-inspection-ring-${randomUUID()}.png`, overlays.edgeInspectionRing, "image/png");
+        }
+        if (overlays.edgeHaloOverlay) {
+          await uploadPreserveDebugAsset(context, debug, "edge_halo_overlay", `attempt-${attemptConfig.attempt}-failed-edge-halo-overlay-${randomUUID()}.png`, overlays.edgeHaloOverlay, "image/png");
+        }
+        if (overlays.connectedComponentsOverlay) {
+          await uploadPreserveDebugAsset(context, debug, "connected_components_overlay", `attempt-${attemptConfig.attempt}-failed-connected-components-overlay-${randomUUID()}.png`, overlays.connectedComponentsOverlay, "image/png");
+        }
+        if (overlays.alphaMaskPreview) {
+          await uploadPreserveDebugAsset(context, debug, "alpha_mask_preview", `attempt-${attemptConfig.attempt}-failed-alpha-mask-preview-${randomUUID()}.png`, overlays.alphaMaskPreview, "image/png");
+        }
+        if (overlays.checkerboardPreview) {
+          await uploadPreserveDebugAsset(context, debug, "product_cutout_checkerboard", `attempt-${attemptConfig.attempt}-failed-checkerboard-preview-${randomUUID()}.png`, overlays.checkerboardPreview, "image/png");
+        }
+        await uploadPreserveDebugAsset(
+          context,
+          debug,
+          "validation_json",
+          `attempt-${attemptConfig.attempt}-failed-programmatic-validation-${randomUUID()}.json`,
+          Buffer.from(JSON.stringify({
+            ...error.validation,
+            overlays: undefined
+          }, null, 2)),
+          "application/json"
+        );
       }
       console.warn("Image preserve-mode AI mask rejected", {
         imageJobId: context.imageJobId,
@@ -860,7 +1039,7 @@ const buildPreservedProductCutoutFromAiMask = async (
   return buildPreservedProductCutoutFromAlpha(
     preservedOriginalBuffer,
     aiAlpha,
-    "openai:gpt-image-1:preserve-mask",
+    `openai:${openAiImageEditModel}:preserve-mask`,
     1,
     {
       allowLocalAssist: false,
@@ -972,14 +1151,15 @@ const buildPreservedProductCutoutFromAlpha = async (
     throw new Error(`Preserve mode detected unresolved interior product dropout: ${interiorRepair.diagnostics.failureReasons.join("; ")}`);
   }
 
-  const productRgba = removeEdgeMatte(originalRaw, interiorRepair.alpha, width, height, backgroundPalette);
-  const visualValidation = getCutoutVisualPresence(productRgba, interiorRepair.alpha);
+  let approvedAlpha = interiorRepair.alpha;
+  let productRgba = applyApprovedAlphaToOriginalPixels(originalRaw, approvedAlpha, width, height);
+  const visualValidation = getCutoutVisualPresence(productRgba, approvedAlpha);
 
   if (!visualValidation.isVisible) {
     throw new Error("Preserve mode rejected the cutout because the detected foreground is visually indistinguishable from the source background.");
   }
 
-  const cutout = await sharp(productRgba, {
+  let cutout = await sharp(productRgba, {
     raw: {
       width,
       height,
@@ -988,7 +1168,67 @@ const buildPreservedProductCutoutFromAlpha = async (
   })
     .png()
     .toBuffer();
-  const validation = await validatePreservedForegroundIntegrity(preservedOriginalBuffer, cutout);
+  let validation = await validatePreservedForegroundIntegrity(preservedOriginalBuffer, cutout);
+  let programmaticValidation = await validatePreserveModeProgrammatic({
+    sourceBuffer: preservedOriginalBuffer,
+    productCutoutBuffer: cutout,
+    sourceReferenceAlpha: secondOpinionAlpha,
+    referenceWidth: width,
+    referenceHeight: height
+  });
+
+  if (
+    !programmaticValidation.passed &&
+    programmaticValidation.failReasons.some((reason) =>
+      ["Edge Halo / Background Residue", "Mask Includes Background", "Dirty Alpha Edge", "Disconnected Background Artifact"].includes(reason)
+    )
+  ) {
+    const harderAlpha = keepMainAlphaComponents(
+      removePaleBackgroundEdgeRemnants(
+        originalRgba,
+        removeBackgroundLikePixelsFromMask(originalRaw, approvedAlpha, backgroundPalette),
+        width,
+        height
+      ),
+      width,
+      height
+    );
+    const harderCoverage = getAlphaCoverage(harderAlpha);
+    if (harderCoverage >= getAlphaCoverage(approvedAlpha) * 0.78) {
+      const harderProductRgba = applyApprovedAlphaToOriginalPixels(originalRaw, harderAlpha, width, height);
+      const harderCutout = await sharp(harderProductRgba, {
+        raw: {
+          width,
+          height,
+          channels: 4
+        }
+      })
+        .png()
+        .toBuffer();
+      const harderValidation = await validatePreserveModeProgrammatic({
+        sourceBuffer: preservedOriginalBuffer,
+        productCutoutBuffer: harderCutout,
+        sourceReferenceAlpha: secondOpinionAlpha,
+        referenceWidth: width,
+        referenceHeight: height
+      });
+
+      if (harderValidation.passed || harderValidation.overallScore > programmaticValidation.overallScore) {
+        approvedAlpha = harderAlpha;
+        productRgba = harderProductRgba;
+        cutout = harderCutout;
+        validation = await validatePreservedForegroundIntegrity(preservedOriginalBuffer, cutout);
+        programmaticValidation = harderValidation;
+      }
+    }
+  }
+
+  if (!programmaticValidation.passed) {
+    throw new PreserveModeProgrammaticValidationError(
+      `Preserve mode programmatic validation failed: ${programmaticValidation.failReasons.join("; ")}`,
+      programmaticValidation
+    );
+  }
 
   return {
     cutout,
@@ -996,7 +1236,7 @@ const buildPreservedProductCutoutFromAlpha = async (
     provider,
     attempts,
     validation,
-    debugAlphaMask: await buildAlphaMaskPreview(interiorRepair.alpha, width, height),
+    debugAlphaMask: await buildAlphaMaskPreview(approvedAlpha, width, height),
     debugInteriorDropoutOverlay: interiorRepair.debugSuspiciousOverlay,
     debugRestoredRegionOverlay: interiorRepair.debugRestoredOverlay,
     debugFinalRepairedCutout: cutout,
@@ -1019,7 +1259,7 @@ const buildPreservedProductCutoutFromAlpha = async (
         height
       },
       aiResultDimensions: null,
-      mask: repairedMaskDiagnostics,
+      mask: analyzeAlphaMask(approvedAlpha, width, height),
       backgroundOnlyBlockerTriggered: false,
       rgbIntegrity: {
         passed: true,
@@ -1027,6 +1267,7 @@ const buildPreservedProductCutoutFromAlpha = async (
         alphaCoverage: validation.alphaCoverage
       },
       interiorDropout: interiorRepair.diagnostics,
+      programmaticValidation,
       assets: []
     }
   };
@@ -1162,12 +1403,11 @@ const validatePreservedForegroundIntegrity = async (
   };
 };
 
-const removeEdgeMatte = (
+const applyApprovedAlphaToOriginalPixels = (
   originalRgb: Buffer,
   alpha: Buffer,
   width: number,
-  height: number,
-  palette: Array<{ r: number; g: number; b: number }>
+  height: number
 ): Buffer => {
   const rgba = Buffer.alloc(width * height * 4);
 
@@ -1177,45 +1417,13 @@ const removeEdgeMatte = (
     rgba[targetIndex] = originalRgb[sourceIndex] ?? 0;
     rgba[targetIndex + 1] = originalRgb[sourceIndex + 1] ?? 0;
     rgba[targetIndex + 2] = originalRgb[sourceIndex + 2] ?? 0;
-    rgba[targetIndex + 3] = alpha[pixel] ?? 0;
-  }
-
-  if (palette.length === 0) {
-    return rgba;
-  }
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const pixel = y * width + x;
-      const currentAlpha = alpha[pixel] ?? 0;
-
-      if (currentAlpha <= 0 || currentAlpha >= 250) {
-        continue;
-      }
-
-      const targetIndex = pixel * 4;
-      const r = rgba[targetIndex] ?? 0;
-      const g = rgba[targetIndex + 1] ?? 0;
-      const b = rgba[targetIndex + 2] ?? 0;
-      const distance = closestPaletteDistance(r, g, b, palette);
-      const saturation = getRgbSaturation(r, g, b);
-
-      if (distance >= 82 && saturation >= 0.1) {
-        continue;
-      }
-
-      const replacement = findNearestSolidProductColor(rgba, width, height, x, y, 6);
-
-      if (replacement) {
-        rgba[targetIndex] = replacement.r;
-        rgba[targetIndex + 1] = replacement.g;
-        rgba[targetIndex + 2] = replacement.b;
-      }
-    }
+    rgba[targetIndex + 3] = (alpha[pixel] ?? 0) >= 24 ? 255 : 0;
   }
 
   return rgba;
 };
+
+const removeEdgeMatte = applyApprovedAlphaToOriginalPixels;
 
 const findNearestSolidProductColor = (
   rgba: Buffer,
@@ -3268,9 +3476,17 @@ const buildOutputQualityValidation = async (
   }
 
   const mask = cutoutResult.preserveDebug?.mask;
+  const programmaticValidation = cutoutResult.preserveDebug?.programmaticValidation;
   if (mask && (!mask.passed || mask.connectedComponentCount > 200 || mask.largestComponentSharePercent < 70)) {
     warnings.push("Foreground edge confidence is low; review for background remnants or jagged thin parts.");
     edgeQuality = "Needs Review";
+  }
+
+  if (programmaticValidation && !programmaticValidation.passed) {
+    failureReasons.push(...programmaticValidation.failReasons);
+    edgeQuality = programmaticValidation.failReasons.includes("Edge Halo / Background Residue") || programmaticValidation.failReasons.includes("Dirty Alpha Edge")
+      ? "Failed"
+      : edgeQuality;
   }
 
   const interiorDropoutDiagnostics = cutoutResult.preserveDebug?.interiorDropout;
@@ -3313,13 +3529,18 @@ const buildOutputQualityValidation = async (
     detailPreservation,
     interiorDropout,
     edgeQuality,
-    shadow
+    shadow,
+    programmaticValidation: preserveProductExactly ? (programmaticValidation?.passed ? "Passed" as const : "Failed" as const) : undefined
   };
   const status: ValidationStatus = failureReasons.length > 0
     ? "Failed"
     : Object.values(checks).some((check) => check === "Needs Review")
       ? "Needs Review"
       : "Passed";
+
+  const programmaticValidationWithoutOverlays = programmaticValidation
+    ? (({ overlays: _overlays, ...rest }) => rest)(programmaticValidation)
+    : undefined;
 
   return {
     status,
@@ -3336,8 +3557,10 @@ const buildOutputQualityValidation = async (
     productOrientation: target.orientation,
     autoFixedFraming,
     checks,
+    scores: programmaticValidation?.scores,
+    programmaticValidation: programmaticValidationWithoutOverlays,
     warnings,
-    failureReasons
+    failureReasons: Array.from(new Set(failureReasons))
   };
 };
 
@@ -3595,7 +3818,7 @@ export const processImageForProduct = async ({
   if (edgeBottom && !edgeTop) top = outputSize - productHeight;
 
   const shadow = await buildShadow(outputSize, outputSize, productBuffer, productWidth, productHeight, left, top, shadowSettings);
-  const outputValidation = await buildOutputQualityValidation(
+  let outputValidation = await buildOutputQualityValidation(
     productBuffer,
     left,
     top,
@@ -3667,11 +3890,21 @@ export const processImageForProduct = async ({
     await uploadPreserveDebugAsset(
       preserveContext,
       cutoutResult.preserveDebug,
-      "background_only_comparison",
-      `background-only-comparison-${randomUUID()}.png`,
+      "generated_background",
+      `generated-background-${randomUUID()}.png`,
       backgroundBuffer,
       "image/png"
     );
+    if (shadow) {
+      await uploadPreserveDebugAsset(
+        preserveContext,
+        cutoutResult.preserveDebug,
+        "shadow_layer",
+        `shadow-layer-${randomUUID()}.png`,
+        shadow,
+        "image/png"
+      );
+    }
     await uploadPreserveDebugAsset(
       preserveContext,
       cutoutResult.preserveDebug,
@@ -3693,6 +3926,59 @@ export const processImageForProduct = async ({
     }
 
     throw error;
+  }
+
+  if (preserveProductExactly && cutoutResult.preserveDebug) {
+    const visionQa = await runPreserveVisionQa({
+      originalSource: preservedOriginalInput,
+      finalComposite: composedImage,
+      checkerboardPreview: cutoutResult.preserveDebug.programmaticValidation?.overlays.checkerboardPreview,
+      alphaMaskPreview: cutoutResult.preserveDebug.programmaticValidation?.overlays.alphaMaskPreview,
+      edgeHaloOverlay: cutoutResult.preserveDebug.programmaticValidation?.overlays.edgeHaloOverlay,
+      dropoutOverlay: cutoutResult.debugInteriorDropoutOverlay
+    });
+    cutoutResult.preserveDebug.visionQa = visionQa;
+    outputValidation = {
+      ...outputValidation,
+      status: combinePreserveQaResults(outputValidation.status === "Passed", visionQa.passed),
+      checks: {
+        ...outputValidation.checks,
+        visionQa: visionQa.passed ? "Passed" : "Failed"
+      },
+      scores: {
+        ...(outputValidation.scores ?? {}),
+        visionQaEcommerce: visionQa.scores.ecommerceQuality
+      },
+      visionQa,
+      failureReasons: Array.from(new Set([
+        ...outputValidation.failureReasons,
+        ...(!visionQa.passed ? (visionQa.failReasons.length ? visionQa.failReasons : ["Low Confidence Preserve Result"]) : [])
+      ]))
+    };
+    cutoutResult.preserveDebug.outputValidation = outputValidation;
+    await uploadPreserveDebugAsset(
+      {
+        userId,
+        imageJobId,
+        specialistSourceBuffer: originalImage.buffer,
+        specialistSourceContentType: originalImage.contentType,
+        originalStoragePath,
+        originalContentType: originalImage.contentType,
+        sourceDimensions: originalImageDimensions,
+        fallbackMode: preserveModeFallback
+      },
+      cutoutResult.preserveDebug,
+      "vision_qa_json",
+      `vision-qa-${randomUUID()}.json`,
+      Buffer.from(JSON.stringify(visionQa, null, 2)),
+      "application/json"
+    );
+
+    if (outputValidation.status !== "Passed") {
+      cutoutResult.preserveDebug.finalStatus = "failed";
+      cutoutResult.preserveDebug.failureReason = outputValidation.failureReasons.join("; ") || "Preserve mode failed ecommerce QA.";
+      throw new PreserveModeProcessingError(cutoutResult.preserveDebug.failureReason, cutoutResult.preserveDebug);
+    }
   }
 
   if (preserveProductExactly && cutoutResult.preserveDebug) {

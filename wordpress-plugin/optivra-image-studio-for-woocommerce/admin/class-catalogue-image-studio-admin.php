@@ -2515,13 +2515,28 @@ class Catalogue_Image_Studio_Admin {
 
 		$status = (string) ($validation['status'] ?? '');
 		$checks = isset($validation['checks']) && is_array($validation['checks']) ? $validation['checks'] : [];
+		$failure_reasons = isset($validation['failureReasons']) && is_array($validation['failureReasons']) ? $validation['failureReasons'] : [];
+		$scores = isset($validation['scores']) && is_array($validation['scores']) ? $validation['scores'] : [];
 		?>
 		<div class="optivra-validation-summary">
+			<?php if ('Passed' !== $status && ! empty($failure_reasons)) : ?>
+				<strong><?php echo esc_html(sprintf(__('Failed: %s', 'optivra-image-studio-for-woocommerce'), implode(', ', array_map('strval', $failure_reasons)))); ?></strong><br />
+			<?php else : ?>
+				<strong><?php echo esc_html('Passed' === $status ? __('Passed', 'optivra-image-studio-for-woocommerce') : $status); ?></strong><br />
+			<?php endif; ?>
 			<strong><?php echo esc_html__('Product Preservation:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['productPreservation'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Framing:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['framing'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Background:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['background'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Detail Preservation:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['detailPreservation'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Interior Product Dropout:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['interiorDropout'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Edge Cleanliness:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['edgeQuality'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Vision QA:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['visionQa'] ?? __('Not reached', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Product preservation score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['productPreservation'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Edge cleanliness score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['edgeCleanliness'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Background residue score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['backgroundResidue'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Alpha mask confidence score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['alphaConfidence'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Dropout score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['dropoutScore'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Vision QA ecommerce score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['visionQaEcommerce'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
 			<strong><?php echo esc_html__('Coverage:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html(isset($validation['productCoveragePercent']) ? sprintf('%.2f%%', (float) $validation['productCoveragePercent']) : __('Not stored', 'optivra-image-studio-for-woocommerce')); ?><br />
 			<strong><?php echo esc_html__('Prompt:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['promptVersion'] ?? '')); ?><br />
 			<strong><?php echo esc_html__('Mode:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['processingMode'] ?? '')); ?><br />
@@ -2534,6 +2549,12 @@ class Catalogue_Image_Studio_Admin {
 			<?php endif; ?>
 			<?php if (in_array((string) ($checks['interiorDropout'] ?? ''), ['Failed', 'Needs Review'], true)) : ?>
 				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Needs Review: Optivra detected possible missing product material inside the object. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+			<?php if (in_array('Edge Halo / Background Residue', array_map('strval', $failure_reasons), true)) : ?>
+				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Failed: Edge Halo / Background Residue. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+			<?php if (in_array('AI Product Pixel Contamination', array_map('strval', $failure_reasons), true)) : ?>
+				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Failed: AI Product Pixel Contamination. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
 			<?php endif; ?>
 		</div>
 		<?php

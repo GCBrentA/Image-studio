@@ -186,6 +186,10 @@ class Catalogue_Image_Studio_ImageProcessor {
 				'status'                 => 'failed',
 				'error_message'          => $error->get_error_message(),
 				'processing_diagnostics' => $diagnostics ?: null,
+				'processed_url'          => '',
+				'processed_attachment_id' => 0,
+				'processed_storage_bucket' => '',
+				'processed_storage_path' => '',
 			]
 		);
 

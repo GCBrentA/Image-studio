@@ -12,7 +12,7 @@ export type ImagePromptVariant =
   | "premium_studio_background";
 
 export const ecommercePreservePromptVersion = "ecommerce_preserve_v2";
-export const openAiImageEditModel = "gpt-image-1";
+export const openAiImageEditModel = env.imageEditModel;
 export const openAiImageEditEndpoint = "https://api.openai.com/v1/images/edits";
 export const openAiImageEditQuality = "high";
 export const openAiImageEditSize = "1024x1024";
@@ -53,7 +53,13 @@ const preserveMaskPrompt =
   `${buildOpenAiImagePrompt("seo_product_feed_preserve")} Use this request only for foreground segmentation and background removal. Return a transparent-background PNG whose alpha channel isolates only the real product. Keep true internal openings transparent. The RGB product pixels are not the final product pixels, so do not invent or repair product detail in the cutout.`;
 
 const preserveMaskRefinedPrompt =
-  `${strictProductPreservationBlock} Perform only professional product foreground segmentation. Return a transparent PNG alpha cutout that isolates the real product from the supplied image. Do not generate, redraw, repair, stylize, relight, recolour, or reinterpret the product. Keep thin rails, trigger guards, holes, vents, sights, nozzles, logos, markings, translucent sections, small accessories, screws, seams, and internal openings exactly as segmentation requires. If uncertain, prefer a conservative transparent cutout over inventing product pixels. ${negativeProductInstructionBlock}`;
+  `${strictProductPreservationBlock} Return a clean product-only mask. Exclude all background, watermark, logo, floor, shadows, halos, grey smears, pale residue, and semi-transparent edge contamination. Preserve all dark product details, thin structures, interior openings, and exact silhouette. Perform only professional product foreground segmentation. Return a transparent PNG alpha cutout that isolates the real product from the supplied image. Do not generate, redraw, repair, stylize, relight, recolour, or reinterpret the product. Keep thin rails, trigger guards, holes, vents, sights, nozzles, logos, markings, translucent sections, small accessories, screws, seams, and internal openings exactly as segmentation requires. If uncertain, prefer a conservative transparent cutout over inventing product pixels. ${negativeProductInstructionBlock}`;
+
+export const buildOpenAiBackgroundOnlyPrompt = (): string =>
+  "Create a clean premium ecommerce studio background suitable for this product. No text, no logos, no props, no watermark, no product changes. Background only.";
+
+export const buildOpenAiRelightingShadowGuidancePrompt = (): string =>
+  "Generate only a natural studio-style background and soft realistic shadow environment. Do not alter, redraw, deform, repaint, replace, or add details to the product. The product layer will be composited separately from original source pixels.";
 
 const flexibleCutoutPrompt =
   `${buildOpenAiImagePrompt("standard_background_replacement")} Create a precise ecommerce product alpha mask/cutout from this image. Isolate only the actual product object. Remove all background, floor, wall, table, shadows, reflections, glare patches, gaps, holes, empty spaces between parts, and background visible through openings in the product. Return a clean transparent-background PNG with only the product foreground isolated, no added objects and no background remnants.`;

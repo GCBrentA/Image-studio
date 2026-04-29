@@ -76,6 +76,12 @@ export const env = {
   ga4MeasurementProtocolSecret: process.env.GA4_MEASUREMENT_PROTOCOL_SECRET ?? "",
   viteGtmId: process.env.VITE_GTM_ID ?? "",
   analyticsDebug: process.env.VITE_ANALYTICS_DEBUG === "true" || process.env.ANALYTICS_DEBUG === "true",
+  imageEditModel:
+    process.env.OPTIVRA_IMAGE_EDIT_MODEL ??
+    process.env.OPENAI_IMAGE_MODEL ??
+    process.env.IMAGE_EDIT_MODEL ??
+    "gpt-image-1",
+  visionQaModel: process.env.OPTIVRA_VISION_QA_MODEL ?? "gpt-4.1",
   backgroundRemovalApiUrl: process.env.BACKGROUND_REMOVAL_API_URL ?? "",
   backgroundRemovalApiKey: process.env.BACKGROUND_REMOVAL_API_KEY ?? "",
   storageSignedUrlExpiresSeconds: Number(process.env.STORAGE_SIGNED_URL_EXPIRES_SECONDS ?? 60 * 60 * 24 * 7),
