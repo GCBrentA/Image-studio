@@ -1,0 +1,26 @@
+{
+  "preserveMode": true,
+  "fallbackMode": "fail_safe",
+  "finalStatus": "failed",
+  "maskSource": "failed",
+  "attempts": 2,
+  "failureReason": "alpha mask is empty",
+  "backgroundOnlyCompletionPrevented": true,
+  "mask": {
+    "width": 2000,
+    "height": 2000,
+    "alphaCoverage": 0,
+    "alphaCoveragePercent": 0,
+    "passed": false,
+    "failureReasons": [
+      "alpha mask is empty"
+    ]
+  },
+  "assets": [
+    "original-source.png",
+    "ai-transparent-cutout.png",
+    "alpha-mask-preview.png",
+    "background-only-comparison.png",
+    "diagnostics.json"
+  ]
+}
