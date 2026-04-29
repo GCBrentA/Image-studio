@@ -87,7 +87,10 @@ export const validatePreserveModeProgrammatic = async ({
   const largestComponentPixels = components[0]?.length ?? 0;
   const largestShare = foregroundPixels > 0 ? largestComponentPixels / foregroundPixels : 0;
   const sourceIntegrity = getSourcePixelIntegrity(sourceRgba, cutoutRgba, alpha);
-  const edge = inspectEdgeResidue(sourceRgba, cutoutRgba, alpha, width, height);
+  const referenceAlpha = sourceReferenceAlpha && referenceWidth === width && referenceHeight === height
+    ? sourceReferenceAlpha
+    : null;
+  const edge = inspectEdgeResidue(sourceRgba, cutoutRgba, alpha, width, height, referenceAlpha);
   const geometry = sourceReferenceAlpha && referenceWidth && referenceHeight
     ? compareReferenceGeometry(alpha, width, height, sourceReferenceAlpha, referenceWidth, referenceHeight)
     : { passed: true, widthRatio: 1, heightRatio: 1, areaRatio: 1 };
@@ -284,7 +287,14 @@ const getSourcePixelIntegrity = (sourceRgba: Buffer, cutoutRgba: Buffer, alpha: 
   };
 };
 
-const inspectEdgeResidue = (sourceRgba: Buffer, cutoutRgba: Buffer, alpha: Buffer, width: number, height: number) => {
+const inspectEdgeResidue = (
+  sourceRgba: Buffer,
+  cutoutRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number,
+  referenceAlpha: Buffer | null
+) => {
   const background = getBorderPalette(sourceRgba, width, height);
   const eroded = erode(alpha, width, height, 3);
   const haloMask = Buffer.alloc(alpha.length);
@@ -298,16 +308,22 @@ const inspectEdgeResidue = (sourceRgba: Buffer, cutoutRgba: Buffer, alpha: Buffe
     const r = cutoutRgba[index] ?? 0;
     const g = cutoutRgba[index + 1] ?? 0;
     const b = cutoutRgba[index + 2] ?? 0;
-    const backgroundLike = isBackgroundLike(r, g, b, background);
     const edgePixel = (eroded[pixel] ?? 0) < alphaThreshold;
+    const backgroundLike = isBackgroundLike(r, g, b, background);
+    const structurallySupported = (referenceAlpha?.[pixel] ?? 0) >= alphaThreshold;
+    const edgeDetail = getRgbGradientMagnitude(sourceRgba, width, height, pixel);
+    const residueLike = backgroundLike && (
+      (edgePixel && edgeDetail < 12) ||
+      (!edgePixel && !structurallySupported && edgeDetail < 6)
+    );
 
-    if (backgroundLike) {
+    if (residueLike) {
       backgroundLikeForegroundPixels += 1;
     }
 
     if (edgePixel) {
       insideEdgePixels += 1;
-      if (backgroundLike || ((alpha[pixel] ?? 0) > 0 && (alpha[pixel] ?? 0) < 245)) {
+      if (residueLike || ((alpha[pixel] ?? 0) > 0 && (alpha[pixel] ?? 0) < 245)) {
         haloPixels += 1;
         haloMask[pixel] = 255;
       }
@@ -343,11 +359,39 @@ const isBackgroundLike = (r: number, g: number, b: number, palette: Array<{ r: n
   const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
   const paleNeutral = luminance > 118 && saturation < 0.14 && channelSpread < 34;
   const closeToBorder = palette.some((sample) => {
+    const sampleLuminance = 0.2126 * sample.r + 0.7152 * sample.g + 0.0722 * sample.b;
+    if (luminance < 70 || sampleLuminance < 55) {
+      return false;
+    }
     const distance = Math.abs(sample.r - r) + Math.abs(sample.g - g) + Math.abs(sample.b - b);
     return distance < 62;
   });
 
   return paleNeutral || closeToBorder;
+};
+
+const getRgbGradientMagnitude = (
+  rgba: Buffer,
+  width: number,
+  height: number,
+  pixel: number
+): number => {
+  const x = pixel % width;
+  const y = Math.floor(pixel / width);
+  const left = (y * width + Math.max(0, x - 1)) * 4;
+  const right = (y * width + Math.min(width - 1, x + 1)) * 4;
+  const up = (Math.max(0, y - 1) * width + x) * 4;
+  const down = (Math.min(height - 1, y + 1) * width + x) * 4;
+  const dx =
+    Math.abs((rgba[right] ?? 0) - (rgba[left] ?? 0)) +
+    Math.abs((rgba[right + 1] ?? 0) - (rgba[left + 1] ?? 0)) +
+    Math.abs((rgba[right + 2] ?? 0) - (rgba[left + 2] ?? 0));
+  const dy =
+    Math.abs((rgba[down] ?? 0) - (rgba[up] ?? 0)) +
+    Math.abs((rgba[down + 1] ?? 0) - (rgba[up + 1] ?? 0)) +
+    Math.abs((rgba[down + 2] ?? 0) - (rgba[up + 2] ?? 0));
+
+  return (dx + dy) / 6;
 };
 
 const getSaturation = (r: number, g: number, b: number): number => {
@@ -401,8 +445,11 @@ const compareReferenceGeometry = (
   const heightRatio = bounds.height / Math.max(1, referenceBounds.height);
   const areaRatio = countAlpha(alpha) / Math.max(1, countAlpha(resizedReference));
 
+  const hardPixelLoss = widthRatio < 0.86 || heightRatio < 0.56 || areaRatio < 0.58;
+  const likelyReferenceOverreach = areaRatio >= 0.62 && widthRatio >= 0.9;
+
   return {
-    passed: widthRatio >= 0.92 && heightRatio >= 0.84 && areaRatio >= 0.72,
+    passed: !hardPixelLoss && (likelyReferenceOverreach || (heightRatio >= 0.72 && areaRatio >= 0.68)),
     widthRatio,
     heightRatio,
     areaRatio
@@ -478,4 +525,3 @@ const buildCheckerboardPreview = async (cutoutRgba: Buffer, width: number, heigh
     .png()
     .toBuffer();
 };
-

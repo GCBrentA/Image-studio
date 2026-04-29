@@ -2001,35 +2001,54 @@ const removePaleBackgroundEdgeRemnants = (
   height: number
 ): Buffer => {
   const cleaned = Buffer.from(alpha);
-  let removedPixels = 0;
+  const initialCoverage = getAlphaCoverage(alpha);
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 55);
+  let totalRemovedPixels = 0;
 
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const pixel = y * width + x;
+  for (let pass = 0; pass < 10; pass += 1) {
+    const current = Buffer.from(cleaned);
+    let removedThisPass = 0;
 
-      if ((alpha[pixel] ?? 0) < 24 || !hasTransparentNeighbor(alpha, width, height, x, y, 2)) {
-        continue;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const pixel = y * width + x;
+
+        if ((current[pixel] ?? 0) < 24 || !hasTransparentNeighbor(current, width, height, x, y, 2)) {
+          continue;
+        }
+
+        const index = pixel * 4;
+        const r = originalRgba[index] ?? 0;
+        const g = originalRgba[index + 1] ?? 0;
+        const b = originalRgba[index + 2] ?? 0;
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const saturation = getRgbSaturation(r, g, b);
+        const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+        const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+        const backgroundDistance = backgroundPalette.length > 0
+          ? closestPaletteDistance(r, g, b, backgroundPalette)
+          : Number.POSITIVE_INFINITY;
+        const smoothPaleMatte = luminance > 104 && luminance < 245 && saturation < 0.16 && channelSpread < 42 && gradient < 14;
+        const smoothBackgroundMatch = luminance > 74 && backgroundDistance < 58 && gradient < 11;
+
+        if (!smoothPaleMatte && !smoothBackgroundMatch) {
+          continue;
+        }
+
+        cleaned[pixel] = 0;
+        removedThisPass += 1;
       }
+    }
 
-      const index = pixel * 4;
-      const r = originalRgba[index] ?? 0;
-      const g = originalRgba[index + 1] ?? 0;
-      const b = originalRgba[index + 2] ?? 0;
-      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      const saturation = getRgbSaturation(r, g, b);
-      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
-      const paleNeutralEdge = luminance > 108 && luminance < 240 && saturation < 0.1 && channelSpread < 24;
+    totalRemovedPixels += removedThisPass;
 
-      if (!paleNeutralEdge) {
-        continue;
-      }
-
-      cleaned[pixel] = 0;
-      removedPixels += 1;
+    if (removedThisPass <= 0 || getAlphaCoverage(cleaned) < initialCoverage * 0.62) {
+      break;
     }
   }
 
-  if (removedPixels <= 0 || getAlphaCoverage(cleaned) < getAlphaCoverage(alpha) * 0.75) {
+  if (totalRemovedPixels <= 0 || getAlphaCoverage(cleaned) < initialCoverage * 0.62) {
     return alpha;
   }
 
@@ -2137,7 +2156,7 @@ const removeBackgroundLikePixelsFromMask = (
 };
 
 const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Promise<Buffer> =>
-  sharp(alpha, {
+  thresholdAlphaMask(await sharp(alpha, {
     raw: {
       width,
       height,
@@ -2146,7 +2165,7 @@ const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Pr
   })
     .blur(0.35)
     .raw()
-    .toBuffer();
+    .toBuffer(), 140);
 
 const getSafeAlphaMask = (fallbackAlpha: Buffer, candidateAlpha: Buffer, minCoverageRatio = 0.65): Buffer => {
   const fallbackCoverage = getAlphaCoverage(fallbackAlpha);

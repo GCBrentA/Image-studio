@@ -39,70 +39,78 @@ enum ImageJobStatus {
 }
 
 model User {
-  id                     String              @id @default(cuid())
-  email                  String              @unique
-  password_hash          String
-  role                   String              @default("user")
-  stripe_customer_id     String?             @unique
-  stripe_subscription_id String?             @unique
-  stripe_price_id        String?
-  stripe_product_id      String?
-  billing_plan           SubscriptionPlan?
-  billing_status         SubscriptionStatus?
-  billing_email          String?
-  trial_ends_at          DateTime?
-  current_period_start   DateTime?
-  current_period_end     DateTime?
-  cancel_at_period_end   Boolean             @default(false)
-  credits_included       Int                 @default(0)
-  credits_remaining      Int                 @default(0)
-  credits_used           Int                 @default(0)
-  credits_reset_at       DateTime?
-  created_at             DateTime            @default(now())
-  updated_at             DateTime            @updatedAt
-  sites                  ConnectedSite[]
-  free_credit_grants     FreeCreditGrant[]
+  id                       String               @id @default(cuid())
+  email                    String               @unique
+  password_hash            String
+  role                     String               @default("user")
+  stripe_customer_id       String?              @unique
+  stripe_subscription_id   String?              @unique
+  stripe_price_id          String?
+  stripe_product_id        String?
+  billing_plan             SubscriptionPlan?
+  billing_status           SubscriptionStatus?
+  billing_email            String?
+  trial_ends_at            DateTime?
+  current_period_start     DateTime?
+  current_period_end       DateTime?
+  cancel_at_period_end     Boolean              @default(false)
+  credits_included         Int                  @default(0)
+  credits_remaining        Int                  @default(0)
+  credits_used             Int                  @default(0)
+  credits_reset_at         DateTime?
+  created_at               DateTime             @default(now())
+  updated_at               DateTime             @updatedAt
+  sites                    ConnectedSite[]
+  free_credit_grants       FreeCreditGrant[]
   outgoing_store_transfers StoreTransferAudit[] @relation("StoreTransferOldAccount")
   incoming_store_transfers StoreTransferAudit[] @relation("StoreTransferNewAccount")
-  subscriptions          Subscription[]
-  credit_ledger          CreditLedger[]
-  image_jobs             ImageJob[]
-  processed_images       ProcessedImage[]
-  plugin_events          PluginEvent[]
+  subscriptions            Subscription[]
+  credit_ledger            CreditLedger[]
+  image_jobs               ImageJob[]
+  processed_images         ProcessedImage[]
+  plugin_events            PluginEvent[]
+  image_audit_scans        ImageAuditScan[]
 
   @@map("optivra_users")
 }
 
 model ConnectedSite {
-  id                      String    @id @default(cuid())
-  user_id                 String
-  domain                  String
-  canonical_domain        String?
-  site_url                String?
-  home_url                String?
-  wordpress_install_id    String?
-  plugin_version          String?
-  wordpress_version       String?
-  woocommerce_version     String?
-  php_version             String?
-  claim_status            String    @default("pending")
-  verified_at             DateTime?
-  first_connected_at      DateTime  @default(now())
-  last_seen_at            DateTime?
-  free_credits_granted_at DateTime?
-  api_token_hash          String
-  created_at              DateTime  @default(now())
-  updated_at              DateTime  @updatedAt
-  user                    User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  free_credit_grants      FreeCreditGrant[]
-  store_transfers         StoreTransferAudit[]
-  plugin_events           PluginEvent[]
+  id                          String                     @id @default(cuid())
+  user_id                     String
+  domain                      String
+  canonical_domain            String?
+  site_url                    String?
+  home_url                    String?
+  wordpress_install_id        String?
+  plugin_version              String?
+  wordpress_version           String?
+  woocommerce_version         String?
+  php_version                 String?
+  claim_status                String                     @default("pending")
+  verified_at                 DateTime?
+  first_connected_at          DateTime                   @default(now())
+  last_seen_at                DateTime?
+  free_credits_granted_at     DateTime?
+  api_token_hash              String
+  created_at                  DateTime                   @default(now())
+  updated_at                  DateTime                   @updatedAt
+  user                        User                       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  free_credit_grants          FreeCreditGrant[]
+  store_transfers             StoreTransferAudit[]
+  plugin_events               PluginEvent[]
+  image_audit_scans           ImageAuditScan[]
+  image_audit_scan_metrics    ImageAuditScanMetric[]
+  image_audit_items           ImageAuditItem[]
+  image_audit_issues          ImageAuditIssue[]
+  image_audit_insights        ImageAuditInsight[]
+  image_audit_category_scores ImageAuditCategoryScore[]
+  image_audit_recommendations ImageAuditRecommendation[]
 
   @@unique([user_id, domain])
+  @@unique([api_token_hash])
   @@index([canonical_domain])
   @@index([wordpress_install_id])
   @@index([claim_status])
-  @@unique([api_token_hash])
   @@index([user_id])
   @@map("connected_sites")
 }
@@ -169,36 +177,36 @@ model AnalyticsEvent {
 }
 
 model PluginProduct {
-  id                String           @id @default(uuid()) @db.Uuid
-  slug              String           @unique
-  name              String
-  description       String
-  currentVersion    String           @map("current_version")
-  downloadFilePath  String           @map("download_file_path")
-  isActive          Boolean          @default(true) @map("is_active")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  downloads         PluginDownload[]
-  reviews           PluginReview[]
+  id               String           @id @default(uuid()) @db.Uuid
+  slug             String           @unique
+  name             String
+  description      String
+  currentVersion   String           @map("current_version")
+  downloadFilePath String           @map("download_file_path")
+  isActive         Boolean          @default(true) @map("is_active")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  downloads        PluginDownload[]
+  reviews          PluginReview[]
 
   @@map("plugin_products")
 }
 
 model PluginLead {
-  id                String           @id @default(uuid()) @db.Uuid
-  email             String           @unique
-  name              String?
-  marketingConsent  Boolean          @default(false) @map("marketing_consent")
-  privacyAccepted   Boolean          @default(false) @map("privacy_accepted")
-  source            String?
-  utmSource         String?          @map("utm_source")
-  utmMedium         String?          @map("utm_medium")
-  utmCampaign       String?          @map("utm_campaign")
-  referrer          String?
-  ipHash            String?          @map("ip_hash")
-  userAgentHash     String?          @map("user_agent_hash")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  downloads         PluginDownload[]
-  reviews           PluginReview[]
+  id               String           @id @default(uuid()) @db.Uuid
+  email            String           @unique
+  name             String?
+  marketingConsent Boolean          @default(false) @map("marketing_consent")
+  privacyAccepted  Boolean          @default(false) @map("privacy_accepted")
+  source           String?
+  utmSource        String?          @map("utm_source")
+  utmMedium        String?          @map("utm_medium")
+  utmCampaign      String?          @map("utm_campaign")
+  referrer         String?
+  ipHash           String?          @map("ip_hash")
+  userAgentHash    String?          @map("user_agent_hash")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  downloads        PluginDownload[]
+  reviews          PluginReview[]
 
   @@index([email])
   @@index([source])
@@ -206,21 +214,21 @@ model PluginLead {
 }
 
 model PluginDownload {
-  id              String        @id @default(uuid()) @db.Uuid
-  pluginId        String        @map("plugin_id") @db.Uuid
-  leadId          String        @map("lead_id") @db.Uuid
-  version         String
-  token           String        @unique
-  status          String        @default("requested")
-  requestedAt     DateTime      @default(now()) @map("requested_at")
-  startedAt       DateTime?     @map("started_at")
-  completedAt     DateTime?     @map("completed_at")
-  failedAt        DateTime?     @map("failed_at")
-  source          String?
-  ipHash          String?       @map("ip_hash")
-  userAgentHash   String?       @map("user_agent_hash")
-  plugin          PluginProduct @relation(fields: [pluginId], references: [id], onDelete: Cascade)
-  lead            PluginLead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  id            String        @id @default(uuid()) @db.Uuid
+  pluginId      String        @map("plugin_id") @db.Uuid
+  leadId        String        @map("lead_id") @db.Uuid
+  version       String
+  token         String        @unique
+  status        String        @default("requested")
+  requestedAt   DateTime      @default(now()) @map("requested_at")
+  startedAt     DateTime?     @map("started_at")
+  completedAt   DateTime?     @map("completed_at")
+  failedAt      DateTime?     @map("failed_at")
+  source        String?
+  ipHash        String?       @map("ip_hash")
+  userAgentHash String?       @map("user_agent_hash")
+  plugin        PluginProduct @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  lead          PluginLead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@index([pluginId])
   @@index([leadId])
@@ -230,19 +238,19 @@ model PluginDownload {
 }
 
 model PluginReview {
-  id                 String        @id @default(uuid()) @db.Uuid
-  pluginId           String        @map("plugin_id") @db.Uuid
-  leadId             String?       @map("lead_id") @db.Uuid
-  rating             Int
-  title              String
-  body               String
-  displayName        String        @map("display_name")
-  verifiedDownload   Boolean       @default(false) @map("verified_download")
-  status             String        @default("pending")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  approvedAt         DateTime?     @map("approved_at")
-  plugin             PluginProduct @relation(fields: [pluginId], references: [id], onDelete: Cascade)
-  lead               PluginLead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  id               String        @id @default(uuid()) @db.Uuid
+  pluginId         String        @map("plugin_id") @db.Uuid
+  leadId           String?       @map("lead_id") @db.Uuid
+  rating           Int
+  title            String
+  body             String
+  displayName      String        @map("display_name")
+  verifiedDownload Boolean       @default(false) @map("verified_download")
+  status           String        @default("pending")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  approvedAt       DateTime?     @map("approved_at")
+  plugin           PluginProduct @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  lead             PluginLead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([pluginId])
   @@index([leadId])
@@ -252,15 +260,15 @@ model PluginReview {
 }
 
 model FreeCreditGrant {
-  id               String        @id @default(cuid())
+  id               String         @id @default(cuid())
   canonical_domain String
   account_id       String
   store_id         String?
   credits_granted  Int
   grant_type       String
-  granted_at       DateTime      @default(now())
+  granted_at       DateTime       @default(now())
   reason           String?
-  account          User          @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  account          User           @relation(fields: [account_id], references: [id], onDelete: Cascade)
   store            ConnectedSite? @relation(fields: [store_id], references: [id], onDelete: SetNull)
 
   @@unique([canonical_domain, grant_type])
@@ -404,4 +412,274 @@ model ProcessedImage {
   @@index([user_id])
   @@index([cleanup_after])
   @@map("processed_images")
+}
+
+model ImageAuditScan {
+  id                          String                     @id @default(uuid()) @db.Uuid
+  store_id                    String
+  user_id                     String?
+  source                      String                     @default("woocommerce")
+  status                      String                     @default("pending")
+  products_scanned            Int                        @default(0)
+  images_scanned              Int                        @default(0)
+  main_images_scanned         Int                        @default(0)
+  gallery_images_scanned      Int                        @default(0)
+  variation_images_scanned    Int                        @default(0)
+  categories_scanned          Int                        @default(0)
+  products_without_main_image Int                        @default(0)
+  products_with_single_image  Int                        @default(0)
+  scan_started_at             DateTime?
+  scan_completed_at           DateTime?
+  scan_duration_ms            Int?
+  error_message               String?
+  created_at                  DateTime                   @default(now())
+  updated_at                  DateTime                   @updatedAt
+  store                       ConnectedSite              @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  user                        User?                      @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  metrics                     ImageAuditScanMetric[]
+  items                       ImageAuditItem[]
+  issues                      ImageAuditIssue[]
+  insights                    ImageAuditInsight[]
+  category_scores             ImageAuditCategoryScore[]
+  recommendations             ImageAuditRecommendation[]
+
+  @@index([store_id, created_at(sort: Desc)])
+  @@index([store_id, status])
+  @@index([user_id])
+  @@map("image_audit_scans")
+}
+
+model ImageAuditScanMetric {
+  id                                               String         @id @default(uuid()) @db.Uuid
+  scan_id                                          String         @db.Uuid
+  store_id                                         String
+  product_image_health_score                       Decimal?       @db.Decimal(5, 2)
+  seo_score                                        Decimal?       @db.Decimal(5, 2)
+  image_quality_score                              Decimal?       @db.Decimal(5, 2)
+  catalogue_consistency_score                      Decimal?       @db.Decimal(5, 2)
+  performance_score                                Decimal?       @db.Decimal(5, 2)
+  completeness_score                               Decimal?       @db.Decimal(5, 2)
+  google_shopping_readiness_score                  Decimal?       @db.Decimal(5, 2)
+  missing_alt_text_count                           Int            @default(0)
+  weak_alt_text_count                              Int            @default(0)
+  generic_alt_text_count                           Int            @default(0)
+  alt_text_mentions_product_count                  Int            @default(0)
+  alt_text_mentions_category_count                 Int            @default(0)
+  missing_image_title_count                        Int            @default(0)
+  generic_filename_count                           Int            @default(0)
+  duplicate_filename_count                         Int            @default(0)
+  seo_ready_images_count                           Int            @default(0)
+  cluttered_background_count                       Int            @default(0)
+  low_contrast_count                               Int            @default(0)
+  poor_centering_count                             Int            @default(0)
+  product_too_small_count                          Int            @default(0)
+  product_too_large_or_cropped_count               Int            @default(0)
+  low_resolution_count                             Int            @default(0)
+  likely_blurry_count                              Int            @default(0)
+  over_dark_count                                  Int            @default(0)
+  over_bright_count                                Int            @default(0)
+  watermark_or_text_overlay_count                  Int            @default(0)
+  clean_product_focus_count                        Int            @default(0)
+  inconsistent_background_count                    Int            @default(0)
+  inconsistent_aspect_ratio_count                  Int            @default(0)
+  inconsistent_product_scale_count                 Int            @default(0)
+  inconsistent_padding_count                       Int            @default(0)
+  inconsistent_lighting_count                      Int            @default(0)
+  dominant_aspect_ratio                            String?
+  dominant_background_style                        String?
+  total_original_bytes                             BigInt         @default(0)
+  total_original_mb                                Decimal        @default(0) @db.Decimal(12, 2)
+  average_image_bytes                              BigInt         @default(0)
+  largest_image_bytes                              BigInt         @default(0)
+  oversized_image_count                            Int            @default(0)
+  huge_dimension_image_count                       Int            @default(0)
+  missing_webp_count                               Int            @default(0)
+  estimated_optimised_bytes                        BigInt         @default(0)
+  estimated_optimised_mb                           Decimal        @default(0) @db.Decimal(12, 2)
+  estimated_reduction_percent_low                  Decimal        @default(0) @db.Decimal(5, 2)
+  estimated_reduction_percent_high                 Decimal        @default(0) @db.Decimal(5, 2)
+  google_ready_images_count                        Int            @default(0)
+  google_warning_images_count                      Int            @default(0)
+  images_with_promotional_overlay_count            Int            @default(0)
+  images_with_non_product_focused_main_image_count Int            @default(0)
+  images_with_light_background_count               Int            @default(0)
+  images_with_clean_background_count               Int            @default(0)
+  estimated_manual_minutes_low                     Int            @default(0)
+  estimated_manual_minutes_high                    Int            @default(0)
+  hourly_rate_used                                 Decimal        @default(40.00) @db.Decimal(10, 2)
+  estimated_cost_saved_low                         Decimal        @default(0) @db.Decimal(12, 2)
+  estimated_cost_saved_high                        Decimal        @default(0) @db.Decimal(12, 2)
+  images_processed                                 Int            @default(0)
+  images_approved                                  Int            @default(0)
+  images_rejected                                  Int            @default(0)
+  images_failed                                    Int            @default(0)
+  average_processing_time_ms                       Int            @default(0)
+  preserve_mode_count                              Int            @default(0)
+  flexible_mode_count                              Int            @default(0)
+  product_pixel_drift_warning_count                Int            @default(0)
+  low_foreground_confidence_count                  Int            @default(0)
+  failed_integrity_check_count                     Int            @default(0)
+  credits_used                                     Int            @default(0)
+  failed_safety_checks_not_charged                 Int            @default(0)
+  created_at                                       DateTime       @default(now())
+  updated_at                                       DateTime       @updatedAt
+  scan                                             ImageAuditScan @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                                            ConnectedSite  @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([scan_id])
+  @@map("image_audit_scan_metrics")
+}
+
+model ImageAuditItem {
+  id                     String            @id @default(uuid()) @db.Uuid
+  scan_id                String            @db.Uuid
+  store_id               String
+  product_id             String
+  product_name           String?
+  product_sku            String?
+  product_url            String?
+  image_id               String?
+  image_url              String
+  image_role             String            @default("unknown")
+  category_ids           String[]          @default([])
+  category_names         String[]          @default([])
+  filename               String?
+  file_extension         String?
+  mime_type              String?
+  width                  Int?
+  height                 Int?
+  file_size_bytes        BigInt?
+  alt_text               String?
+  image_title            String?
+  caption                String?
+  aspect_ratio           Decimal?          @db.Decimal(10, 4)
+  background_style       String?
+  detected_product_bbox  Json?
+  product_area_ratio     Decimal?          @db.Decimal(8, 4)
+  brightness_score       Decimal?          @db.Decimal(8, 4)
+  contrast_score         Decimal?          @db.Decimal(8, 4)
+  sharpness_score        Decimal?          @db.Decimal(8, 4)
+  clutter_score          Decimal?          @db.Decimal(8, 4)
+  quality_score          Decimal?          @db.Decimal(5, 2)
+  seo_score              Decimal?          @db.Decimal(5, 2)
+  consistency_score      Decimal?          @db.Decimal(5, 2)
+  performance_score      Decimal?          @db.Decimal(5, 2)
+  google_readiness_score Decimal?          @db.Decimal(5, 2)
+  issue_count            Int               @default(0)
+  highest_severity       String?
+  recommended_action     String?
+  created_at             DateTime          @default(now())
+  updated_at             DateTime          @updatedAt
+  scan                   ImageAuditScan    @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                  ConnectedSite     @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  issues                 ImageAuditIssue[]
+
+  @@index([scan_id])
+  @@index([store_id, product_id])
+  @@index([scan_id, image_role])
+  @@index([scan_id, highest_severity])
+  @@map("image_audit_items")
+}
+
+model ImageAuditIssue {
+  id                 String          @id @default(uuid()) @db.Uuid
+  scan_id            String          @db.Uuid
+  store_id           String
+  audit_item_id      String?         @db.Uuid
+  product_id         String?
+  image_id           String?
+  issue_type         String
+  severity           String
+  title              String
+  description        String
+  recommended_action String
+  action_type        String?
+  confidence_score   Decimal?        @db.Decimal(5, 2)
+  status             String          @default("open")
+  metadata           Json            @default("{}")
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+  resolved_at        DateTime?
+  scan               ImageAuditScan  @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store              ConnectedSite   @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  audit_item         ImageAuditItem? @relation(fields: [audit_item_id], references: [id], onDelete: Cascade)
+
+  @@index([scan_id, severity])
+  @@index([scan_id, issue_type])
+  @@index([store_id, status])
+  @@map("image_audit_issues")
+}
+
+model ImageAuditInsight {
+  id               String         @id @default(uuid()) @db.Uuid
+  scan_id          String         @db.Uuid
+  store_id         String
+  insight_type     String
+  severity         String
+  title            String
+  body             String
+  metric_key       String?
+  metric_value     Decimal?
+  suggested_action String?
+  action_type      String?
+  action_filter    Json           @default("{}")
+  display_order    Int            @default(0)
+  created_at       DateTime       @default(now())
+  scan             ImageAuditScan @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store            ConnectedSite  @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([scan_id, display_order])
+  @@map("image_audit_insights")
+}
+
+model ImageAuditCategoryScore {
+  id                   String         @id @default(uuid()) @db.Uuid
+  scan_id              String         @db.Uuid
+  store_id             String
+  category_id          String?
+  category_name        String
+  products_scanned     Int            @default(0)
+  images_scanned       Int            @default(0)
+  health_score         Decimal?       @db.Decimal(5, 2)
+  seo_score            Decimal?       @db.Decimal(5, 2)
+  quality_score        Decimal?       @db.Decimal(5, 2)
+  consistency_score    Decimal?       @db.Decimal(5, 2)
+  performance_score    Decimal?       @db.Decimal(5, 2)
+  priority             String         @default("medium")
+  issue_count          Int            @default(0)
+  critical_issue_count Int            @default(0)
+  high_issue_count     Int            @default(0)
+  medium_issue_count   Int            @default(0)
+  low_issue_count      Int            @default(0)
+  top_issue_type       String?
+  recommendation       String?
+  created_at           DateTime       @default(now())
+  scan                 ImageAuditScan @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                ConnectedSite  @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([scan_id, priority])
+  @@map("image_audit_category_scores")
+}
+
+model ImageAuditRecommendation {
+  id                           String         @id @default(uuid()) @db.Uuid
+  scan_id                      String         @db.Uuid
+  store_id                     String
+  title                        String
+  description                  String
+  priority                     String
+  action_type                  String
+  estimated_images_affected    Int            @default(0)
+  estimated_minutes_saved_low  Int            @default(0)
+  estimated_minutes_saved_high Int            @default(0)
+  action_filter                Json           @default("{}")
+  status                       String         @default("available")
+  display_order                Int            @default(0)
+  created_at                   DateTime       @default(now())
+  updated_at                   DateTime       @updatedAt
+  scan                         ImageAuditScan @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                        ConnectedSite  @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([scan_id, priority])
+  @@map("image_audit_recommendations")
 }
