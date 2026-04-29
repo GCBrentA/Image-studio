@@ -34,6 +34,13 @@ const webPaths = new Set([
   ...blogSlugs.map((slug) => `/resources/${slug}`),
   "/login",
   "/dashboard",
+  "/reports",
+  "/recommendations",
+  "/queue",
+  "/analytics",
+  "/backgrounds",
+  "/seo-tools",
+  "/settings",
   "/admin",
   "/admin/plugin-analytics",
   "/account/billing",
@@ -419,6 +426,48 @@ const metaForPath = (requestPath: string): PageMeta => {
       title: "Dashboard | Optivra Image Studio",
       description: "Private Optivra account dashboard.",
       canonicalPath: "/dashboard",
+      robots: privateRobots
+    },
+    "/reports": {
+      title: "Product Image Health Reports | Optivra Image Studio",
+      description: "Private Product Image Health Report history and detail pages.",
+      canonicalPath: "/reports",
+      robots: privateRobots
+    },
+    "/recommendations": {
+      title: "Recommendations | Optivra Image Studio",
+      description: "Private product image recommendations workspace.",
+      canonicalPath: "/recommendations",
+      robots: privateRobots
+    },
+    "/queue": {
+      title: "Queue | Optivra Image Studio",
+      description: "Private product image processing queue workspace.",
+      canonicalPath: "/queue",
+      robots: privateRobots
+    },
+    "/analytics": {
+      title: "Analytics | Optivra Image Studio",
+      description: "Private Optivra growth and image workflow analytics.",
+      canonicalPath: "/analytics",
+      robots: privateRobots
+    },
+    "/backgrounds": {
+      title: "Backgrounds | Optivra Image Studio",
+      description: "Private background preset workspace.",
+      canonicalPath: "/backgrounds",
+      robots: privateRobots
+    },
+    "/seo-tools": {
+      title: "SEO Tools | Optivra Image Studio",
+      description: "Private image SEO tools workspace.",
+      canonicalPath: "/seo-tools",
+      robots: privateRobots
+    },
+    "/settings": {
+      title: "Settings | Optivra Image Studio",
+      description: "Private Optivra Image Studio settings.",
+      canonicalPath: "/settings",
       robots: privateRobots
     },
     "/admin": {

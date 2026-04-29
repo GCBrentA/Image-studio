@@ -257,6 +257,12 @@ function routeTo(path) {
   if (normalized === "/dashboard") {
     loadDashboard();
   }
+  if (normalized === "/reports") {
+    loadReports();
+  }
+  if (["/recommendations", "/queue", "/analytics", "/backgrounds", "/seo-tools", "/settings"].includes(normalized)) {
+    renderPortalPlaceholder(normalized);
+  }
   if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
     loadBilling();
   }
@@ -318,6 +324,13 @@ function pageTitle(path) {
     "/blog/how-to-test-woocommerce-payment-gateway-rules-safely": "How to Test WooCommerce Payment Gateway Rules Safely | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
+    "/reports": "Product Image Health Reports | Optivra",
+    "/recommendations": "Recommendations | Optivra",
+    "/queue": "Queue | Optivra",
+    "/analytics": "Analytics | Optivra",
+    "/backgrounds": "Backgrounds | Optivra",
+    "/seo-tools": "SEO Tools | Optivra",
+    "/settings": "Settings | Optivra",
     "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
     "/account/billing": `Billing & Credits | ${PRODUCT_NAME}`,
     "/billing/success": "Billing Success | Optivra",
@@ -355,6 +368,13 @@ function pageDescription(path) {
     "/blog/how-to-write-alt-text-for-woocommerce-product-images": "Write useful WooCommerce product image alt text that supports accessibility, product context, and search relevance.",
     "/blog/how-to-replace-product-image-backgrounds-in-woocommerce": "Learn how to replace product image backgrounds in WooCommerce while preserving originals and reviewing results.",
     "/blog/ai-product-photography-for-woocommerce-stores": "See how AI product photography can standardise WooCommerce product visuals with review controls.",
+    "/reports": "View Product Image Health Report history and full ecommerce image audit reports in the Optivra portal.",
+    "/recommendations": "Review product image recommendations from Optivra Image Health Reports.",
+    "/queue": "Review and manage Optivra Image Studio processing queue actions.",
+    "/analytics": "Review Optivra Image Studio catalogue and conversion analytics.",
+    "/backgrounds": "Manage Optivra Image Studio background presets.",
+    "/seo-tools": "Review Optivra Image Studio image SEO tools.",
+    "/settings": "Manage Optivra Image Studio portal settings.",
     "/support": "Contact Optivra support for Optivra Image Studio setup, billing, plugin, and product image processing help."
   };
   return descriptions[path] || descriptions["/"];
@@ -365,6 +385,13 @@ function pageRobots(path) {
     path.startsWith("/account") ||
     path.startsWith("/admin") ||
     path === "/dashboard" ||
+    path === "/reports" ||
+    path === "/recommendations" ||
+    path === "/queue" ||
+    path === "/analytics" ||
+    path === "/backgrounds" ||
+    path === "/seo-tools" ||
+    path === "/settings" ||
     path === "/billing/success" ||
     path === "/billing/cancel" ||
     path === "/billing/credits/success" ||
@@ -995,7 +1022,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body?.error?.message || body?.error || "Request failed");
+    throw new Error(body?.error?.message || body?.error || body?.message || "Request failed");
   }
   return body;
 }
@@ -1055,6 +1082,574 @@ async function loadDashboard() {
   } catch (error) {
     document.getElementById("dash-plan").textContent = error.message;
   }
+}
+
+async function loadReports() {
+  const root = document.getElementById("reports-root");
+  if (!root) return;
+  if (!token()) {
+    root.innerHTML = portalShell("Product Image Health Reports", "Log in to view private catalogue image audit reports.", "reports", `
+      <section class="portal-empty-state">
+        <h2>Login required</h2>
+        <p>Your reports are connected to your Optivra account and WooCommerce stores.</p>
+        <a class="button primary" href="/login" data-link>Login</a>
+      </section>
+    `);
+    return;
+  }
+
+  root.innerHTML = portalShell("Product Image Health Reports", "Loading your latest scan history and recommendations.", "reports", renderPortalLoading("Loading reports..."));
+  const selectedScanId = new URLSearchParams(location.search).get("view") === "detail"
+    ? sessionStorage.getItem("optivraSelectedReportId")
+    : "";
+
+  try {
+    if (selectedScanId) {
+      const report = await api(`/api/image-studio/audits/${encodeURIComponent(selectedScanId)}`);
+      root.innerHTML = portalShell("Full Health Report", "Premium catalogue audit with recommendations, ROI, performance and safety insights.", "reports", renderHealthReportDetail(report));
+      return;
+    }
+
+    const data = await api("/api/image-studio/audits?limit=50");
+    root.innerHTML = portalShell("Product Image Health Reports", "Review scan history across your connected WooCommerce stores.", "reports", renderReportsList(data.scans || []));
+  } catch (error) {
+    root.innerHTML = portalShell("Product Image Health Reports", "Something stopped the report from loading.", "reports", `
+      <section class="portal-empty-state error">
+        <h2>Report unavailable</h2>
+        <p>${escapeHtml(error.message)}</p>
+        <button class="button primary" data-report-reload>Try again</button>
+      </section>
+    `);
+  }
+}
+
+function portalShell(title, subtitle, active, body) {
+  return `
+    <div class="portal-shell">
+      ${renderPortalNav(active)}
+      <div class="portal-workspace">
+        <div class="portal-head">
+          <div>
+            <p class="eyebrow">Optivra Portal</p>
+            <h1>${escapeHtml(title)}</h1>
+            <p>${escapeHtml(subtitle)}</p>
+          </div>
+          <div class="dashboard-actions">
+            <a class="button ghost" href="/reports" data-link>Reports</a>
+            <a class="button primary" href="/dashboard" data-link>Overview</a>
+          </div>
+        </div>
+        ${renderImageStudioTabs(active)}
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+function renderPortalNav(active) {
+  const items = [
+    ["overview", "Overview", "/dashboard"],
+    ["image_studio", "Image Studio", "/reports"],
+    ["reports", "Reports", "/reports"],
+    ["recommendations", "Recommendations", "/recommendations"],
+    ["queue", "Queue", "/queue"],
+    ["analytics", "Analytics", "/analytics"],
+    ["backgrounds", "Backgrounds", "/backgrounds"],
+    ["seo", "SEO Tools", "/seo-tools"],
+    ["billing", "Billing", "/account/billing"],
+    ["settings", "Settings", "/settings"],
+    ["support", "Support", "/support"]
+  ];
+  return `
+    <aside class="portal-sidebar" aria-label="Portal menu">
+      <strong>Optivra</strong>
+      <nav>${items.map(([key, label, href]) => `<a class="${key === active ? "active" : ""}" href="${href}" data-link>${label}</a>`).join("")}</nav>
+    </aside>
+  `;
+}
+
+function renderImageStudioTabs(active) {
+  const tabs = [
+    ["dashboard", "Dashboard", "/dashboard"],
+    ["scan", "Product Scan", "/reports"],
+    ["reports", "Health Report", "/reports"],
+    ["recommendations", "Recommendations", "/recommendations"],
+    ["queue", "Queue", "/queue"],
+    ["before_after", "Before & After", "/queue"],
+    ["backgrounds", "Backgrounds", "/backgrounds"],
+    ["seo", "SEO", "/seo-tools"],
+    ["settings", "Settings", "/settings"]
+  ];
+  return `<nav class="studio-tabs" aria-label="Image Studio">${tabs.map(([key, label, href]) => `<a class="${key === active ? "active" : ""}" href="${href}" data-link>${label}</a>`).join("")}</nav>`;
+}
+
+function renderPortalLoading(label) {
+  return `<section class="portal-loading"><span></span>${escapeHtml(label)}</section>`;
+}
+
+function renderReportsList(scans) {
+  if (!scans.length) {
+    return `
+      <section class="portal-empty-state">
+        <h2>No Product Image Health Reports yet</h2>
+        <p>Run a free Product Image Health Report from the WooCommerce plugin to see scan history, scores, recommendations and ROI here.</p>
+        <a class="button primary" href="/docs/ai-image-studio#product-scan" data-link>Read scan guide</a>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Image Health Reports</h2>
+          <p>Scan history from connected WooCommerce stores.</p>
+        </div>
+        <span class="portal-count">${scans.length.toLocaleString()} scans</span>
+      </div>
+      <div class="portal-table-wrap">
+        <table class="portal-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Store</th>
+              <th>Products</th>
+              <th>Images</th>
+              <th>Health</th>
+              <th>SEO</th>
+              <th>Quality</th>
+              <th>Consistency</th>
+              <th>Issues</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${scans.map((scan) => `
+              <tr>
+                <td>${escapeHtml(formatDate(scan.scan_completed_at || scan.created_at))}</td>
+                <td>${escapeHtml(scan.store_domain || "WooCommerce store")}</td>
+                <td>${numberText(scan.products_scanned)}</td>
+                <td>${numberText(scan.images_scanned)}</td>
+                <td>${scorePill(scan.product_image_health_score)}</td>
+                <td>${scorePill(scan.seo_score)}</td>
+                <td>${scorePill(scan.image_quality_score)}</td>
+                <td>${scorePill(scan.catalogue_consistency_score)}</td>
+                <td>${numberText(scan.issue_count)}</td>
+                <td>${statusBadge(scan.status)}</td>
+                <td><button class="button ghost compact-button" data-report-open="${escapeHtml(scan.id)}">View Report</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderHealthReportDetail(report) {
+  const metrics = report.metrics || {};
+  const scan = report.scan || {};
+  const recommendations = report.recommendations || report.top_recommendations || [];
+  const insights = report.insights || report.top_insights || [];
+  const categories = report.category_scores || [];
+  const topItems = report.top_items_needing_attention || [];
+  const issueSummary = report.issue_summary || {};
+  const issueTypes = issueSummary.by_issue_type || {};
+  const minutesLow = numeric(metrics.estimated_manual_minutes_low);
+  const minutesHigh = numeric(metrics.estimated_manual_minutes_high);
+  const costLow = numeric(metrics.estimated_cost_saved_low);
+  const costHigh = numeric(metrics.estimated_cost_saved_high);
+  const priorityFixes = recommendations.filter((item) => ["critical", "high"].includes(String(item.priority || item.severity || ""))).length || recommendations.length;
+
+  return `
+    <section class="report-hero premium-report-hero">
+      <div>
+        <span class="status-badge ready">Report Ready</span>
+        <h2>Your Product Image Health Report is ready</h2>
+        <p>Optivra scanned your WooCommerce catalogue and found opportunities to improve image SEO, page speed, visual consistency, and product presentation.</p>
+      </div>
+      <div class="report-hero-score">
+        <span>Product Image Health Score</span>
+        <strong>${scoreText(metrics.product_image_health_score)}</strong>
+      </div>
+    </section>
+
+    <section class="report-score-grid">
+      ${reportHeroCard("Image SEO Score", metrics.seo_score)}
+      ${reportHeroCard("Image Quality Score", metrics.image_quality_score)}
+      ${reportHeroCard("Catalogue Consistency Score", metrics.catalogue_consistency_score)}
+      ${reportHeroCard("Performance Score", metrics.performance_score)}
+      ${reportHeroCard("Product Feed Readiness", metrics.google_shopping_readiness_score)}
+      ${reportHeroCard("Estimated Time Saved", `${minutesToHours(minutesLow)}-${minutesToHours(minutesHigh)} hrs`, "time")}
+      ${reportHeroCard("Priority Fixes Found", priorityFixes, "count")}
+      ${reportHeroCard("Images Scanned", scan.images_scanned, "count")}
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Executive Summary</h2>
+          <p>${escapeHtml(buildExecutiveSummary(report))}</p>
+        </div>
+        <button class="button ghost" data-report-export>Export JSON</button>
+      </div>
+    </section>
+
+    <section class="portal-section">
+      <h2>What Optivra Found</h2>
+      <div class="insight-grid">${renderInsightCards(insights, metrics)}</div>
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>What is holding your score back</h2><p>Ranked by issue volume from the latest scan.</p></div></div>
+      <div class="issue-rank-list">${renderIssueRanks(issueTypes)}</div>
+    </section>
+
+    <section class="portal-section">
+      <h2>Recommended Fixes</h2>
+      <div class="recommendation-grid">${renderReportRecommendations(recommendations)}</div>
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Category Breakdown</h2><p>Weakest categories and the improvements likely to matter most.</p></div></div>
+      ${renderCategoryBreakdown(categories)}
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Top Images Needing Attention</h2><p>Images with the highest issue severity or review priority.</p></div></div>
+      ${renderTopImages(topItems)}
+    </section>
+
+    <section class="report-two-column">
+      <section class="portal-card">
+        <h2>ROI Estimate</h2>
+        <div class="roi-grid">
+          ${metricTile("Manual hours", `${minutesToHours(minutesLow)}-${minutesToHours(minutesHigh)}`)}
+          ${metricTile("Cost saved", `$${formatNumber(costLow)}-$${formatNumber(costHigh)}`)}
+          ${metricTile("Hourly rate", `$${formatNumber(metrics.hourly_rate_used || 40)}/hr`)}
+        </div>
+        <div class="work-breakdown">
+          ${metricTile("SEO metadata", formatNumber(metrics.missing_alt_text_count + metrics.weak_alt_text_count))}
+          ${metricTile("Optimisation", formatNumber(metrics.oversized_image_count + metrics.huge_dimension_image_count + metrics.missing_webp_count))}
+          ${metricTile("Image review", formatNumber(issueSummary.total || 0))}
+        </div>
+      </section>
+      <section class="portal-card">
+        <h2>Performance Opportunity</h2>
+        <div class="roi-grid">
+          ${metricTile("Total image weight", formatBytes(metrics.total_original_bytes))}
+          ${metricTile("Estimated optimised", formatBytes(metrics.estimated_optimised_bytes))}
+          ${metricTile("Reduction range", `${scoreText(metrics.estimated_reduction_percent_low)}-${scoreText(metrics.estimated_reduction_percent_high)}%`)}
+        </div>
+        <p class="muted-note">Largest offenders are surfaced in the image table when file-size metadata is available from WooCommerce.</p>
+      </section>
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Processing Safety Insights</h2><p>Shown when this report includes processed-image safety data.</p></div></div>
+      <div class="safety-grid">
+        ${metricTile("Pixel drift warnings", metrics.product_pixel_drift_warning_count)}
+        ${metricTile("Low foreground confidence", metrics.low_foreground_confidence_count)}
+        ${metricTile("Failed integrity checks", metrics.failed_integrity_check_count)}
+        ${metricTile("Safety failures not charged", metrics.failed_safety_checks_not_charged)}
+        ${metricTile("Approved images", metrics.images_approved)}
+        ${metricTile("Rejected images", metrics.images_rejected)}
+      </div>
+    </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Export and Share</h2>
+          <p>JSON export is available now. PDF and email share controls are prepared for a later release.</p>
+        </div>
+        <div class="dashboard-actions">
+          <button class="button primary" data-report-export>Export JSON</button>
+          <button class="button ghost" disabled>PDF coming soon</button>
+          <button class="button ghost" disabled>Email coming soon</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="dashboard-actions report-footer-actions">
+      <button class="button ghost" data-report-back>Back to scan history</button>
+      <a class="button primary" href="/recommendations" data-link>Open Recommendations</a>
+    </div>
+  `;
+}
+
+function buildExecutiveSummary(report) {
+  const metrics = report.metrics || {};
+  const issueSummary = report.issue_summary || {};
+  const health = scoreText(metrics.product_image_health_score);
+  const seo = scoreText(metrics.seo_score);
+  const performance = scoreText(metrics.performance_score);
+  const issues = numeric(issueSummary.total);
+  const minutesLow = numeric(metrics.estimated_manual_minutes_low);
+  const minutesHigh = numeric(metrics.estimated_manual_minutes_high);
+  return `Your catalogue scored ${health}/100 overall, with SEO at ${seo}/100 and performance at ${performance}/100. Optivra found ${formatNumber(issues)} improvement opportunities and estimates that resolving them manually would take about ${minutesToHours(minutesLow)}-${minutesToHours(minutesHigh)} hours. Start with high-priority main-image and SEO issues, then standardise file size, crop, background and feed-readiness fixes.`;
+}
+
+function reportHeroCard(label, value, type = "score") {
+  return `
+    <article class="report-score-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${type === "score" ? scoreText(value) : escapeHtml(formatNumber(value))}</strong>
+    </article>
+  `;
+}
+
+function renderInsightCards(insights, metrics) {
+  const fallback = [
+    ["SEO", `Missing or weak alt text: ${formatNumber(metrics.missing_alt_text_count + metrics.weak_alt_text_count)} images.`, "high"],
+    ["Quality", `Images needing quality review: ${formatNumber(metrics.low_resolution_count + metrics.likely_blurry_count + metrics.low_contrast_count)}.`, "medium"],
+    ["Consistency", `Aspect ratio and background consistency should be reviewed before large catalogue campaigns.`, "medium"],
+    ["Performance", `Oversized image opportunities: ${formatNumber(metrics.oversized_image_count + metrics.huge_dimension_image_count)}.`, "high"],
+    ["Completeness", `Products without main images: ${formatNumber(metrics.products_without_main_image || 0)}.`, "critical"],
+    ["Product feed readiness", `Google/product feed readiness is an estimate, not a compliance guarantee.`, "info"],
+    ["ROI", `Estimated manual work: ${minutesToHours(metrics.estimated_manual_minutes_low)}-${minutesToHours(metrics.estimated_manual_minutes_high)} hours.`, "info"]
+  ];
+  const rows = insights.length ? insights.map((item) => [item.title || "Catalogue insight", item.body || item.description || "", item.severity || "info"]) : fallback;
+  return rows.map(([title, body, severity]) => `
+    <article class="insight-card ${severityClass(severity)}">
+      <span>${escapeHtml(String(severity || "info"))}</span>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(body)}</p>
+    </article>
+  `).join("");
+}
+
+function renderIssueRanks(issueTypes) {
+  const rows = Object.entries(issueTypes)
+    .map(([type, count]) => [type, numeric(count)])
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  if (!rows.length) return `<p class="muted-note">No issue summary is available for this report.</p>`;
+  return rows.map(([type, count], index) => `
+    <div class="issue-rank-row">
+      <span>${index + 1}</span>
+      <strong>${escapeHtml(issueLabel(type))}</strong>
+      <em>${formatNumber(count)} affected</em>
+    </div>
+  `).join("");
+}
+
+function renderReportRecommendations(recommendations) {
+  if (!recommendations.length) {
+    return `<section class="portal-empty-state compact-empty"><h2>No recommendations available</h2><p>Run a fresh scan after audit recommendations are enabled for this store.</p></section>`;
+  }
+  return recommendations.map((item) => `
+    <article class="recommendation-card">
+      <div class="recommendation-topline">
+        ${priorityBadge(item.priority || item.severity || "medium")}
+        <span class="action-pill">${escapeHtml(actionLabel(item.action_type))}</span>
+      </div>
+      <h3>${escapeHtml(item.title || "Recommended fix")}</h3>
+      <p>${escapeHtml(item.description || item.body || "")}</p>
+      <div class="recommendation-metrics">
+        ${metricTile("Issues", item.estimated_images_affected || item.images_affected || 0)}
+        ${metricTile("Time saved", `${numeric(item.estimated_minutes_saved_low)}-${numeric(item.estimated_minutes_saved_high)} min`)}
+        ${metricTile("Impact", priorityImpact(item.priority || item.severity))}
+      </div>
+      <div class="dashboard-actions">
+        <button class="button primary" data-report-queue-recommendation="${escapeHtml(item.id || "")}" ${item.id ? "" : "disabled"}>Add to Queue</button>
+        <button class="button ghost" data-report-review>Review</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderCategoryBreakdown(categories) {
+  if (!categories.length) return `<p class="muted-note">Category scoring is not available for this report yet.</p>`;
+  return `
+    <div class="portal-table-wrap">
+      <table class="portal-table">
+        <thead><tr><th>Category</th><th>Health</th><th>SEO</th><th>Quality</th><th>Consistency</th><th>Performance</th><th>Priority</th><th>Top issue</th><th>Action</th></tr></thead>
+        <tbody>
+          ${categories.slice(0, 30).map((category) => `
+            <tr>
+              <td>${escapeHtml(category.category_name || "Uncategorised")}</td>
+              <td>${scorePill(category.health_score)}</td>
+              <td>${scorePill(category.seo_score)}</td>
+              <td>${scorePill(category.quality_score)}</td>
+              <td>${scorePill(category.consistency_score)}</td>
+              <td>${scorePill(category.performance_score)}</td>
+              <td>${priorityBadge(category.priority || "medium")}</td>
+              <td>${escapeHtml(issueLabel(category.top_issue_type || ""))}</td>
+              <td><button class="button ghost compact-button" data-report-review>Review</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderTopImages(items) {
+  if (!items.length) return `<p class="muted-note">No item-level issues are available for this report.</p>`;
+  return `
+    <div class="attention-grid">
+      ${items.slice(0, 12).map((item) => `
+        <article class="attention-card">
+          <img src="${escapeHtml(item.image_url || "")}" alt="" loading="lazy" />
+          <div>
+            <h3>${escapeHtml(item.product_name || "Product image")}</h3>
+            <div class="badge-row">
+              ${priorityBadge(item.highest_severity || "medium")}
+              <span class="action-pill">${formatNumber(item.issue_count)} issues</span>
+              <span class="action-pill">${escapeHtml(imageRoleLabel(item.image_role))}</span>
+            </div>
+            <p>${escapeHtml(item.recommended_action || "Review this image before processing.")}</p>
+            <div class="dashboard-actions">
+              <button class="button primary" data-report-queue-item>Queue</button>
+              <button class="button ghost" data-report-ignore-item>Ignore</button>
+              ${item.product_url ? `<a class="button ghost" href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener noreferrer">View product</a>` : ""}
+            </div>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function metricTile(label, value) {
+  return `<div class="metric-tile"><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatNumber(value))}</strong></div>`;
+}
+
+function scorePill(value) {
+  const score = numeric(value);
+  const tone = score >= 80 ? "good" : score >= 60 ? "warn" : "bad";
+  return `<span class="score-pill ${tone}">${scoreText(value)}</span>`;
+}
+
+function priorityBadge(value) {
+  const normalized = severityClass(value || "medium");
+  return `<span class="priority-badge ${normalized}">${escapeHtml(String(value || "medium").replaceAll("_", " "))}</span>`;
+}
+
+function statusBadge(value) {
+  const status = String(value || "unknown").toLowerCase();
+  return `<span class="status-badge ${escapeHtml(status)}">${escapeHtml(status.replaceAll("_", " "))}</span>`;
+}
+
+function severityClass(value) {
+  const normalized = String(value || "info").toLowerCase();
+  return ["critical", "high", "medium", "low", "info"].includes(normalized) ? normalized : "info";
+}
+
+function priorityImpact(value) {
+  const severity = severityClass(value);
+  if (severity === "critical") return "Blocking";
+  if (severity === "high") return "High";
+  if (severity === "medium") return "Medium";
+  return "Low";
+}
+
+function issueLabel(type) {
+  const labels = {
+    missing_main_image: "Products missing images",
+    product_has_single_image: "Products with a single image",
+    missing_alt_text: "Missing alt text",
+    weak_alt_text: "Weak alt text",
+    generic_filename: "Generic filenames",
+    duplicate_filename: "Duplicate filenames",
+    oversized_file: "Oversized files",
+    huge_dimensions: "Huge dimensions",
+    missing_webp: "WebP opportunities",
+    cluttered_background: "Cluttered backgrounds",
+    inconsistent_background: "Inconsistent backgrounds",
+    low_contrast: "Low contrast",
+    poor_centering: "Poor centering",
+    too_small_in_frame: "Too small in frame",
+    too_tightly_cropped: "Too tightly cropped",
+    low_resolution: "Low resolution",
+    likely_blurry: "Likely blurry",
+    over_dark: "Too dark",
+    over_bright: "Too bright",
+    watermark_or_text_overlay: "Watermark or text overlay",
+    inconsistent_aspect_ratio: "Inconsistent aspect ratios",
+    google_readiness_warning: "Product feed readiness warnings"
+  };
+  return labels[type] || String(type || "No top issue").replaceAll("_", " ");
+}
+
+function actionLabel(type) {
+  const labels = {
+    generate_alt_text: "Generate alt text",
+    optimise_image: "Optimise image",
+    optimize_image: "Optimise image",
+    replace_background: "Replace background",
+    standardise_background: "Standardise background",
+    resize_crop: "Resize or crop",
+    convert_webp: "Convert WebP",
+    review_manually: "Review manually",
+    add_main_image: "Add main image"
+  };
+  return labels[type] || "Review manually";
+}
+
+function imageRoleLabel(role) {
+  const labels = { main: "Main image", gallery: "Gallery", variation: "Variation", category_thumbnail: "Category thumbnail", unknown: "Unknown" };
+  return labels[role] || String(role || "Unknown").replaceAll("_", " ");
+}
+
+function numeric(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function scoreText(value) {
+  return Math.round(numeric(value)).toLocaleString();
+}
+
+function numberText(value) {
+  return formatNumber(value);
+}
+
+function formatNumber(value) {
+  if (typeof value === "string" && value.includes("-")) return value;
+  const number = numeric(value);
+  return Number.isInteger(number) ? number.toLocaleString() : number.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function minutesToHours(value) {
+  return (numeric(value) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function formatBytes(value) {
+  const bytes = numeric(value);
+  if (bytes <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toLocaleString(undefined, { maximumFractionDigits: unit === 0 ? 0 : 1 })} ${units[unit]}`;
+}
+
+function renderPortalPlaceholder(path) {
+  const titles = {
+    "/recommendations": "Recommendations",
+    "/queue": "Queue",
+    "/analytics": "Analytics",
+    "/backgrounds": "Backgrounds",
+    "/seo-tools": "SEO Tools",
+    "/settings": "Settings"
+  };
+  const active = path === "/seo-tools" ? "seo" : path.replace("/", "");
+  const root = document.getElementById(`${active.replace("-", "_")}-root`) || document.querySelector(`[data-page="${path}"] .portal-placeholder-root`);
+  if (!root) return;
+  root.innerHTML = portalShell(titles[path] || "Portal", "This workspace is connected to the Product Image Health Report experience.", active, `
+    <section class="portal-empty-state">
+      <h2>${escapeHtml(titles[path] || "Workspace")} is being expanded</h2>
+      <p>The premium report is available now. This workspace will become the focused operational view for the same backend report and queue data.</p>
+      <a class="button primary" href="/reports" data-link>Open Health Reports</a>
+    </section>
+  `);
 }
 
 async function loadBilling() {

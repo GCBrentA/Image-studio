@@ -5,6 +5,7 @@ import {
   getImageAuditReport,
   getLatestImageAudit,
   ignoreImageAuditIssues,
+  listImageAudits,
   listImageAuditIssues,
   listImageAuditItems,
   queueImageAuditIssues,
@@ -24,6 +25,10 @@ imageAuditRoutes.post("/audits/start", (request, response, next) => {
 
 imageAuditRoutes.get("/audits/latest", (request, response, next) => {
   getLatestImageAudit(request, response).catch(next);
+});
+
+imageAuditRoutes.get("/audits", (request, response, next) => {
+  listImageAudits(request, response).catch(next);
 });
 
 imageAuditRoutes.post("/audits/:scan_id/items", (request, response, next) => {
@@ -57,4 +62,3 @@ imageAuditRoutes.post("/audits/:scan_id/issues/queue", (request, response, next)
 imageAuditRoutes.post("/audits/:scan_id/queue-recommendation", (request, response, next) => {
   queueImageAuditRecommendation(request, response).catch(next);
 });
-

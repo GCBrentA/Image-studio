@@ -6,6 +6,7 @@ import {
   getAuditReport,
   getLatestAuditReport,
   ignoreAuditIssues,
+  listAuditScans,
   ImageAuditError,
   listAuditIssues,
   listAuditItems,
@@ -133,6 +134,23 @@ export const getLatestImageAudit = async (
   }
 };
 
+export const listImageAudits = async (
+  request: ImageStudioAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  const auth = requireAuth(request, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    const result = await listAuditScans(auth, request.query);
+    response.status(200).json(result);
+  } catch (error) {
+    sendError(response, error);
+  }
+};
+
 export const getImageAuditReport = async (
   request: ImageStudioAuthenticatedRequest,
   response: Response
@@ -235,4 +253,3 @@ export const queueImageAuditRecommendation = async (
     sendError(response, error);
   }
 };
-

@@ -1489,6 +1489,95 @@ export const getLatestAuditReport = async (
   return getAuditReport(auth, rows[0].id, { topOnly: true });
 };
 
+export const listAuditScans = async (
+  auth: ImageStudioAuthContext,
+  query: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+  const limit = Math.min(toSafeInteger(Number(query.limit), 100) ?? 50, 100);
+  const offset = toSafeInteger(Number(query.offset), 100_000) ?? 0;
+  const storeId = trimText(query.store_id, "store_id");
+  const status = trimText(query.status, "status");
+  const conditions: Prisma.Sql[] = [];
+
+  if (auth.authType === "site_token") {
+    conditions.push(Prisma.sql`s."store_id" = ${auth.siteId ?? ""}`);
+  } else {
+    conditions.push(Prisma.sql`cs."user_id" = ${auth.userId}`);
+  }
+
+  if (storeId) {
+    await assertStoreAccess(auth, storeId);
+    conditions.push(Prisma.sql`s."store_id" = ${storeId}`);
+  }
+
+  if (status) {
+    conditions.push(Prisma.sql`s."status" = ${status}`);
+  }
+
+  const where = Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`;
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT
+      s."id"::text,
+      s."store_id",
+      COALESCE(cs."domain", s."source") AS "store_domain",
+      s."source",
+      s."status",
+      s."products_scanned",
+      s."images_scanned",
+      s."categories_scanned",
+      s."products_without_main_image",
+      s."products_with_single_image",
+      s."scan_started_at",
+      s."scan_completed_at",
+      s."scan_duration_ms",
+      s."error_message",
+      s."created_at",
+      s."updated_at",
+      m."product_image_health_score",
+      m."seo_score",
+      m."image_quality_score",
+      m."catalogue_consistency_score",
+      m."performance_score",
+      m."completeness_score",
+      m."google_shopping_readiness_score",
+      COALESCE(issue_counts."issue_count", 0)::integer AS "issue_count"
+    FROM "image_audit_scans" s
+    LEFT JOIN "connected_sites" cs ON cs."id" = s."store_id"
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM "image_audit_scan_metrics" m
+      WHERE m."scan_id" = s."id"
+        AND m."store_id" = s."store_id"
+      ORDER BY m."created_at" DESC
+      LIMIT 1
+    ) m ON true
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::integer AS "issue_count"
+      FROM "image_audit_issues" i
+      WHERE i."scan_id" = s."id"
+        AND i."store_id" = s."store_id"
+        AND i."status" <> 'ignored'
+    ) issue_counts ON true
+    ${where}
+    ORDER BY s."created_at" DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+  const countRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS "count"
+    FROM "image_audit_scans" s
+    LEFT JOIN "connected_sites" cs ON cs."id" = s."store_id"
+    ${where}
+  `;
+
+  return {
+    scans: rows.map(serializeRecord),
+    total_count: Number(countRows[0]?.count ?? 0),
+    limit,
+    offset
+  };
+};
+
 const getIssueSummary = async (scan: AuditScanRow): Promise<Record<string, unknown>> => {
   const rows = await prisma.$queryRaw<Array<{ severity: string; issue_type: string; count: bigint }>>`
     SELECT "severity", "issue_type", COUNT(*)::bigint AS "count"
@@ -1573,6 +1662,7 @@ export const getAuditReport = async (
       "id"::text,
       "product_id",
       "product_name",
+      "product_url",
       "product_sku",
       "image_id",
       "image_url",
