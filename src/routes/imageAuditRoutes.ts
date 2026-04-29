@@ -17,6 +17,22 @@ import { requireDatabase } from "../middleware/requireDatabase";
 
 export const imageAuditRoutes = Router();
 
+imageAuditRoutes.get("/health", (_request, response) => {
+  response.status(200).json({
+    ok: true,
+    service: "image-studio",
+    routes: [
+      "POST /api/image-studio/audits/start",
+      "POST /api/image-studio/audits/:scanId/items",
+      "POST /api/image-studio/audits/:scanId/complete",
+      "GET /api/image-studio/audits/latest",
+      "GET /api/image-studio/audits/:scanId",
+      "GET /api/image-studio/audits/:scanId/issues",
+      "GET /api/image-studio/audits/:scanId/items"
+    ]
+  });
+});
+
 imageAuditRoutes.use(requireDatabase, imageStudioAuth);
 
 imageAuditRoutes.post("/audits/start", (request, response, next) => {

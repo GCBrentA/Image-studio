@@ -260,7 +260,10 @@ function routeTo(path) {
   if (normalized === "/reports") {
     loadReports();
   }
-  if (["/recommendations", "/queue", "/analytics", "/backgrounds", "/seo-tools", "/settings"].includes(normalized)) {
+  if (normalized === "/analytics") {
+    loadAnalyticsTrends();
+  }
+  if (["/recommendations", "/queue", "/backgrounds", "/seo-tools", "/settings"].includes(normalized)) {
     renderPortalPlaceholder(normalized);
   }
   if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
@@ -1066,6 +1069,42 @@ async function submitAuth(path) {
 }
 
 async function loadDashboard() {
+  const root = document.getElementById("studio-dashboard-root");
+  if (root) {
+    if (!token()) {
+      root.innerHTML = portalShell("Image Studio Dashboard", "Log in to view Product Image Health Report trends, queue status and credit usage.", "overview", `
+        <section class="portal-empty-state">
+          <h2>Login required</h2>
+          <p>Your Image Studio dashboard is connected to your Optivra account and WooCommerce stores.</p>
+          <a class="button primary" href="/login" data-link>Login</a>
+        </section>
+      `);
+      return;
+    }
+
+    root.innerHTML = portalShell("Image Studio Dashboard", "Loading your latest catalogue image health and processing activity.", "overview", renderPortalLoading("Loading dashboard..."));
+
+    try {
+      const [account, auditData] = await Promise.all([
+        api("/account/dashboard"),
+        api("/api/image-studio/audits?limit=50")
+      ]);
+      const scans = auditData.scans || [];
+      const latestScan = scans[0] || null;
+      const latestReport = latestScan?.id ? await api(`/api/image-studio/audits/${encodeURIComponent(latestScan.id)}`).catch(() => null) : null;
+      root.innerHTML = portalShell("Image Studio Dashboard", "Your latest Product Image Health Report, queue signals and growth levers in one workspace.", "overview", renderImageStudioDashboard(account, scans, latestReport));
+    } catch (error) {
+      root.innerHTML = portalShell("Image Studio Dashboard", "Something stopped the dashboard from loading.", "overview", `
+        <section class="portal-empty-state error">
+          <h2>Dashboard unavailable</h2>
+          <p>${escapeHtml(error.message)}</p>
+          <button class="button primary" data-dashboard-reload>Try again</button>
+        </section>
+      `);
+    }
+    return;
+  }
+
   if (!token()) {
     document.getElementById("dash-plan").textContent = "Login required";
     return;
@@ -1082,6 +1121,239 @@ async function loadDashboard() {
   } catch (error) {
     document.getElementById("dash-plan").textContent = error.message;
   }
+}
+
+function renderImageStudioDashboard(account, scans, latestReport) {
+  const latestScan = scans[0] || {};
+  const metrics = latestReport?.metrics || latestScan || {};
+  const recommendations = latestReport?.recommendations || latestReport?.top_recommendations || [];
+  const imageJobs = account.image_jobs || [];
+  const billing = account.billing || {};
+  const usage = account.usage || {};
+  const monthJobs = imageJobs.filter((job) => isThisMonth(job.created_at));
+  const processedThisMonth = monthJobs.filter((job) => ["completed", "approved", "applied"].includes(String(job.status || ""))).length;
+  const successRate = imageJobs.length
+    ? Math.round((imageJobs.filter((job) => ["completed", "approved", "applied"].includes(String(job.status || ""))).length / imageJobs.length) * 100)
+    : 0;
+  const queueCount = imageJobs.filter((job) => ["queued", "processing", "pending"].includes(String(job.status || ""))).length;
+  const creditsRemaining = billing.credits_remaining ?? usage.credits_remaining ?? 0;
+  const creditsTotal = billing.credits_total ?? usage.credits_total ?? 0;
+  const timeSaved = scans.filter((scan) => isThisMonth(scan.scan_completed_at || scan.created_at)).reduce((sum, scan) => sum + numeric(scan.estimated_manual_minutes_high), 0);
+  const valueSaved = scans.filter((scan) => isThisMonth(scan.scan_completed_at || scan.created_at)).reduce((sum, scan) => sum + numeric(scan.estimated_cost_saved_high), 0);
+
+  if (!scans.length) {
+    return `
+      <section class="dashboard-hero-card">
+        <div>
+          <span class="status-badge processing">Setup</span>
+          <h2>Run your first Product Image Health Report</h2>
+          <p>Scans are launched from the WooCommerce plugin so Optivra can inspect local product and attachment metadata safely.</p>
+        </div>
+        <div class="dashboard-actions">
+          <a class="button primary" href="/docs/ai-image-studio#product-scan" data-link>Scan instructions</a>
+          <a class="button ghost" href="/downloads" data-link>Download plugin</a>
+        </div>
+      </section>
+      <section class="portal-card">
+        <h2>No scan data yet</h2>
+        <p class="muted-note">After a scan completes, this dashboard will show image health, recommendations, trends, queue health and ROI estimates.</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="dashboard-hero-card">
+      <div>
+        <span class="status-badge ready">Latest Scan Ready</span>
+        <h2>Image health score ${scoreText(metrics.product_image_health_score)}</h2>
+        <p>Latest scan: ${escapeHtml(formatDate(latestScan.scan_completed_at || latestScan.created_at))}. ${formatNumber(latestScan.images_scanned)} images across ${formatNumber(latestScan.products_scanned)} products.</p>
+      </div>
+      <div class="dashboard-actions">
+        <button class="button primary" data-report-open="${escapeHtml(latestScan.id || "")}">View latest report</button>
+        <a class="button ghost" href="/queue" data-link>Open queue</a>
+        <a class="button ghost" href="/docs/ai-image-studio#product-scan" data-link>Run scan from plugin</a>
+      </div>
+    </section>
+
+    <section class="dashboard-kpi-grid">
+      ${metricTile("Health score", `${scoreText(metrics.product_image_health_score)}/100`)}
+      ${metricTile("Latest scan date", formatDate(latestScan.scan_completed_at || latestScan.created_at))}
+      ${metricTile("Images scanned", latestScan.images_scanned)}
+      ${metricTile("Products scanned", latestScan.products_scanned)}
+      ${metricTile("Credits remaining", `${formatNumber(creditsRemaining)} / ${formatNumber(creditsTotal)}`)}
+      ${metricTile("Images processed this month", processedThisMonth)}
+      ${metricTile("Estimated time saved this month", `${minutesToHours(timeSaved)} hrs`)}
+      ${metricTile("Estimated editing value", `$${formatNumber(valueSaved)}`)}
+      ${metricTile("Queue count", queueCount)}
+      ${metricTile("Processing success rate", `${successRate}%`)}
+    </section>
+
+    <section class="report-two-column">
+      <section class="portal-card">
+        <div class="portal-section-head"><div><h2>Top recommendations</h2><p>The next fixes most likely to improve catalogue quality.</p></div></div>
+        <div class="mini-recommendation-list">${renderMiniRecommendations(recommendations.slice(0, 3))}</div>
+      </section>
+      <section class="portal-card">
+        <div class="portal-section-head"><div><h2>Score trend</h2><p>Latest Product Image Health Score over recent scans.</p></div><a class="button ghost" href="/analytics" data-link>Open analytics</a></div>
+        ${renderTrendChart(scans.slice().reverse(), "product_image_health_score", "Health Score", "score")}
+      </section>
+    </section>
+  `;
+}
+
+function renderMiniRecommendations(recommendations) {
+  if (!recommendations.length) {
+    return `<p class="muted-note">No recommendations are available yet. Run a fresh scan after recommendations are enabled for this store.</p>`;
+  }
+  return recommendations.map((item) => `
+    <div class="mini-recommendation">
+      ${priorityBadge(item.priority || item.severity || "medium")}
+      <div>
+        <strong>${escapeHtml(item.title || "Recommended fix")}</strong>
+        <p>${escapeHtml(item.description || item.body || "")}</p>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function loadAnalyticsTrends() {
+  const root = document.getElementById("analytics-root");
+  if (!root) return;
+  if (!token()) {
+    root.innerHTML = portalShell("Analytics", "Log in to view Image Studio health trends.", "analytics", `
+      <section class="portal-empty-state">
+        <h2>Login required</h2>
+        <p>Analytics are private to your Optivra account.</p>
+        <a class="button primary" href="/login" data-link>Login</a>
+      </section>
+    `);
+    return;
+  }
+
+  root.innerHTML = portalShell("Analytics", "Loading historical Product Image Health Report trends.", "analytics", renderPortalLoading("Loading analytics..."));
+
+  try {
+    const data = await api("/api/image-studio/audits?limit=100");
+    const scans = data.scans || [];
+    const latest = scans[0]?.id ? await api(`/api/image-studio/audits/${encodeURIComponent(scans[0].id)}`).catch(() => null) : null;
+    root.innerHTML = portalShell("Analytics", "Track image health, SEO, quality, consistency, performance, issues and ROI over time.", "analytics", renderAnalyticsPage(scans, latest));
+  } catch (error) {
+    root.innerHTML = portalShell("Analytics", "Something stopped analytics from loading.", "analytics", `
+      <section class="portal-empty-state error">
+        <h2>Analytics unavailable</h2>
+        <p>${escapeHtml(error.message)}</p>
+        <button class="button primary" data-analytics-reload>Try again</button>
+      </section>
+    `);
+  }
+}
+
+function renderAnalyticsPage(scans, latestReport) {
+  if (!scans.length) {
+    return `
+      <section class="portal-empty-state">
+        <h2>No scans yet</h2>
+        <p>Analytics will appear after your WooCommerce plugin completes its first Product Image Health Report scan.</p>
+        <a class="button primary" href="/docs/ai-image-studio#product-scan" data-link>Run scan from plugin</a>
+      </section>
+    `;
+  }
+
+  const ordered = scans.slice().reverse();
+  const hasTrends = scans.length > 1;
+  return `
+    ${hasTrends ? "" : `<section class="portal-empty-state compact-empty"><h2>Trends will appear after you run more than one scan.</h2><p>Your latest scan is shown below, and historical trend lines will unlock after another scan completes.</p></section>`}
+    <section class="analytics-chart-grid">
+      ${renderTrendChart(ordered, "product_image_health_score", "Product Image Health Score", "score")}
+      ${renderTrendChart(ordered, "seo_score", "SEO Score", "score")}
+      ${renderTrendChart(ordered, "image_quality_score", "Quality Score", "score")}
+      ${renderTrendChart(ordered, "catalogue_consistency_score", "Consistency Score", "score")}
+      ${renderTrendChart(ordered, "performance_score", "Performance Score", "score")}
+      ${renderTrendChart(ordered, "issue_count", "Issues Found", "count")}
+      ${renderTrendChart(ordered, "resolved_issue_count", "Issues Resolved", "count")}
+      ${renderTrendChart(ordered, "images_processed", "Images Processed", "count")}
+      ${renderTrendChart(ordered, "estimated_manual_minutes_high", "Time Saved", "minutes")}
+      ${renderTrendChart(ordered, "estimated_cost_saved_high", "Cost Saved Estimate", "currency")}
+    </section>
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Category Insights</h2><p>Weakest categories and issue concentration from the latest full report.</p></div></div>
+      ${renderCategoryInsights(latestReport?.category_scores || [])}
+    </section>
+  `;
+}
+
+function renderTrendChart(scans, key, title, type = "score") {
+  if (!scans.length) return `<article class="chart-card"><h3>${escapeHtml(title)}</h3><p class="muted-note">No data yet.</p></article>`;
+  const values = scans.map((scan) => numeric(scan[key]));
+  const latest = values[values.length - 1] || 0;
+  const max = type === "score" ? 100 : Math.max(...values, 1);
+  const points = values.map((value, index) => {
+    const x = scans.length === 1 ? 50 : (index / (scans.length - 1)) * 100;
+    const y = 100 - Math.max(0, Math.min(100, (value / max) * 100));
+    return `${x},${y}`;
+  }).join(" ");
+  return `
+    <article class="chart-card">
+      <div class="chart-head">
+        <h3>${escapeHtml(title)}</h3>
+        <strong>${formatChartValue(latest, type)}</strong>
+      </div>
+      ${scans.length > 1 ? `<svg class="trend-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${points}" /></svg>` : `<div class="single-scan-chart"><span style="height:${Math.max(4, Math.min(100, (latest / max) * 100))}%"></span></div>`}
+      <div class="chart-axis"><span>${escapeHtml(formatDate(scans[0]?.scan_completed_at || scans[0]?.created_at))}</span><span>${escapeHtml(formatDate(scans[scans.length - 1]?.scan_completed_at || scans[scans.length - 1]?.created_at))}</span></div>
+    </article>
+  `;
+}
+
+function renderCategoryInsights(categories) {
+  if (!categories.length) {
+    return `<p class="muted-note">Category insights will appear when the latest report includes category-level scoring.</p>`;
+  }
+  const weakest = categories.slice().sort((a, b) => numeric(a.health_score) - numeric(b.health_score)).slice(0, 5);
+  const missingAlt = categories.filter((item) => String(item.top_issue_type || "").includes("alt")).slice(0, 5);
+  const oversized = categories.filter((item) => String(item.top_issue_type || "").includes("oversized") || String(item.top_issue_type || "").includes("dimension")).slice(0, 5);
+  const consistency = categories.filter((item) => String(item.top_issue_type || "").includes("consistent") || String(item.top_issue_type || "").includes("aspect")).slice(0, 5);
+  return `
+    <div class="category-insight-grid">
+      ${categoryInsightList("Weakest categories", weakest)}
+      ${categoryInsightList("Most improved categories", [])}
+      ${categoryInsightList("Most missing alt text", missingAlt)}
+      ${categoryInsightList("Most oversized images", oversized)}
+      ${categoryInsightList("Most consistency issues", consistency)}
+    </div>
+  `;
+}
+
+function categoryInsightList(title, rows) {
+  if (!rows.length) {
+    return `<div class="category-insight-card"><h3>${escapeHtml(title)}</h3><p class="muted-note">${title === "Most improved categories" ? "Improvement ranking will appear after multiple category-scored scans." : "No category data for this issue yet."}</p></div>`;
+  }
+  return `
+    <div class="category-insight-card">
+      <h3>${escapeHtml(title)}</h3>
+      ${rows.map((row) => `
+        <div class="category-insight-row">
+          <strong>${escapeHtml(row.category_name || "Uncategorised")}</strong>
+          <span>${scoreText(row.health_score)}/100</span>
+          <small>${escapeHtml(issueLabel(row.top_issue_type || ""))}</small>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function formatChartValue(value, type) {
+  if (type === "currency") return `$${formatNumber(value)}`;
+  if (type === "minutes") return `${minutesToHours(value)} hrs`;
+  if (type === "score") return `${scoreText(value)}/100`;
+  return formatNumber(value);
+}
+
+function isThisMonth(value) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
 async function loadReports() {
@@ -1106,6 +1378,7 @@ async function loadReports() {
   try {
     if (selectedScanId) {
       const report = await api(`/api/image-studio/audits/${encodeURIComponent(selectedScanId)}`);
+      window.optivraCurrentReport = report;
       root.innerHTML = portalShell("Full Health Report", "Premium catalogue audit with recommendations, ROI, performance and safety insights.", "reports", renderHealthReportDetail(report));
       return;
     }
@@ -1968,6 +2241,54 @@ document.getElementById("site-form")?.addEventListener("submit", async (event) =
     await loadDashboard();
   } catch (error) {
     document.getElementById("new-token").textContent = error.message;
+  }
+});
+
+document.addEventListener("click", async (event) => {
+  const reportOpen = event.target.closest("[data-report-open]");
+  if (reportOpen) {
+    event.preventDefault();
+    const scanId = reportOpen.getAttribute("data-report-open");
+    if (scanId) {
+      sessionStorage.setItem("optivraSelectedReportId", scanId);
+      history.pushState({}, "", "/reports?view=detail");
+      routeTo("/reports");
+      trackEvent("image_studio_feature_click", { cta_location: "portal_report", funnel_stage: "retention" });
+    }
+    return;
+  }
+
+  if (event.target.closest("[data-report-back]")) {
+    event.preventDefault();
+    sessionStorage.removeItem("optivraSelectedReportId");
+    history.pushState({}, "", "/reports");
+    routeTo("/reports");
+    return;
+  }
+
+  if (event.target.closest("[data-report-export]")) {
+    event.preventDefault();
+    const report = window.optivraCurrentReport || {};
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `optivra-image-health-report-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  if (event.target.closest("[data-dashboard-reload]")) {
+    event.preventDefault();
+    await loadDashboard();
+    return;
+  }
+
+  if (event.target.closest("[data-analytics-reload]")) {
+    event.preventDefault();
+    await loadAnalyticsTrends();
+    return;
   }
 });
 

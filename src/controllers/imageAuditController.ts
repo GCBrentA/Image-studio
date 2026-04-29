@@ -40,6 +40,21 @@ const sendError = (response: Response, error: unknown): void => {
   throw error;
 };
 
+const logAuditRoute = (
+  request: ImageStudioAuthenticatedRequest,
+  statusCode: number,
+  extra: Record<string, unknown> = {}
+): void => {
+  console.info(JSON.stringify({
+    service: "image-studio-audits",
+    method: request.method,
+    path: request.originalUrl,
+    statusCode,
+    storeId: request.imageStudioAuth?.siteId,
+    ...extra
+  }));
+};
+
 export const startImageAudit = async (
   request: ImageStudioAuthenticatedRequest,
   response: Response
@@ -51,7 +66,9 @@ export const startImageAudit = async (
 
   try {
     const body = request.body as StartImageAuditRequest;
-    const storeId = typeof body.store_id === "string" ? body.store_id.trim() : "";
+    const storeId = typeof body.store_id === "string" && body.store_id.trim()
+      ? body.store_id.trim()
+      : auth.siteId ?? "";
 
     if (!storeId) {
       response.status(400).json({
@@ -67,6 +84,7 @@ export const startImageAudit = async (
       scanOptions: body.scan_options
     });
 
+    logAuditRoute(request, 201, { storeId, scanId: result.scan_id });
     response.status(201).json(result);
   } catch (error) {
     sendError(response, error);
@@ -84,6 +102,7 @@ export const addImageAuditItems = async (
 
   try {
     const result = await addAuditItems(auth, request.params.scan_id, (request.body as { items?: unknown }).items);
+    logAuditRoute(request, 201, { scanId: request.params.scan_id, inserted: result.inserted });
     response.status(201).json(result);
   } catch (error) {
     sendError(response, error);
@@ -101,7 +120,14 @@ export const completeImageAudit = async (
 
   try {
     const report = await completeAuditScan(auth, request.params.scan_id);
-    response.status(200).json(report);
+    logAuditRoute(request, 200, { scanId: request.params.scan_id, status: "completed" });
+    response.status(200).json({
+      ok: true,
+      scan_id: request.params.scan_id,
+      status: "completed",
+      summary: report,
+      ...report
+    });
   } catch (error) {
     sendError(response, error);
   }
@@ -117,7 +143,9 @@ export const getLatestImageAudit = async (
   }
 
   try {
-    const storeId = typeof request.query.store_id === "string" ? request.query.store_id.trim() : "";
+    const storeId = typeof request.query.store_id === "string" && request.query.store_id.trim()
+      ? request.query.store_id.trim()
+      : auth.siteId ?? "";
 
     if (!storeId) {
       response.status(400).json({

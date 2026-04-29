@@ -793,44 +793,35 @@
       </section>
 
       <section class="page" data-page="/dashboard">
-        <div class="dashboard-shell">
-          <div class="dashboard-head">
-            <div>
-              <p class="eyebrow">Dashboard</p>
-              <h1>Welcome to Optivra Image Studio</h1>
-            </div>
-            <div class="dashboard-actions">
-              <a class="button ghost" href="/account/billing" data-link>Billing</a>
-              <button class="button primary" data-plan="growth">Upgrade plan</button>
-              <button class="button ghost" data-pack="medium">Buy credits</button>
-            </div>
-          </div>
-          <div class="dashboard-grid">
-            <section class="dash-panel"><h2>Plan</h2><div id="dash-plan">Login required</div></section>
-            <section class="dash-panel"><h2>Credits remaining</h2><div id="dash-credits">-</div><div class="meter"><div id="dash-meter"></div></div></section>
-            <section class="dash-panel">
-              <h2>Install the WooCommerce Plugin</h2>
-              <p>Download the current ZIP, follow the setup guide, then connect your store with a Site API Token.</p>
-              <div class="pack-row">
-                <a class="button primary" href="/downloads" data-link data-analytics="download_plugin_clicked">Download Plugin</a>
-                <a class="button ghost" href="/docs/ai-image-studio#installing" data-link data-analytics="docs_opened">View Setup Guide</a>
-              </div>
-            </section>
-            <section class="dash-panel">
-              <h2>Payment Gateway Rules for WooCommerce</h2>
-              <p>Download the free WooCommerce plugin to control checkout payment gateway visibility with flexible country, currency, and cart total rules.</p>
-              <div class="pack-row">
-                <a class="button primary" href="/downloads/payment-gateway-rules-for-woocommerce-1.0.0.zip" data-download-zip download>Download Plugin</a>
-                <a class="button ghost" href="/docs/payment-gateway-rules-for-woocommerce" data-link>Read Setup Guide</a>
-                <a class="button ghost" href="/support" data-link>Contact Support</a>
-              </div>
-            </section>
-            <section class="dash-panel wide"><h2>Connected sites</h2><form id="site-form" class="inline-form"><input name="domain" placeholder="store.example.com" /><button>Add site</button></form><div id="dash-sites"></div></section>
-            <section class="dash-panel"><h2>API tokens</h2><div id="dash-tokens">Tokens are shown once when a site is connected.</div><pre id="new-token"></pre></section>
-            <section class="dash-panel wide"><h2>Usage history</h2><div id="dash-history"></div></section>
-            <section class="dash-panel wide"><h2>Invoices and billing</h2><p>Open the Stripe billing portal to update payment method, view invoices, or cancel.</p><button class="button primary" id="portal-button-secondary">Open billing portal</button></section>
-          </div>
-        </div>
+        <div id="studio-dashboard-root"></div>
+      </section>
+
+      <section class="page" data-page="/reports">
+        <div id="reports-root"></div>
+      </section>
+
+      <section class="page" data-page="/recommendations">
+        <div id="recommendations-root" class="portal-placeholder-root"></div>
+      </section>
+
+      <section class="page" data-page="/queue">
+        <div id="queue-root" class="portal-placeholder-root"></div>
+      </section>
+
+      <section class="page" data-page="/analytics">
+        <div id="analytics-root"></div>
+      </section>
+
+      <section class="page" data-page="/backgrounds">
+        <div id="backgrounds-root" class="portal-placeholder-root"></div>
+      </section>
+
+      <section class="page" data-page="/seo-tools">
+        <div id="seo-root" class="portal-placeholder-root"></div>
+      </section>
+
+      <section class="page" data-page="/settings">
+        <div id="settings-root" class="portal-placeholder-root"></div>
       </section>
 
       <section class="page" data-page="/account/billing">

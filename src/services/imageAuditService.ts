@@ -209,6 +209,23 @@ export class ImageAuditError extends Error {
   }
 }
 
+const isMissingAuditTableError = (error: unknown): boolean => {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010") {
+    const message = String(error.meta?.message ?? "").toLowerCase();
+    return message.includes("image_audit_scans") || message.includes("image_audit_items") || message.includes("undefined_table");
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("image_audit_scans") && (message.includes("does not exist") || message.includes("undefined_table"));
+};
+
+const auditTableMissingError = (): ImageAuditError =>
+  new ImageAuditError("image_audit_scans table is missing. Run Product Image Health Report migration.", 500);
+
 const trimText = (value: unknown, field: string, required = false): string | undefined => {
   if (typeof value !== "string") {
     if (required) {
@@ -469,33 +486,43 @@ export const getAuthorizedScan = async (
 export const startAuditScan = async (
   auth: ImageStudioAuthContext,
   input: { storeId: string; source?: string; scanOptions?: unknown }
-): Promise<{ scan_id: string; status: string }> => {
+): Promise<{ ok: true; scan_id: string; status: string }> => {
   await assertStoreAccess(auth, input.storeId);
 
   const source = trimText(input.source, "source") ?? "woocommerce";
-  const rows = await prisma.$queryRaw<Array<{ id: string; status: string }>>`
-    INSERT INTO "image_audit_scans" (
-      "store_id",
-      "user_id",
-      "source",
-      "status",
-      "scan_started_at",
-      "created_at",
-      "updated_at"
-    )
-    VALUES (
-      ${input.storeId},
-      ${auth.userId},
-      ${source.slice(0, 80)},
-      'running',
-      now(),
-      now(),
-      now()
-    )
-    RETURNING "id"::text, "status"
-  `;
+  let rows: Array<{ id: string; status: string }>;
+
+  try {
+    rows = await prisma.$queryRaw<Array<{ id: string; status: string }>>`
+      INSERT INTO "image_audit_scans" (
+        "store_id",
+        "user_id",
+        "source",
+        "status",
+        "scan_started_at",
+        "created_at",
+        "updated_at"
+      )
+      VALUES (
+        ${input.storeId},
+        ${auth.userId},
+        ${source.slice(0, 80)},
+        'running',
+        now(),
+        now(),
+        now()
+      )
+      RETURNING "id"::text, "status"
+    `;
+  } catch (error) {
+    if (isMissingAuditTableError(error)) {
+      throw auditTableMissingError();
+    }
+    throw error;
+  }
 
   return {
+    ok: true,
     scan_id: rows[0].id,
     status: rows[0].status
   };
@@ -530,7 +557,7 @@ export const addAuditItems = async (
   auth: ImageStudioAuthContext,
   scanId: string,
   rawItems: unknown
-): Promise<{ inserted_count: number; total_count: number }> => {
+): Promise<{ ok: true; inserted: number; inserted_count: number; total_count: number }> => {
   const scan = await getAuthorizedScan(auth, scanId);
 
   if (scan.status !== "running" && scan.status !== "pending") {
@@ -634,6 +661,8 @@ export const addAuditItems = async (
   `;
 
   return {
+    ok: true,
+    inserted,
     inserted_count: inserted,
     total_count: Number(totalRows[0]?.count ?? 0)
   };
@@ -1540,7 +1569,17 @@ export const listAuditScans = async (
       m."performance_score",
       m."completeness_score",
       m."google_shopping_readiness_score",
-      COALESCE(issue_counts."issue_count", 0)::integer AS "issue_count"
+      m."estimated_manual_minutes_low",
+      m."estimated_manual_minutes_high",
+      m."estimated_cost_saved_low",
+      m."estimated_cost_saved_high",
+      m."images_processed",
+      m."images_approved",
+      m."images_rejected",
+      m."images_failed",
+      m."credits_used",
+      COALESCE(issue_counts."issue_count", 0)::integer AS "issue_count",
+      COALESCE(issue_counts."resolved_count", 0)::integer AS "resolved_issue_count"
     FROM "image_audit_scans" s
     LEFT JOIN "connected_sites" cs ON cs."id" = s."store_id"
     LEFT JOIN LATERAL (
@@ -1553,10 +1592,10 @@ export const listAuditScans = async (
     ) m ON true
     LEFT JOIN LATERAL (
       SELECT COUNT(*)::integer AS "issue_count"
+        , COUNT(*) FILTER (WHERE i."status" IN ('ignored', 'resolved'))::integer AS "resolved_count"
       FROM "image_audit_issues" i
       WHERE i."scan_id" = s."id"
         AND i."store_id" = s."store_id"
-        AND i."status" <> 'ignored'
     ) issue_counts ON true
     ${where}
     ORDER BY s."created_at" DESC
