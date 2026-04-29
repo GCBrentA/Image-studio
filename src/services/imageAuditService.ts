@@ -328,6 +328,7 @@ const maxStringLengths: Record<string, number> = {
 
 const allowedImageRoles = new Set(["unknown", "main", "gallery", "variation", "category", "thumbnail"]);
 const genericAltWords = new Set(["image", "photo", "product", "picture", "img", "thumbnail"]);
+const auditWriteChunkSize = 250;
 
 export class ImageAuditError extends Error {
   statusCode: number;
@@ -354,6 +355,37 @@ const isMissingAuditTableError = (error: unknown): boolean => {
 
 const auditTableMissingError = (): ImageAuditError =>
   new ImageAuditError("image_audit_scans table is missing. Run Product Image Health Report migration.", 500);
+
+const chunkArray = <T>(items: T[], size: number = auditWriteChunkSize): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const countIssuesByType = (issues: IssueDraft[]): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const issue of issues) {
+    counts.set(issue.issueType, (counts.get(issue.issueType) ?? 0) + 1);
+  }
+  return counts;
+};
+
+const groupIssuesByItem = (issues: IssueDraft[]): Map<string, IssueDraft[]> => {
+  const grouped = new Map<string, IssueDraft[]>();
+  for (const issue of issues) {
+    if (!issue.itemId) {
+      continue;
+    }
+    const itemIssues = grouped.get(issue.itemId) ?? [];
+    itemIssues.push(issue);
+    grouped.set(issue.itemId, itemIssues);
+  }
+  return grouped;
+};
+
+const issueCountFromMap = (counts: Map<string, number>, type: string): number => counts.get(type) ?? 0;
 
 const trimText = (value: unknown, field: string, required = false): string | undefined => {
   if (typeof value !== "string") {
@@ -1115,68 +1147,71 @@ const buildRecommendations = (items: AuditItemRow[], issues: IssueDraft[]): Reco
 };
 
 const scoreAndPersistItems = async (scan: AuditScanRow, items: AuditItemRow[], issues: IssueDraft[]): Promise<void> => {
-  const rows = items.map((item) => {
-    const itemIssues = issues.filter((issue) => issue.itemId === item.id);
-    const itemSeoScore = clampScore(100 - (
-      itemIssues.filter((issue) => ["missing_alt_text", "weak_alt_text", "missing_image_title", "generic_filename"].includes(issue.issueType)).length * 22
-    ));
-    const itemQualityScore = clampScore(100 - (
-      itemIssues.filter((issue) => ["low_resolution"].includes(issue.issueType)).length * 45
-    ));
-    const itemPerformanceScore = clampScore(100 - (
-      itemIssues.filter((issue) => ["oversized_image", "missing_webp"].includes(issue.issueType)).length * 18
-    ));
-    const ratio = aspectRatio(item);
-
-    return Prisma.sql`(
-      ${item.id}::uuid,
-      ${ratio},
-      ${itemQualityScore},
-      ${itemSeoScore},
-      ${ratio ? 100 : null},
-      ${itemPerformanceScore},
-      ${clampScore((itemSeoScore * 0.45) + (itemQualityScore * 0.35) + (itemPerformanceScore * 0.2))},
-      ${itemIssues.length},
-      ${getHighestSeverity(itemIssues)},
-      ${itemIssues[0]?.recommendedAction ?? null}
-    )`;
-  });
-
-  if (rows.length === 0) {
+  if (items.length === 0) {
     return;
   }
 
-  await prisma.$executeRaw`
-    UPDATE "image_audit_items" AS item
-    SET
-      "aspect_ratio" = data."aspect_ratio",
-      "quality_score" = data."quality_score",
-      "seo_score" = data."seo_score",
-      "consistency_score" = data."consistency_score",
-      "performance_score" = data."performance_score",
-      "google_readiness_score" = data."google_readiness_score",
-      "issue_count" = data."issue_count",
-      "highest_severity" = data."highest_severity",
-      "recommended_action" = data."recommended_action",
-      "updated_at" = now()
-    FROM (
-      VALUES ${Prisma.join(rows)}
-    ) AS data(
-      "id",
-      "aspect_ratio",
-      "quality_score",
-      "seo_score",
-      "consistency_score",
-      "performance_score",
-      "google_readiness_score",
-      "issue_count",
-      "highest_severity",
-      "recommended_action"
-    )
-    WHERE item."id" = data."id"
-      AND item."scan_id" = ${scan.id}::uuid
-      AND item."store_id" = ${scan.store_id}
-  `;
+  const issuesByItem = groupIssuesByItem(issues);
+  for (const chunk of chunkArray(items)) {
+    const rows = chunk.map((item) => {
+      const itemIssues = issuesByItem.get(item.id) ?? [];
+      const itemSeoScore = clampScore(100 - (
+        itemIssues.filter((issue) => ["missing_alt_text", "weak_alt_text", "missing_image_title", "generic_filename"].includes(issue.issueType)).length * 22
+      ));
+      const itemQualityScore = clampScore(100 - (
+        itemIssues.filter((issue) => ["low_resolution"].includes(issue.issueType)).length * 45
+      ));
+      const itemPerformanceScore = clampScore(100 - (
+        itemIssues.filter((issue) => ["oversized_image", "missing_webp"].includes(issue.issueType)).length * 18
+      ));
+      const ratio = aspectRatio(item);
+
+      return Prisma.sql`(
+        ${item.id}::uuid,
+        ${ratio},
+        ${itemQualityScore},
+        ${itemSeoScore},
+        ${ratio ? 100 : null},
+        ${itemPerformanceScore},
+        ${clampScore((itemSeoScore * 0.45) + (itemQualityScore * 0.35) + (itemPerformanceScore * 0.2))},
+        ${itemIssues.length},
+        ${getHighestSeverity(itemIssues)},
+        ${itemIssues[0]?.recommendedAction ?? null}
+      )`;
+    });
+
+    await prisma.$executeRaw`
+      UPDATE "image_audit_items" AS item
+      SET
+        "aspect_ratio" = data."aspect_ratio",
+        "quality_score" = data."quality_score",
+        "seo_score" = data."seo_score",
+        "consistency_score" = data."consistency_score",
+        "performance_score" = data."performance_score",
+        "google_readiness_score" = data."google_readiness_score",
+        "issue_count" = data."issue_count",
+        "highest_severity" = data."highest_severity",
+        "recommended_action" = data."recommended_action",
+        "updated_at" = now()
+      FROM (
+        VALUES ${Prisma.join(rows)}
+      ) AS data(
+        "id",
+        "aspect_ratio",
+        "quality_score",
+        "seo_score",
+        "consistency_score",
+        "performance_score",
+        "google_readiness_score",
+        "issue_count",
+        "highest_severity",
+        "recommended_action"
+      )
+      WHERE item."id" = data."id"
+        AND item."scan_id" = ${scan.id}::uuid
+        AND item."store_id" = ${scan.store_id}
+    `;
+  }
 };
 
 const insertIssues = async (scan: AuditScanRow, issues: IssueDraft[]): Promise<void> => {
@@ -1184,50 +1219,72 @@ const insertIssues = async (scan: AuditScanRow, issues: IssueDraft[]): Promise<v
     return;
   }
 
-  const rows = issues.map((issue) => Prisma.sql`(
-    ${scan.id}::uuid,
-    ${scan.store_id},
-    ${issue.itemId ?? null}::uuid,
-    ${issue.productId ?? null},
-    ${issue.imageId ?? null},
-    ${issue.issueType},
-    ${issue.severity},
-    ${issue.title},
-    ${issue.description},
-    ${issue.recommendedAction},
-    ${issue.actionType ?? null},
-    ${issue.confidenceScore ?? null},
-    ${jsonValue(issue.metadata)}::jsonb,
-    'open',
-    now(),
-    now()
-  )`);
+  for (const chunk of chunkArray(issues)) {
+    const rows = chunk.map((issue) => Prisma.sql`(
+      ${scan.id}::uuid,
+      ${scan.store_id},
+      ${issue.itemId ?? null}::uuid,
+      ${issue.productId ?? null},
+      ${issue.imageId ?? null},
+      ${issue.issueType},
+      ${issue.severity},
+      ${issue.title},
+      ${issue.description},
+      ${issue.recommendedAction},
+      ${issue.actionType ?? null},
+      ${issue.confidenceScore ?? null},
+      ${jsonValue(issue.metadata)}::jsonb,
+      'open',
+      now(),
+      now()
+    )`);
 
-  await prisma.$executeRaw`
-    INSERT INTO "image_audit_issues" (
-      "scan_id",
-      "store_id",
-      "audit_item_id",
-      "product_id",
-      "image_id",
-      "issue_type",
-      "severity",
-      "title",
-      "description",
-      "recommended_action",
-      "action_type",
-      "confidence_score",
-      "metadata",
-      "status",
-      "created_at",
-      "updated_at"
-    )
-    VALUES ${Prisma.join(rows)}
-  `;
+    await prisma.$executeRaw`
+      INSERT INTO "image_audit_issues" (
+        "scan_id",
+        "store_id",
+        "audit_item_id",
+        "product_id",
+        "image_id",
+        "issue_type",
+        "severity",
+        "title",
+        "description",
+        "recommended_action",
+        "action_type",
+        "confidence_score",
+        "metadata",
+        "status",
+        "created_at",
+        "updated_at"
+      )
+      VALUES ${Prisma.join(rows)}
+    `;
+  }
 };
 
 const insertInsights = async (scan: AuditScanRow, insights: InsightDraft[]): Promise<void> => {
-  for (const insight of insights) {
+  if (insights.length === 0) {
+    return;
+  }
+
+  for (const chunk of chunkArray(insights)) {
+    const rows = chunk.map((insight) => Prisma.sql`(
+      ${scan.id}::uuid,
+      ${scan.store_id},
+      ${insight.insightType},
+      ${insight.severity},
+      ${insight.title},
+      ${insight.body},
+      ${insight.metricKey ?? null},
+      ${insight.metricValue ?? null},
+      ${insight.suggestedAction ?? null},
+      ${insight.actionType ?? null},
+      ${jsonValue(insight.actionFilter)}::jsonb,
+      ${insight.displayOrder},
+      now()
+    )`);
+
     await prisma.$executeRaw`
       INSERT INTO "image_audit_insights" (
         "scan_id",
@@ -1244,27 +1301,34 @@ const insertInsights = async (scan: AuditScanRow, insights: InsightDraft[]): Pro
         "display_order",
         "created_at"
       )
-      VALUES (
-        ${scan.id}::uuid,
-        ${scan.store_id},
-        ${insight.insightType},
-        ${insight.severity},
-        ${insight.title},
-        ${insight.body},
-        ${insight.metricKey ?? null},
-        ${insight.metricValue ?? null},
-        ${insight.suggestedAction ?? null},
-        ${insight.actionType ?? null},
-        ${jsonValue(insight.actionFilter)}::jsonb,
-        ${insight.displayOrder},
-        now()
-      )
+      VALUES ${Prisma.join(rows)}
     `;
   }
 };
 
 const insertRecommendations = async (scan: AuditScanRow, recommendations: RecommendationDraft[]): Promise<void> => {
-  for (const recommendation of recommendations) {
+  if (recommendations.length === 0) {
+    return;
+  }
+
+  for (const chunk of chunkArray(recommendations)) {
+    const rows = chunk.map((recommendation) => Prisma.sql`(
+      ${scan.id}::uuid,
+      ${scan.store_id},
+      ${recommendation.title},
+      ${recommendation.description},
+      ${recommendation.priority},
+      ${recommendation.actionType},
+      ${recommendation.estimatedImagesAffected},
+      ${recommendation.estimatedMinutesSavedLow},
+      ${recommendation.estimatedMinutesSavedHigh},
+      ${jsonValue(recommendation.actionFilter)}::jsonb,
+      'available',
+      ${recommendation.displayOrder},
+      now(),
+      now()
+    )`);
+
     await prisma.$executeRaw`
       INSERT INTO "image_audit_recommendations" (
         "scan_id",
@@ -1282,22 +1346,7 @@ const insertRecommendations = async (scan: AuditScanRow, recommendations: Recomm
         "created_at",
         "updated_at"
       )
-      VALUES (
-        ${scan.id}::uuid,
-        ${scan.store_id},
-        ${recommendation.title},
-        ${recommendation.description},
-        ${recommendation.priority},
-        ${recommendation.actionType},
-        ${recommendation.estimatedImagesAffected},
-        ${recommendation.estimatedMinutesSavedLow},
-        ${recommendation.estimatedMinutesSavedHigh},
-        ${jsonValue(recommendation.actionFilter)}::jsonb,
-        'available',
-        ${recommendation.displayOrder},
-        now(),
-        now()
-      )
+      VALUES ${Prisma.join(rows)}
     `;
   }
 };
@@ -1384,7 +1433,34 @@ const insertEngineCategoryScores = async (
   scan: AuditScanRow,
   categoryScores: AuditCategoryScore[]
 ): Promise<void> => {
-  for (const category of categoryScores) {
+  if (categoryScores.length === 0) {
+    return;
+  }
+
+  for (const chunk of chunkArray(categoryScores)) {
+    const rows = chunk.map((category) => Prisma.sql`(
+      ${scan.id}::uuid,
+      ${scan.store_id},
+      ${category.category_id ?? null},
+      ${category.category_name},
+      ${category.products_scanned},
+      ${category.images_scanned},
+      ${category.health_score},
+      ${category.seo_score},
+      ${category.quality_score},
+      ${category.consistency_score},
+      ${category.performance_score},
+      ${category.priority},
+      ${category.issue_count},
+      ${category.critical_issue_count},
+      ${category.high_issue_count},
+      ${category.medium_issue_count},
+      ${category.low_issue_count},
+      ${category.top_issue_type ?? null},
+      ${category.recommendation ?? null},
+      now()
+    )`);
+
     await prisma.$executeRaw`
       INSERT INTO "image_audit_category_scores" (
         "scan_id",
@@ -1408,28 +1484,7 @@ const insertEngineCategoryScores = async (
         "recommendation",
         "created_at"
       )
-      VALUES (
-        ${scan.id}::uuid,
-        ${scan.store_id},
-        ${category.category_id ?? null},
-        ${category.category_name},
-        ${category.products_scanned},
-        ${category.images_scanned},
-        ${category.health_score},
-        ${category.seo_score},
-        ${category.quality_score},
-        ${category.consistency_score},
-        ${category.performance_score},
-        ${category.priority},
-        ${category.issue_count},
-        ${category.critical_issue_count},
-        ${category.high_issue_count},
-        ${category.medium_issue_count},
-        ${category.low_issue_count},
-        ${category.top_issue_type ?? null},
-        ${category.recommendation ?? null},
-        now()
-      )
+      VALUES ${Prisma.join(rows)}
     `;
   }
 };
@@ -1440,13 +1495,15 @@ const insertMetrics = async (
   issues: IssueDraft[],
   scores: ScoreBundle
 ): Promise<void> => {
-  const count = (type: string): number => issues.filter((issue) => issue.issueType === type).length;
+  const issueTypeCounts = countIssuesByType(issues);
+  const issuesByItem = groupIssuesByItem(issues);
+  const count = (type: string): number => issueCountFromMap(issueTypeCounts, type);
   const totalBytes = items.reduce((sum, item) => sum + fileSizeNumber(item.file_size_bytes), 0);
   const largestImageBytes = Math.max(0, ...items.map((item) => fileSizeNumber(item.file_size_bytes)));
   const extensions = items.map(normalizeExtension);
   const aspectBuckets = items.map((item) => ratioBucket(aspectRatio(item)));
   const googleReadyImages = items.filter((item) => {
-    const itemIssues = issues.filter((issue) => issue.itemId === item.id);
+    const itemIssues = issuesByItem.get(item.id) ?? [];
     return !itemIssues.some((issue) => ["missing_alt_text", "low_resolution", "oversized_image"].includes(issue.issueType));
   }).length;
 
@@ -1546,6 +1603,99 @@ const insertMetrics = async (
   `;
 };
 
+const issueSummaryFromAuditIssues = (issues: AuditIssue[]): Record<string, unknown> => {
+  const bySeverity: Record<string, number> = {};
+  const byIssueType: Record<string, number> = {};
+
+  for (const issue of issues) {
+    bySeverity[issue.severity] = (bySeverity[issue.severity] ?? 0) + 1;
+    byIssueType[issue.issue_type] = (byIssueType[issue.issue_type] ?? 0) + 1;
+  }
+
+  return {
+    total: issues.length,
+    by_severity: bySeverity,
+    by_issue_type: byIssueType
+  };
+};
+
+const recommendationDraftToModel = (recommendation: RecommendationDraft): AuditRecommendation => ({
+  title: recommendation.title,
+  description: recommendation.description,
+  priority: recommendation.priority,
+  action_type: recommendation.actionType,
+  estimated_images_affected: recommendation.estimatedImagesAffected,
+  estimated_minutes_saved_low: recommendation.estimatedMinutesSavedLow,
+  estimated_minutes_saved_high: recommendation.estimatedMinutesSavedHigh,
+  action_filter: recommendation.actionFilter ?? {},
+  display_order: recommendation.displayOrder
+});
+
+const completionReportFromMemory = (
+  scan: AuditScanRow,
+  items: AuditItemRow[],
+  metrics: AuditMetrics,
+  auditIssues: AuditIssue[],
+  insights: InsightDraft[],
+  recommendations: RecommendationDraft[],
+  categoryScores: AuditCategoryScore[],
+  productsScanned: number,
+  categoriesScanned: number,
+  productsWithoutMain: number,
+  productsWithSingleImage: number
+): Record<string, unknown> => {
+  const scoringItems = items.map(toScoringItem);
+  const recommendationModels = recommendations.map(recommendationDraftToModel);
+  const recommendedFirst50 = rankRecommendedFirstImages(scoringItems, auditIssues, categoryScores, 50);
+
+  return {
+    scan: serializeRecord({
+      ...scan,
+      status: "completed",
+      products_scanned: productsScanned,
+      images_scanned: items.length,
+      main_images_scanned: items.filter((item) => item.image_role === "main").length,
+      gallery_images_scanned: items.filter((item) => item.image_role === "gallery").length,
+      variation_images_scanned: items.filter((item) => item.image_role === "variation").length,
+      categories_scanned: categoriesScanned,
+      products_without_main_image: productsWithoutMain,
+      products_with_single_image: productsWithSingleImage,
+      scan_completed_at: new Date(),
+      error_message: null,
+      updated_at: new Date()
+    }),
+    metrics: serializeRecord(metrics as unknown as Record<string, unknown>),
+    top_insights: insights.slice(0, 5).map((insight) => serializeRecord({
+      insight_type: insight.insightType,
+      severity: insight.severity,
+      title: insight.title,
+      body: insight.body,
+      metric_key: insight.metricKey ?? null,
+      metric_value: insight.metricValue ?? null,
+      suggested_action: insight.suggestedAction ?? null,
+      action_type: insight.actionType ?? null,
+      action_filter: insight.actionFilter ?? {},
+      display_order: insight.displayOrder
+    })),
+    top_recommendations: recommendations.slice(0, 5).map((recommendation) => serializeRecord({
+      title: recommendation.title,
+      description: recommendation.description,
+      priority: recommendation.priority,
+      action_type: recommendation.actionType,
+      estimated_images_affected: recommendation.estimatedImagesAffected,
+      estimated_minutes_saved_low: recommendation.estimatedMinutesSavedLow,
+      estimated_minutes_saved_high: recommendation.estimatedMinutesSavedHigh,
+      action_filter: recommendation.actionFilter ?? {},
+      status: "available",
+      display_order: recommendation.displayOrder
+    })),
+    issue_summary: issueSummaryFromAuditIssues(auditIssues),
+    top_items_needing_attention: recommendedFirst50.slice(0, 20),
+    recommended_first_50_images: recommendedFirst50,
+    fix_impact_forecast: calculateFixImpactForecast(metrics, auditIssues, recommendationModels)
+  };
+};
+
 export const completeAuditScan = async (
   auth: ImageStudioAuthContext,
   scanId: string
@@ -1634,7 +1784,19 @@ export const completeAuditScan = async (
       AND "store_id" = ${scan.store_id}
   `;
 
-  return getAuditReport(auth, scan.id, { topOnly: true });
+  return completionReportFromMemory(
+    scan,
+    items,
+    metrics,
+    auditIssues,
+    insights,
+    recommendations,
+    categoryScores,
+    products.size,
+    categories.size,
+    productsWithoutMain,
+    productsWithSingleImage
+  );
 };
 
 export const getLatestAuditReport = async (
@@ -1790,79 +1952,90 @@ export const getAuditReport = async (
   options: { topOnly?: boolean } = {}
 ): Promise<Record<string, unknown>> => {
   const scan = await getAuthorizedScan(auth, scanId);
-  const metricRows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT *
-    FROM "image_audit_scan_metrics"
-    WHERE "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-    ORDER BY "created_at" DESC
-    LIMIT 1
-  `;
   const insightLimit = options.topOnly ? 5 : 100;
   const recommendationLimit = options.topOnly ? 5 : 100;
-  const insights = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT *
-    FROM "image_audit_insights"
-    WHERE "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-    ORDER BY "display_order" ASC, "created_at" ASC
-    LIMIT ${insightLimit}
-  `;
-  const recommendations = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT *
-    FROM "image_audit_recommendations"
-    WHERE "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-    ORDER BY
-      CASE "priority"
-        WHEN 'critical' THEN 1
-        WHEN 'high' THEN 2
-        WHEN 'medium' THEN 3
-        ELSE 4
-      END,
-      "display_order" ASC
-    LIMIT ${recommendationLimit}
-  `;
-  const categoryScores = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT *
-    FROM "image_audit_category_scores"
-    WHERE "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-    ORDER BY
-      CASE "priority"
-        WHEN 'critical' THEN 1
-        WHEN 'high' THEN 2
-        WHEN 'medium' THEN 3
-        ELSE 4
-      END,
-      "issue_count" DESC
-  `;
-  const allItems = await prisma.$queryRaw<AuditItemRow[]>`
-    SELECT *
-    FROM "image_audit_items"
-    WHERE "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-    ORDER BY "created_at" ASC
-  `;
-  const allIssues = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT
-      "id"::text,
-      "audit_item_id"::text,
-      "product_id",
-      "image_id",
-      "issue_type",
-      "severity",
-      "title",
-      "description",
-      "recommended_action",
-      "action_type",
-      "confidence_score",
-      "metadata"
-    FROM "image_audit_issues"
-    WHERE "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-      AND "status" <> 'ignored'
-  `;
+  const [
+    metricRows,
+    insights,
+    recommendations,
+    categoryScores,
+    allItems,
+    allIssues,
+    issueSummary
+  ] = await Promise.all([
+    prisma.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT *
+      FROM "image_audit_scan_metrics"
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+      ORDER BY "created_at" DESC
+      LIMIT 1
+    `,
+    prisma.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT *
+      FROM "image_audit_insights"
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+      ORDER BY "display_order" ASC, "created_at" ASC
+      LIMIT ${insightLimit}
+    `,
+    prisma.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT *
+      FROM "image_audit_recommendations"
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+      ORDER BY
+        CASE "priority"
+          WHEN 'critical' THEN 1
+          WHEN 'high' THEN 2
+          WHEN 'medium' THEN 3
+          ELSE 4
+        END,
+        "display_order" ASC
+      LIMIT ${recommendationLimit}
+    `,
+    prisma.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT *
+      FROM "image_audit_category_scores"
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+      ORDER BY
+        CASE "priority"
+          WHEN 'critical' THEN 1
+          WHEN 'high' THEN 2
+          WHEN 'medium' THEN 3
+          ELSE 4
+        END,
+        "issue_count" DESC
+    `,
+    prisma.$queryRaw<AuditItemRow[]>`
+      SELECT *
+      FROM "image_audit_items"
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+      ORDER BY "created_at" ASC
+    `,
+    prisma.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT
+        "id"::text,
+        "audit_item_id"::text,
+        "product_id",
+        "image_id",
+        "issue_type",
+        "severity",
+        "title",
+        "description",
+        "recommended_action",
+        "action_type",
+        "confidence_score",
+        "metadata"
+      FROM "image_audit_issues"
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+        AND "status" <> 'ignored'
+    `,
+    getIssueSummary(scan)
+  ]);
   const reportItems = allItems.map(toScoringItem);
   const reportIssues = allIssues.map((issue): AuditIssue => {
     const metadata = typeof issue.metadata === "object" && issue.metadata !== null && !Array.isArray(issue.metadata)
@@ -1924,7 +2097,7 @@ export const getAuditReport = async (
     [options.topOnly ? "top_insights" : "insights"]: insights.map(serializeRecord),
     [options.topOnly ? "top_recommendations" : "recommendations"]: recommendations.map(serializeRecord),
     ...(options.topOnly ? {} : { category_scores: categoryScores.map(serializeRecord) }),
-    issue_summary: await getIssueSummary(scan),
+    issue_summary: issueSummary,
     top_items_needing_attention: recommendedFirst50.slice(0, 20),
     recommended_first_50_images: recommendedFirst50,
     fix_impact_forecast: fixImpactForecast
