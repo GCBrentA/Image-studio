@@ -98,10 +98,10 @@ export const env = {
   storageSignedUrlExpiresSeconds: Number(process.env.STORAGE_SIGNED_URL_EXPIRES_SECONDS ?? 60 * 60 * 24 * 7),
   imageStorageRetentionDays: Number(process.env.IMAGE_STORAGE_RETENTION_DAYS ?? 30),
   planCreditLimits: {
-    starter: Number(process.env.STARTER_MONTHLY_CREDITS ?? 20),
-    growth: Number(process.env.GROWTH_MONTHLY_CREDITS ?? 100),
-    pro: Number(process.env.PRO_MONTHLY_CREDITS ?? 500),
-    agency: Number(process.env.AGENCY_MONTHLY_CREDITS ?? 1500)
+    starter: Number(process.env.STARTER_MONTHLY_CREDITS ?? 50),
+    growth: Number(process.env.GROWTH_MONTHLY_CREDITS ?? 200),
+    pro: Number(process.env.PRO_MONTHLY_CREDITS ?? 700),
+    agency: Number(process.env.AGENCY_MONTHLY_CREDITS ?? 2000)
   },
   publicBaseUrl:
     process.env.APP_BASE_URL ??

@@ -39,6 +39,7 @@ type StripeSubscriptionLike = {
       current_period_end?: number;
       price: {
         id: string;
+        metadata?: Record<string, string> | null;
         product?: string | { id: string } | null;
       };
     }>;
@@ -123,6 +124,47 @@ const stripeStatusToSubscriptionStatus = (status: StripeSubscriptionStatus): Sub
     case "paused":
       return SubscriptionStatus.incomplete;
   }
+};
+
+const parsePositiveInteger = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const warnCreditMetadataMismatch = (
+  context: string,
+  expectedCredits: number,
+  metadataCredits: number | null,
+  extra: Record<string, unknown> = {}
+): void => {
+  if (metadataCredits === null || metadataCredits === expectedCredits) {
+    return;
+  }
+
+  console.warn("Stripe credit metadata does not match local Optivra billing config; using local credit amount.", {
+    context,
+    expectedCredits,
+    metadataCredits,
+    ...extra
+  });
+};
+
+const validateSubscriptionCreditMetadata = (
+  subscription: StripeSubscriptionLike,
+  expectedCredits: number
+): number => {
+  const metadataCredits =
+    parsePositiveInteger(subscription.metadata?.credits) ??
+    parsePositiveInteger(subscription.metadata?.monthly_credits) ??
+    parsePositiveInteger(subscription.items.data[0]?.price.metadata?.credits) ??
+    parsePositiveInteger(subscription.items.data[0]?.price.metadata?.monthly_credits);
+
+  warnCreditMetadataMismatch("subscription", expectedCredits, metadataCredits, {
+    subscriptionId: subscription.id,
+    priceId: subscription.items.data[0]?.price.id ?? null
+  });
+
+  return expectedCredits;
 };
 
 const getCustomerId = async (userId: string): Promise<string> => {
@@ -214,6 +256,8 @@ export const createCheckoutSession = async (
         userId,
         checkoutType: "subscription",
         plan: plan.plan,
+        credits: String(plan.credits),
+        monthly_credits: String(plan.credits),
         ...(site?.domain ? { store_domain: site.domain } : {})
       },
       subscription_data: {
@@ -222,6 +266,8 @@ export const createCheckoutSession = async (
           user_id: userId,
           userId,
           plan: plan.plan,
+          credits: String(plan.credits),
+          monthly_credits: String(plan.credits),
           ...(site?.domain ? { store_domain: site.domain } : {})
         }
       }
@@ -344,6 +390,7 @@ const upsertSubscriptionFromStripe = async (
   if (!plan) {
     return;
   }
+  const planCredits = validateSubscriptionCreditMetadata(subscription, plan.credits);
 
   const customerId = getCustomerIdFromStripeObject(subscription.customer);
   const user =
@@ -383,7 +430,7 @@ const upsertSubscriptionFromStripe = async (
       stripe_price_id: priceId,
       stripe_product_id: stripeProductId,
       cancel_at_period_end: subscription.cancel_at_period_end,
-      credits_included: plan.credits,
+      credits_included: planCredits,
       billing_email: billingEmail ?? undefined,
       credits_reset_at: currentPeriodEnd
     },
@@ -397,7 +444,7 @@ const upsertSubscriptionFromStripe = async (
       stripe_price_id: priceId,
       stripe_product_id: stripeProductId,
       cancel_at_period_end: subscription.cancel_at_period_end,
-      credits_included: plan.credits,
+      credits_included: planCredits,
       billing_email: billingEmail ?? undefined,
       credits_reset_at: currentPeriodEnd
     }
@@ -418,7 +465,7 @@ const upsertSubscriptionFromStripe = async (
       current_period_start: currentPeriodStart,
       current_period_end: currentPeriodEnd,
       cancel_at_period_end: subscription.cancel_at_period_end,
-      credits_included: plan.credits,
+      credits_included: planCredits,
       credits_reset_at: currentPeriodEnd
     }
   });
@@ -452,11 +499,16 @@ const handleCheckoutSessionCompleted = async (
 
     const packKey = session.metadata?.credit_pack ?? session.metadata?.pack;
     const pack = packKey ? getCreditPackByKey(packKey) : null;
-    const metadataCredits = Number(session.metadata?.credits ?? 0);
 
-    if (!pack || metadataCredits !== pack.credits) {
-      throw new Error("Stripe credit purchase metadata does not match server credit pack config");
+    if (!pack) {
+      throw new Error("Stripe credit purchase metadata is missing a valid credit pack");
     }
+
+    const metadataCredits = parsePositiveInteger(session.metadata?.credits);
+    warnCreditMetadataMismatch("credit_purchase", pack.credits, metadataCredits, {
+      checkoutSessionId: session.id,
+      creditPack: pack.key
+    });
 
     const paymentIntentId = typeof session.payment_intent === "string"
       ? session.payment_intent

@@ -26,6 +26,44 @@ const gatewayRulesRelease = {
   status: "Early access",
   updatedAt: "2026-04-28"
 };
+const reviewWorkflowDemoRecords = [
+  {
+    id: "gel-blaster-rifle",
+    productId: "demo-gel-blaster-rifle",
+    metadataProductId: "demo-gel-blaster-rifle",
+    productTitle: "Example gel blaster rifle",
+    originalAssetId: "gel-blaster-rifle-original",
+    processedAssetId: "gel-blaster-rifle-processed-clean-background",
+    originalVisualClass: "review-thumb--gel-blaster-original",
+    processedVisualClass: "review-thumb--gel-blaster-processed",
+    filename: "black-gel-blaster-rifle-studio-cleanup.webp",
+    altText: "Black gel blaster rifle on a clean light catalogue background.",
+    status: "Review required",
+    processingMode: "Smart Safe",
+    preservationStatus: "Checked",
+    processedBadge: "Clean background",
+    helperText: "Subtle enhancement focused on cleanup and consistency.",
+    keywords: ["gel", "blaster", "rifle"]
+  },
+  {
+    id: "pending-preview-safe-state",
+    productId: "demo-pending-preview",
+    metadataProductId: "demo-pending-preview",
+    productTitle: "Example catalogue product",
+    originalAssetId: "catalogue-product-original",
+    processedAssetId: "",
+    originalVisualClass: "review-thumb--gel-blaster-original",
+    processedVisualClass: "",
+    filename: "catalogue-product-clean-background.webp",
+    altText: "Catalogue product prepared for review after background cleanup.",
+    status: "Processing",
+    processingMode: "Preserve Product",
+    preservationStatus: "Not assessed",
+    processedBadge: "",
+    helperText: "Processed preview not available yet.",
+    keywords: ["catalogue", "product"]
+  }
+];
 const blogArticles = [
   {
     slug: "how-to-optimise-woocommerce-product-images-for-seo",
@@ -439,6 +477,7 @@ function routeTo(path) {
     renderBlog(normalized);
   }
   renderExampleReportMocks();
+  renderReviewWorkflowDemos();
   if (normalized === "/admin/plugin-analytics") {
     loadAdminAnalytics();
   }
@@ -581,6 +620,131 @@ function renderExampleReportMocks() {
       </article>
     `;
   });
+}
+
+function getReviewWorkflowDemoRecord(recordId) {
+  const requested = reviewWorkflowDemoRecords.find((record) => record.id === recordId);
+  const requestedValidation = validateReviewWorkflowDemoRecord(requested);
+  if (requestedValidation.ok) {
+    return { record: requested, validation: requestedValidation };
+  }
+
+  warnReviewWorkflowDemoIssue("Invalid review workflow demo record", recordId, requestedValidation.reason);
+
+  const fallback = reviewWorkflowDemoRecords.find((record) => {
+    const validation = validateReviewWorkflowDemoRecord(record);
+    return validation.ok && !validation.pending;
+  });
+
+  return {
+    record: fallback || null,
+    validation: fallback ? validateReviewWorkflowDemoRecord(fallback) : { ok: false, reason: "no_valid_fallback" }
+  };
+}
+
+function validateReviewWorkflowDemoRecord(record) {
+  if (!record) return { ok: false, reason: "missing_record" };
+  if (!record.id || !record.productId || !record.productTitle) return { ok: false, reason: "missing_identity" };
+  if (!record.originalAssetId) return { ok: false, reason: "missing_original_preview" };
+  if (record.metadataProductId && record.metadataProductId !== record.productId) {
+    return { ok: false, reason: "metadata_product_mismatch" };
+  }
+  if (!record.filename || !record.altText) return { ok: false, reason: "missing_metadata" };
+
+  const metadata = `${record.productTitle} ${record.filename} ${record.altText}`.toLowerCase();
+  const keywords = Array.isArray(record.keywords) ? record.keywords : [];
+  const hasKeywordMismatch = keywords.some((keyword) => !metadata.includes(String(keyword).toLowerCase()));
+  if (hasKeywordMismatch) return { ok: false, reason: "metadata_keyword_mismatch" };
+
+  if (!record.processedAssetId) return { ok: true, pending: true };
+  if (record.processedAssetId === record.originalAssetId && !record.allowSameAsset) {
+    return { ok: false, reason: "processed_reuses_original" };
+  }
+
+  return { ok: true, pending: false };
+}
+
+function renderReviewWorkflowDemos() {
+  document.querySelectorAll("[data-review-workflow-demo]").forEach((node) => {
+    const { record, validation } = getReviewWorkflowDemoRecord(node.getAttribute("data-review-workflow-demo"));
+    if (!record || !validation.ok) {
+      node.innerHTML = renderReviewWorkflowUnavailable();
+      return;
+    }
+
+    node.setAttribute("data-review-demo-record", record.id);
+    node.innerHTML = renderReviewWorkflowDemo(record, validation);
+  });
+}
+
+function renderReviewWorkflowDemo(record, validation) {
+  const pending = Boolean(validation.pending);
+  const statusClass = pending ? "queued" : "pending";
+  const processedThumb = pending
+    ? renderReviewWorkflowPendingThumb()
+    : renderReviewWorkflowThumb("Processed", record.processedVisualClass, record.processedBadge || "Processed", "processed");
+
+  return `
+    <div class="mock-card-head">
+      <div><span class="review-step-label">Review step</span><strong>${pending ? "Preview pending" : "Ready for review"}</strong></div>
+      <span class="status-pill ${statusClass}">${escapeHtml(record.status)}</span>
+    </div>
+    <div class="review-thumb-row" data-original-asset="${escapeHtml(record.originalAssetId)}" data-processed-asset="${escapeHtml(record.processedAssetId || "pending")}">
+      ${renderReviewWorkflowThumb("Original", record.originalVisualClass, "Original photo", "original")}
+      ${processedThumb}
+    </div>
+    <div class="review-status-stack">
+      <div><span>Product preservation</span><strong>${escapeHtml(record.preservationStatus)}</strong></div>
+      <div><span>Processing mode</span><strong>${escapeHtml(record.processingMode)}</strong></div>
+    </div>
+    <div class="metadata-preview">
+      <p><strong>Product</strong><span>${escapeHtml(record.productTitle)}</span></p>
+      <p><strong>Filename</strong><span>${escapeHtml(record.filename)}</span></p>
+      <p><strong>Alt text</strong><span>${escapeHtml(record.altText)}</span></p>
+    </div>
+    <p class="review-demo-note">${escapeHtml(record.helperText)}</p>
+    <div class="review-button-row">
+      <button class="button primary" type="button"${pending ? " disabled" : ""}>Approve</button>
+      <button class="button ghost" type="button">Edit metadata</button>
+      <button class="button ghost" type="button">Keep original</button>
+    </div>
+    <div class="review-trust-callout"><strong>Review-first by default</strong><span>Inspect outputs before replacing product images. Original images stay available for rollback.</span></div>
+  `;
+}
+
+function renderReviewWorkflowThumb(label, visualClass, badge, variant) {
+  return `
+    <div class="review-thumb review-thumb-${escapeHtml(variant)} ${escapeHtml(visualClass || "")}">
+      <span>${escapeHtml(label)}</span>
+      <i aria-hidden="true"></i>
+      ${badge ? `<em>${escapeHtml(badge)}</em>` : ""}
+    </div>
+  `;
+}
+
+function renderReviewWorkflowPendingThumb() {
+  return `
+    <div class="review-thumb review-thumb-placeholder">
+      <span>Processed</span>
+      <strong>Processed preview not available yet</strong>
+      <small>The original is never reused as a fake processed image.</small>
+    </div>
+  `;
+}
+
+function renderReviewWorkflowUnavailable() {
+  return `
+    <div class="mock-card-head">
+      <div><span class="review-step-label">Review step</span><strong>Preview unavailable</strong></div>
+      <span class="status-pill failed">Needs review</span>
+    </div>
+    <div class="review-trust-callout"><strong>Demo content paused</strong><span>This preview is hidden because the demo record could not be verified.</span></div>
+  `;
+}
+
+function warnReviewWorkflowDemoIssue(message, recordId, reason) {
+  if (!["localhost", "127.0.0.1"].includes(location.hostname)) return;
+  console.warn(`[Optivra review demo] ${message}`, { recordId, reason });
 }
 
 function pageRobots(path) {
@@ -1894,10 +2058,10 @@ function renderBillingContent() {
         </div>
       </div>
       <div class="pricing-grid compact-pricing">
-        <article class="price-card"><h2>Optivra Image Studio Starter</h2><strong>$19 USD/month</strong><p>20 credits monthly.</p><button data-plan="starter">Subscribe</button></article>
-        <article class="price-card"><h2>Optivra Image Studio Growth</h2><strong>$69 USD/month</strong><p>100 credits monthly.</p><button data-plan="growth">Upgrade</button></article>
-        <article class="price-card"><h2>Optivra Image Studio Pro</h2><strong>$159 USD/month</strong><p>500 credits monthly.</p><button data-plan="pro">Upgrade</button></article>
-        <article class="price-card"><h2>Optivra Image Studio Agency</h2><strong>$429 USD/month</strong><p>1,500 credits monthly.</p><button data-plan="agency">Upgrade</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Starter</h2><strong>$19 USD/month</strong><p>50 credits monthly plus platform access, reports, queue workflow, safety checks, review tools, and image processing credits.</p><button data-plan="starter">Subscribe</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Growth</h2><strong>$69 USD/month</strong><p>200 credits monthly for regular catalogue work and SEO/image cleanup batches.</p><button data-plan="growth">Upgrade</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Pro</h2><strong>$159 USD/month</strong><p>700 credits monthly for larger stores, scheduled scan workflows and brand preset usage.</p><button data-plan="pro">Upgrade</button></article>
+        <article class="price-card"><h2>Optivra Image Studio Agency</h2><strong>$429 USD/month</strong><p>2,000 credits monthly for high-volume teams and multi-store reporting.</p><button data-plan="agency">Upgrade</button></article>
       </div>
     </section>
 
@@ -1911,9 +2075,9 @@ function renderBillingContent() {
       <p class="form-message" id="billing-message"></p>
       <div class="pricing-grid compact-pricing credit-pack-grid">
         <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>25 Credits</h2><strong>$10 USD</strong><p>Small top-up for a quick batch.</p><button class="button primary" data-pack="small">Buy Credits</button></article>
-        <article class="price-card credit-pack-card featured"><p class="eyebrow">Optivra Image Studio Credits</p><h2>100 Credits</h2><strong>$35 USD</strong><p>Medium pack for a catalogue pass.</p><button class="button primary" data-pack="medium">Buy Credits</button></article>
-        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>300 Credits</h2><strong>$90 USD</strong><p>Large pack for growing stores.</p><button class="button primary" data-pack="large">Buy Credits</button></article>
-        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>1000 Credits</h2><strong>$250 USD</strong><p>Agency pack for high-volume work.</p><button class="button primary" data-pack="agency">Buy Credits</button></article>
+        <article class="price-card credit-pack-card featured"><p class="eyebrow">Optivra Image Studio Credits</p><h2>120 Credits</h2><strong>$35 USD</strong><p>Best fit for regular catalogue updates.</p><button class="button primary" data-pack="medium">Buy Credits</button></article>
+        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>350 Credits</h2><strong>$90 USD</strong><p>Extra capacity for larger store passes.</p><button class="button primary" data-pack="large">Buy Credits</button></article>
+        <article class="price-card credit-pack-card"><p class="eyebrow">Optivra Image Studio Credits</p><h2>1,200 Credits</h2><strong>$250 USD</strong><p>High-volume processing for teams and clients.</p><button class="button primary" data-pack="agency">Buy Credits</button></article>
       </div>
     </section>
   `;
