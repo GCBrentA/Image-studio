@@ -10,6 +10,10 @@ if (! defined('ABSPATH')) {
 }
 
 class Catalogue_Image_Studio_Admin {
+	private const CAPABILITY = 'manage_woocommerce';
+	private const MENU_SLUG = 'optivra-image-studio';
+	private const LEGACY_MENU_SLUG = 'optivra';
+
 	/**
 	 * Core plugin instance.
 	 *
@@ -25,6 +29,13 @@ class Catalogue_Image_Studio_Admin {
 	private $page_hook = '';
 
 	/**
+	 * Admin page hook suffixes.
+	 *
+	 * @var array<int,string>
+	 */
+	private $page_hooks = [];
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Catalogue_Image_Studio_Plugin $plugin Plugin instance.
@@ -38,6 +49,10 @@ class Catalogue_Image_Studio_Admin {
 		add_action('admin_init', [$this, 'handle_settings_post']);
 		add_action('admin_init', [$this, 'handle_workflow_post']);
 		add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
+		add_action('wp_ajax_optivra_image_audit_start', [$this, 'ajax_image_audit_start']);
+		add_action('wp_ajax_optivra_image_audit_batch', [$this, 'ajax_image_audit_batch']);
+		add_action('wp_ajax_optivra_image_audit_complete', [$this, 'ajax_image_audit_complete']);
+		add_action('wp_ajax_optivra_image_audit_cancel', [$this, 'ajax_image_audit_cancel']);
 	}
 
 	public function register_settings(): void {
@@ -53,23 +68,66 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	/**
-	 * Register the WooCommerce submenu.
+	 * Register the top-level Optivra menu and supporting submenus.
 	 *
 	 * @return void
 	 */
 	public function register_menu(): void {
-		if (! current_user_can('manage_woocommerce')) {
+		if (! current_user_can(self::CAPABILITY)) {
 			return;
 		}
 
-		$this->page_hook = add_submenu_page(
-			'woocommerce',
+		$this->page_hook = add_menu_page(
+			__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'),
+			__('Optivra', 'optivra-image-studio-for-woocommerce'),
+			self::CAPABILITY,
+			self::MENU_SLUG,
+			[$this, 'render_page'],
+			'dashicons-format-image',
+			56
+		);
+		$this->page_hooks[] = $this->page_hook;
+
+		$submenus = [
+			self::MENU_SLUG                     => __('Dashboard', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-scan'        => __('Product Scan', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-health'      => __('Health Report', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-recommendations' => __('Recommendations', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-queue'       => __('Processing Queue', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-backgrounds' => __('Backgrounds', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-seo'         => __('SEO Tools', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-settings'    => __('Settings', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-account'     => __('Account & Billing', 'optivra-image-studio-for-woocommerce'),
+			'optivra-image-studio-support'     => __('Support', 'optivra-image-studio-for-woocommerce'),
+		];
+
+		foreach ($submenus as $slug => $label) {
+			$hook = add_submenu_page(
+				self::MENU_SLUG,
+				__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'),
+				$label,
+				self::CAPABILITY,
+				$slug,
+				[$this, 'render_page']
+			);
+
+			if (is_string($hook)) {
+				$this->page_hooks[] = $hook;
+			}
+		}
+
+		$legacy_hook = add_submenu_page(
+			null,
 			__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'),
 			__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'),
-			'manage_woocommerce',
-			'optivra',
+			self::CAPABILITY,
+			self::LEGACY_MENU_SLUG,
 			[$this, 'render_page']
 		);
+
+		if (is_string($legacy_hook)) {
+			$this->page_hooks[] = $legacy_hook;
+		}
 	}
 
 	/**
@@ -79,7 +137,7 @@ class Catalogue_Image_Studio_Admin {
 	 * @return void
 	 */
 	public function enqueue_assets(string $hook): void {
-		if ($hook !== $this->page_hook) {
+		if (! in_array($hook, $this->page_hooks, true)) {
 			return;
 		}
 
@@ -205,6 +263,167 @@ class Catalogue_Image_Studio_Admin {
 				}
 			});"
 		);
+
+		$scan_config = [
+			'ajaxUrl' => admin_url('admin-ajax.php'),
+			'nonce'   => wp_create_nonce('optivra_image_audit_scan'),
+			'i18n'    => [
+				'starting'   => __('Starting scan...', 'optivra-image-studio-for-woocommerce'),
+				'scanning'   => __('Scanning product image metadata...', 'optivra-image-studio-for-woocommerce'),
+				'completing' => __('Calculating report...', 'optivra-image-studio-for-woocommerce'),
+				'completed'  => __('Scan completed. Refreshing report summary...', 'optivra-image-studio-for-woocommerce'),
+				'cancelled'  => __('Scan cancelled.', 'optivra-image-studio-for-woocommerce'),
+				'failed'     => __('Scan failed. Check the message and try again.', 'optivra-image-studio-for-woocommerce'),
+			],
+		];
+
+		wp_add_inline_script(
+			'jquery',
+			'window.optivraScanConfig = ' . wp_json_encode($scan_config) . ';
+			(function() {
+				function ready(fn) {
+					if (document.readyState !== "loading") {
+						fn();
+						return;
+					}
+					document.addEventListener("DOMContentLoaded", fn);
+				}
+
+				function post(action, payload) {
+					var body = new URLSearchParams();
+					body.set("action", action);
+					body.set("nonce", window.optivraScanConfig.nonce);
+					Object.keys(payload || {}).forEach(function(key) {
+						body.set(key, payload[key]);
+					});
+					return fetch(window.optivraScanConfig.ajaxUrl, {
+						method: "POST",
+						credentials: "same-origin",
+						headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+						body: body.toString()
+					}).then(function(response) {
+						return response.json();
+					}).then(function(json) {
+						if (!json || !json.success) {
+							var message = json && json.data && json.data.message ? json.data.message : window.optivraScanConfig.i18n.failed;
+							throw new Error(message);
+						}
+						return json.data || {};
+					});
+				}
+
+				function checkedValues(form, name) {
+					return Array.prototype.map.call(form.querySelectorAll("[name=\"" + name + "\"]:checked"), function(input) {
+						return input.value;
+					});
+				}
+
+				function collectOptions(form) {
+					return {
+						scan_scope: (form.querySelector("[name=\"scan_scope\"]:checked") || {}).value || "all",
+						category_ids: checkedValues(form, "category_ids[]"),
+						image_types: checkedValues(form, "image_types[]"),
+						checks: checkedValues(form, "checks[]")
+					};
+				}
+
+				function setText(root, name, value) {
+					var node = root.querySelector("[data-optivra-scan-" + name + "]");
+					if (node) {
+						node.textContent = String(value);
+					}
+				}
+
+				function setProgress(root, progress) {
+					var total = Math.max(0, parseInt(progress.total_products || 0, 10));
+					var products = Math.max(0, parseInt(progress.products_scanned || 0, 10));
+					var percent = total > 0 ? Math.min(100, Math.round((products / total) * 100)) : 0;
+					root.hidden = false;
+					setText(root, "status", progress.status_label || progress.status || "");
+					setText(root, "products", products + " / " + total);
+					setText(root, "images", progress.images_scanned || 0);
+					setText(root, "batch", progress.current_batch || 0);
+					setText(root, "started", progress.started_at || "");
+					setText(root, "message", progress.message || "");
+					var bar = root.querySelector("[data-optivra-scan-bar]");
+					if (bar) {
+						bar.style.width = percent + "%";
+					}
+				}
+
+				ready(function() {
+					var form = document.getElementById("optivra-audit-scan-form");
+					var progress = document.getElementById("optivra-audit-scan-progress");
+					var startButton = document.getElementById("optivra-audit-start");
+					var cancelButton = document.getElementById("optivra-audit-cancel");
+					var cancelled = false;
+
+					if (!form || !progress || !startButton) {
+						return;
+					}
+
+					function fail(error) {
+						startButton.disabled = false;
+						cancelButton.hidden = true;
+						setProgress(progress, {
+							status: "failed",
+							status_label: "Failed",
+							message: error.message || window.optivraScanConfig.i18n.failed
+						});
+					}
+
+					function runBatch(scanId, options, offset, batchNumber, totalProducts) {
+						if (cancelled) {
+							return post("optivra_image_audit_cancel", { scan_id: scanId }).then(function(data) {
+								setProgress(progress, data.progress || { status_label: window.optivraScanConfig.i18n.cancelled });
+							});
+						}
+
+						return post("optivra_image_audit_batch", {
+							scan_id: scanId,
+							options: JSON.stringify(options),
+							offset: offset,
+							batch: batchNumber
+						}).then(function(data) {
+							setProgress(progress, data.progress || {});
+							if (data.done) {
+								setProgress(progress, Object.assign({}, data.progress || {}, { status_label: window.optivraScanConfig.i18n.completing }));
+								return post("optivra_image_audit_complete", { scan_id: scanId }).then(function(doneData) {
+									setProgress(progress, doneData.progress || {});
+									startButton.disabled = false;
+									cancelButton.hidden = true;
+									window.setTimeout(function() { window.location.reload(); }, 900);
+								});
+							}
+							return window.setTimeout(function() {
+								runBatch(scanId, options, data.next_offset || (offset + 25), batchNumber + 1, totalProducts).catch(fail);
+							}, 150);
+						});
+					}
+
+					startButton.addEventListener("click", function(event) {
+						event.preventDefault();
+						cancelled = false;
+						startButton.disabled = true;
+						cancelButton.hidden = false;
+						var options = collectOptions(form);
+						setProgress(progress, { status_label: window.optivraScanConfig.i18n.starting, message: "" });
+						post("optivra_image_audit_start", { options: JSON.stringify(options) }).then(function(data) {
+							setProgress(progress, data.progress || {});
+							return runBatch(data.scan_id, options, 0, 1, data.total_products || 0);
+						}).catch(fail);
+					});
+
+					if (cancelButton) {
+						cancelButton.addEventListener("click", function(event) {
+							event.preventDefault();
+							cancelled = true;
+							cancelButton.disabled = true;
+						});
+					}
+				});
+			})();'
+		);
 	}
 
 	/**
@@ -215,7 +434,7 @@ class Catalogue_Image_Studio_Admin {
 	public function handle_settings_post(): void {
 		if (
 			! isset($_POST['catalogue_image_studio_settings_nonce']) ||
-			! current_user_can('manage_woocommerce')
+			! current_user_can(self::CAPABILITY)
 		) {
 			return;
 		}
@@ -433,7 +652,7 @@ class Catalogue_Image_Studio_Admin {
 	public function handle_workflow_post(): void {
 		if (
 			! isset($_POST['catalogue_image_studio_action_nonce'], $_POST['catalogue_image_studio_action']) ||
-			! current_user_can('manage_woocommerce')
+			! current_user_can(self::CAPABILITY)
 		) {
 			return;
 		}
@@ -843,16 +1062,396 @@ class Catalogue_Image_Studio_Admin {
 		return 'catalogue_image_studio_notices_' . $user_id;
 	}
 
+	private function get_admin_page_slug(string $tab): string {
+		$map = [
+			'dashboard'       => self::MENU_SLUG,
+			'scan'            => 'optivra-image-studio-scan',
+			'health'          => 'optivra-image-studio-health',
+			'recommendations' => 'optivra-image-studio-recommendations',
+			'queue'           => 'optivra-image-studio-queue',
+			'review'          => 'optivra-image-studio-queue',
+			'backgrounds'     => 'optivra-image-studio-backgrounds',
+			'seo'             => 'optivra-image-studio-seo',
+			'settings'        => 'optivra-image-studio-settings',
+			'account'         => 'optivra-image-studio-account',
+			'support'         => 'optivra-image-studio-support',
+			'logs'            => 'optivra-image-studio-support',
+		];
+
+		return $map[$tab] ?? self::MENU_SLUG;
+	}
+
+	private function get_admin_page_url(string $tab = 'dashboard'): string {
+		$url = add_query_arg('page', $this->get_admin_page_slug($tab), admin_url('admin.php'));
+
+		if (in_array($tab, ['review', 'logs'], true)) {
+			$url = add_query_arg('cis_tab', $tab, $url);
+		}
+
+		return $url;
+	}
+
 	private function redirect_after_settings_post(): void {
-		$target = admin_url('admin.php?page=optivra');
+		$target = $this->get_admin_page_url('settings');
 		// This helper is called only from handle_settings_post(), after check_admin_referer() and manage_woocommerce checks.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by the calling admin settings handler.
 		if (! empty($_POST['catalogue_image_studio_full_settings'])) {
-			$target = add_query_arg('cis_tab', 'settings', $target);
+			$target = $this->get_admin_page_url('settings');
 		}
 
 		wp_safe_redirect($target);
 		exit;
+	}
+
+	public function ajax_image_audit_start(): void {
+		$this->verify_image_audit_ajax();
+
+		$settings = $this->plugin->get_settings();
+		if (empty($settings['api_token'])) {
+			$this->send_audit_error(__('Connect your Optivra account before running a Product Image Health Report scan.', 'optivra-image-studio-for-woocommerce'));
+		}
+
+		$options = $this->get_audit_options_from_ajax();
+		$usage = $this->get_usage();
+		if (is_wp_error($usage)) {
+			$this->send_audit_error($usage->get_error_message());
+		}
+
+		$store_id = $this->get_audit_store_id(is_array($usage) ? $usage : []);
+		$total_products = $this->plugin->scanner()->count_audit_products($options);
+		$scan_options = $options + [
+			'total_products_estimate' => $total_products,
+			'plugin_version'          => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+			'woocommerce_version'     => defined('WC_VERSION') ? WC_VERSION : '',
+		];
+
+		$result = $this->plugin->client()->start_image_audit($store_id, $scan_options);
+		if (is_wp_error($result)) {
+			$this->send_audit_error($result->get_error_message());
+		}
+
+		$scan_id = $this->extract_scan_id(is_array($result) ? $result : []);
+		if ('' === $scan_id) {
+			$this->send_audit_error(__('Optivra did not return a scan ID for this audit.', 'optivra-image-studio-for-woocommerce'));
+		}
+
+		update_option('optivra_latest_scan_id', $scan_id, false);
+		update_option('optivra_scan_in_progress', true, false);
+
+		$progress = $this->save_audit_progress(
+			[
+				'scan_id'          => $scan_id,
+				'status'           => 'running',
+				'status_label'     => __('Running', 'optivra-image-studio-for-woocommerce'),
+				'products_scanned' => 0,
+				'images_scanned'   => 0,
+				'total_products'   => $total_products,
+				'current_batch'    => 0,
+				'errors'           => [],
+				'warnings'         => [],
+				'started_at'       => current_time('mysql'),
+				'message'          => __('Audit scan started. Metadata collection is free and does not use image processing credits.', 'optivra-image-studio-for-woocommerce'),
+			]
+		);
+
+		wp_send_json_success(['scan_id' => $scan_id, 'total_products' => $total_products, 'progress' => $progress]);
+	}
+
+	public function ajax_image_audit_batch(): void {
+		$this->verify_image_audit_ajax();
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- Nonce is verified by verify_image_audit_ajax().
+		$scan_id = isset($_POST['scan_id']) ? sanitize_text_field(wp_unslash($_POST['scan_id'])) : '';
+		$offset = isset($_POST['offset']) ? max(0, absint($_POST['offset'])) : 0;
+		$batch_number = isset($_POST['batch']) ? max(1, absint($_POST['batch'])) : 1;
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ('' === $scan_id || $scan_id !== (string) get_option('optivra_latest_scan_id', '')) {
+			$this->send_audit_error(__('This scan is no longer active. Start a new scan and try again.', 'optivra-image-studio-for-woocommerce'));
+		}
+
+		$options = $this->get_audit_options_from_ajax();
+		$progress = $this->get_audit_progress();
+		$total_products = max(0, (int) ($progress['total_products'] ?? 0));
+		$batch = $this->plugin->scanner()->collect_audit_batch($options, $offset, 25);
+		$items = isset($batch['items']) && is_array($batch['items']) ? $batch['items'] : [];
+
+		foreach (array_chunk($items, 75) as $chunk) {
+			$result = $this->plugin->client()->submit_image_audit_items($scan_id, $chunk);
+			if (is_wp_error($result)) {
+				$progress['status'] = 'failed';
+				$progress['status_label'] = __('Failed', 'optivra-image-studio-for-woocommerce');
+				$progress['message'] = $result->get_error_message();
+				$progress['errors'][] = $result->get_error_message();
+				$this->save_audit_progress($progress);
+				$this->send_audit_error($result->get_error_message());
+			}
+		}
+
+		$summary = isset($batch['summary']) && is_array($batch['summary']) ? $batch['summary'] : [];
+		$next_offset = isset($batch['next_offset']) ? max(0, absint($batch['next_offset'])) : $offset + 25;
+		$done = empty($batch['has_more']) || ($total_products > 0 && $next_offset >= $total_products);
+
+		$progress['status'] = 'running';
+		$progress['status_label'] = __('Running', 'optivra-image-studio-for-woocommerce');
+		$progress['products_scanned'] = $total_products > 0 ? min($total_products, $next_offset) : $next_offset;
+		$progress['images_scanned'] = (int) ($progress['images_scanned'] ?? 0) + (int) ($summary['images_scanned'] ?? count($items));
+		$progress['current_batch'] = $batch_number;
+		$progress['warnings'] = array_values(array_unique(array_merge((array) ($progress['warnings'] ?? []), (array) ($batch['warnings'] ?? []))));
+		$progress['errors'] = array_values(array_unique(array_merge((array) ($progress['errors'] ?? []), (array) ($batch['errors'] ?? []))));
+		$progress['message'] = $done
+			? __('Metadata collection finished. Optivra is calculating the health report.', 'optivra-image-studio-for-woocommerce')
+			: __('Metadata batch submitted successfully.', 'optivra-image-studio-for-woocommerce');
+		$progress = $this->save_audit_progress($progress);
+
+		wp_send_json_success(['done' => $done, 'next_offset' => $next_offset, 'progress' => $progress]);
+	}
+
+	public function ajax_image_audit_complete(): void {
+		$this->verify_image_audit_ajax();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by verify_image_audit_ajax().
+		$scan_id = isset($_POST['scan_id']) ? sanitize_text_field(wp_unslash($_POST['scan_id'])) : '';
+		if ('' === $scan_id || $scan_id !== (string) get_option('optivra_latest_scan_id', '')) {
+			$this->send_audit_error(__('This scan is no longer active. Start a new scan and try again.', 'optivra-image-studio-for-woocommerce'));
+		}
+
+		$result = $this->plugin->client()->complete_image_audit($scan_id);
+		if (is_wp_error($result)) {
+			$progress = $this->get_audit_progress();
+			$progress['status'] = 'failed';
+			$progress['status_label'] = __('Failed', 'optivra-image-studio-for-woocommerce');
+			$progress['message'] = $result->get_error_message();
+			$this->save_audit_progress($progress);
+			update_option('optivra_scan_in_progress', false, false);
+			$this->send_audit_error($result->get_error_message());
+		}
+
+		$summary = is_array($result) ? $result : [];
+		$score = $this->extract_health_score($summary);
+		update_option('optivra_latest_health_score', $score, false);
+		update_option('optivra_last_scan_completed_at', current_time('mysql'), false);
+		update_option('optivra_scan_in_progress', false, false);
+		$this->save_report_summary($scan_id, $summary, $score);
+
+		$progress = $this->get_audit_progress();
+		$progress['status'] = 'completed';
+		$progress['status_label'] = __('Completed', 'optivra-image-studio-for-woocommerce');
+		$progress['message'] = __('Product Image Health Report completed. Scanning did not consume image processing credits.', 'optivra-image-studio-for-woocommerce');
+		$progress['completed_at'] = current_time('mysql');
+		$progress = $this->save_audit_progress($progress);
+
+		wp_send_json_success(['progress' => $progress, 'summary' => $this->summarize_report_for_ui($summary, $score)]);
+	}
+
+	public function ajax_image_audit_cancel(): void {
+		$this->verify_image_audit_ajax();
+
+		update_option('optivra_scan_in_progress', false, false);
+		$progress = $this->get_audit_progress();
+		$progress['status'] = 'cancelled';
+		$progress['status_label'] = __('Cancelled', 'optivra-image-studio-for-woocommerce');
+		$progress['message'] = __('The local scan loop was cancelled. No image processing credits were used.', 'optivra-image-studio-for-woocommerce');
+		$progress = $this->save_audit_progress($progress);
+
+		wp_send_json_success(['progress' => $progress]);
+	}
+
+	private function verify_image_audit_ajax(): void {
+		if (! current_user_can(self::CAPABILITY)) {
+			wp_send_json_error(['message' => __('You do not have permission to run scans.', 'optivra-image-studio-for-woocommerce')], 403);
+		}
+
+		check_ajax_referer('optivra_image_audit_scan', 'nonce');
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private function get_audit_options_from_ajax(): array {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by verify_image_audit_ajax().
+		$raw = isset($_POST['options']) ? (string) wp_unslash($_POST['options']) : '{}';
+		$decoded = json_decode($raw, true);
+		$decoded = is_array($decoded) ? $decoded : [];
+
+		$scope = sanitize_key((string) ($decoded['scan_scope'] ?? 'all'));
+		if (! in_array($scope, ['all', 'categories', 'missing_main', 'updated_since_last_scan', 'unprocessed'], true)) {
+			$scope = 'all';
+		}
+
+		$image_types = isset($decoded['image_types']) && is_array($decoded['image_types']) ? array_map('sanitize_key', $decoded['image_types']) : [];
+		$checks = isset($decoded['checks']) && is_array($decoded['checks']) ? array_map('sanitize_key', $decoded['checks']) : [];
+		$category_ids = isset($decoded['category_ids']) && is_array($decoded['category_ids']) ? array_values(array_filter(array_map('absint', $decoded['category_ids']))) : [];
+
+		if (empty($image_types)) {
+			$image_types = ['main'];
+		}
+
+		$options = [
+			'scan_scope'                  => $scope,
+			'status'                      => 'publish',
+			'category_ids'                => 'categories' === $scope ? $category_ids : [],
+			'include_main_images'         => in_array('main', $image_types, true),
+			'include_gallery_images'      => in_array('gallery', $image_types, true),
+			'include_variation_images'    => in_array('variation', $image_types, true),
+			'include_category_thumbnails' => in_array('category', $image_types, true),
+			'checks'                      => array_values(array_intersect($checks, ['seo', 'performance', 'consistency', 'feed_readiness', 'visual_quality'])),
+		];
+
+		if ('updated_since_last_scan' === $scope) {
+			$last_completed = (string) get_option('optivra_last_scan_completed_at', '');
+			if ('' !== $last_completed) {
+				$options['updated_since'] = $last_completed;
+			}
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @param array<string,mixed> $usage Usage response.
+	 */
+	private function get_audit_store_id(array $usage): string {
+		$candidates = [
+			$usage['store_id'] ?? '',
+			$usage['site_id'] ?? '',
+			$usage['store']['id'] ?? '',
+			$usage['site']['id'] ?? '',
+		];
+
+		foreach ($candidates as $candidate) {
+			if (is_scalar($candidate) && '' !== (string) $candidate) {
+				return sanitize_text_field((string) $candidate);
+			}
+		}
+
+		$install_id = (string) get_option('optivra_image_studio_install_id', '');
+		if ('' === $install_id) {
+			$install_id = wp_generate_uuid4();
+			update_option('optivra_image_studio_install_id', $install_id, false);
+		}
+
+		return sanitize_text_field($install_id);
+	}
+
+	/**
+	 * @param array<string,mixed> $payload API payload.
+	 */
+	private function extract_scan_id(array $payload): string {
+		$candidates = [
+			$payload['scan_id'] ?? '',
+			$payload['id'] ?? '',
+			$payload['scan']['id'] ?? '',
+		];
+
+		foreach ($candidates as $candidate) {
+			if (is_scalar($candidate) && '' !== (string) $candidate) {
+				return sanitize_text_field((string) $candidate);
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private function get_audit_progress(): array {
+		$progress = get_option('optivra_scan_progress', []);
+
+		return is_array($progress) ? $progress : [];
+	}
+
+	/**
+	 * @param array<string,mixed> $progress Progress.
+	 * @return array<string,mixed>
+	 */
+	private function save_audit_progress(array $progress): array {
+		$progress['updated_at'] = current_time('mysql');
+		update_option('optivra_scan_progress', $progress, false);
+
+		return $progress;
+	}
+
+	/**
+	 * @param array<string,mixed> $summary Report summary.
+	 */
+	private function extract_health_score(array $summary): float {
+		$candidates = [
+			$summary['metrics']['product_image_health_score'] ?? null,
+			$summary['metrics']['productImageHealthScore'] ?? null,
+			$summary['product_image_health_score'] ?? null,
+			$summary['health_score'] ?? null,
+		];
+
+		foreach ($candidates as $candidate) {
+			if (is_numeric($candidate)) {
+				return max(0, min(100, (float) $candidate));
+			}
+		}
+
+		return 0.0;
+	}
+
+	/**
+	 * @param array<string,mixed> $summary Report summary.
+	 */
+	private function save_report_summary(string $scan_id, array $summary, float $score): void {
+		$cache = get_option('optivra_report_summary_cache', []);
+		$cache = is_array($cache) ? $cache : [];
+		$history = isset($cache['history']) && is_array($cache['history']) ? $cache['history'] : [];
+		$progress = $this->get_audit_progress();
+		$row = [
+			'scan_id'          => $scan_id,
+			'created_at'       => current_time('mysql'),
+			'products_scanned' => (int) ($progress['products_scanned'] ?? 0),
+			'images_scanned'   => (int) ($progress['images_scanned'] ?? 0),
+			'health_score'     => $score,
+			'issues_found'     => $this->extract_issue_count($summary),
+			'status'           => 'completed',
+		];
+
+		array_unshift($history, $row);
+		$cache['latest'] = $this->summarize_report_for_ui($summary, $score) + $row;
+		$cache['history'] = array_slice($history, 0, 10);
+
+		update_option('optivra_report_summary_cache', $cache, false);
+	}
+
+	/**
+	 * @param array<string,mixed> $summary Report summary.
+	 */
+	private function extract_issue_count(array $summary): int {
+		$candidates = [
+			$summary['issue_counts']['total'] ?? null,
+			$summary['issue_summary']['total'] ?? null,
+			$summary['issues_found'] ?? null,
+			$summary['metrics']['issue_count'] ?? null,
+		];
+
+		foreach ($candidates as $candidate) {
+			if (is_numeric($candidate)) {
+				return max(0, (int) $candidate);
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * @param array<string,mixed> $summary Report summary.
+	 * @return array<string,mixed>
+	 */
+	private function summarize_report_for_ui(array $summary, float $score): array {
+		return [
+			'health_score' => $score,
+			'issues_found' => $this->extract_issue_count($summary),
+			'raw'          => $summary,
+		];
+	}
+
+	private function send_audit_error(string $message): void {
+		wp_send_json_error(['message' => esc_html($message)], 400);
 	}
 
 	/**
@@ -874,7 +1473,7 @@ class Catalogue_Image_Studio_Admin {
 	 * @return void
 	 */
 	public function render_page(): void {
-		if (! current_user_can('manage_woocommerce')) {
+		if (! current_user_can(self::CAPABILITY)) {
 			wp_die(esc_html__('You do not have permission to access this page.', 'optivra-image-studio-for-woocommerce'));
 		}
 
@@ -883,10 +1482,10 @@ class Catalogue_Image_Studio_Admin {
 		$jobs     = $this->plugin->jobs()->query([], 100, 0);
 		$connected = ! is_wp_error($usage);
 		$tab       = $this->get_current_tab();
+		$page_meta = $this->get_page_meta($tab);
 		?>
-		<div class="wrap catalogue-image-studio-admin">
-			<h1><?php echo esc_html__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'); ?></h1>
-			<p class="catalogue-image-studio-page-intro"><?php echo esc_html__('Configure how Optivra optimises and writes product images back to your store.', 'optivra-image-studio-for-woocommerce'); ?></p>
+		<div class="wrap optivra-admin-app catalogue-image-studio-admin">
+			<?php $this->render_app_shell_header($tab, $page_meta, $settings, $usage); ?>
 			<?php $this->render_queued_notices(); ?>
 			<?php settings_errors('catalogue_image_studio_messages'); ?>
 
@@ -899,14 +1498,32 @@ class Catalogue_Image_Studio_Admin {
 					case 'scan':
 						$this->render_scan_tab();
 						break;
+					case 'health':
+						$this->render_health_report_tab($settings);
+						break;
+					case 'recommendations':
+						$this->render_recommendations_tab();
+						break;
 					case 'queue':
 						$this->render_queue_tab($usage);
 						break;
 					case 'review':
 						$this->render_review_tab();
 						break;
+					case 'backgrounds':
+						$this->render_backgrounds_tab($settings);
+						break;
+					case 'seo':
+						$this->render_seo_tools_tab($settings);
+						break;
 					case 'settings':
 						$this->render_settings_tab($settings, $usage);
+						break;
+					case 'account':
+						$this->render_account_billing_tab($settings, $usage);
+						break;
+					case 'support':
+						$this->render_support_tab();
 						break;
 					case 'logs':
 						$this->render_logs_tab();
@@ -924,9 +1541,115 @@ class Catalogue_Image_Studio_Admin {
 
 	private function get_current_tab(): string {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin navigation parameter.
-		$tab = isset($_GET['cis_tab']) ? sanitize_key(wp_unslash($_GET['cis_tab'])) : 'dashboard';
+		$page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : self::MENU_SLUG;
+		$slug_map = [
+			self::MENU_SLUG                         => 'dashboard',
+			self::LEGACY_MENU_SLUG                  => 'dashboard',
+			'optivra-image-studio-scan'             => 'scan',
+			'optivra-image-studio-health'           => 'health',
+			'optivra-image-studio-recommendations'  => 'recommendations',
+			'optivra-image-studio-queue'            => 'queue',
+			'optivra-image-studio-backgrounds'      => 'backgrounds',
+			'optivra-image-studio-seo'              => 'seo',
+			'optivra-image-studio-settings'         => 'settings',
+			'optivra-image-studio-account'          => 'account',
+			'optivra-image-studio-support'          => 'support',
+		];
+		$tab = $slug_map[$page] ?? 'dashboard';
 
-		return in_array($tab, ['dashboard', 'scan', 'queue', 'review', 'settings', 'logs'], true) ? $tab : 'dashboard';
+		if (isset($_GET['cis_tab'])) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only legacy navigation parameter.
+			$tab = sanitize_key(wp_unslash($_GET['cis_tab']));
+		}
+
+		return in_array($tab, ['dashboard', 'scan', 'health', 'recommendations', 'queue', 'review', 'backgrounds', 'seo', 'settings', 'account', 'support', 'logs'], true) ? $tab : 'dashboard';
+	}
+
+	/**
+	 * @return array{title:string,description:string}
+	 */
+	private function get_page_meta(string $tab): array {
+		$pages = [
+			'dashboard'       => [
+				'title'       => __('Dashboard', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('A command centre for product image scans, queue status, approvals, credits and account health.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'scan'            => [
+				'title'       => __('Product Scan', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Find WooCommerce product, gallery and category images that are ready for optimisation.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'health'          => [
+				'title'       => __('Health Report', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Audit catalogue images for SEO, completeness, consistency, performance and feed readiness.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'recommendations' => [
+				'title'       => __('Recommendations', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Prioritise the product-image fixes most likely to improve catalogue quality and conversion confidence.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'queue'           => [
+				'title'       => __('Processing Queue', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Process, retry and cancel image jobs while keeping approval and credit controls intact.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'review'          => [
+				'title'       => __('Review Images', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Approve, reject, retry or revert processed images before WooCommerce product images are replaced.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'backgrounds'     => [
+				'title'       => __('Backgrounds', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Manage clean product background defaults and custom background assets.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'seo'             => [
+				'title'       => __('SEO Tools', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Control generated filenames, alt text, titles, captions and attachment metadata behaviour.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'settings'        => [
+				'title'       => __('Settings', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Configure connection, processing defaults, safety rules, backgrounds, framing and metadata.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'account'         => [
+				'title'       => __('Account & Billing', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Review connection status, credits and billing links without exposing saved API tokens.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'support'         => [
+				'title'       => __('Support', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Find diagnostics, failed-job context and support links when you need help.', 'optivra-image-studio-for-woocommerce'),
+			],
+			'logs'            => [
+				'title'       => __('Diagnostics', 'optivra-image-studio-for-woocommerce'),
+				'description' => __('Debug-focused job and connection details for authorised administrators.', 'optivra-image-studio-for-woocommerce'),
+			],
+		];
+
+		return $pages[$tab] ?? $pages['dashboard'];
+	}
+
+	/**
+	 * @param array{title:string,description:string} $page_meta Page metadata.
+	 * @param array<string,mixed> $settings Settings.
+	 * @param array<string,mixed>|\WP_Error $usage Usage.
+	 */
+	private function render_app_shell_header(string $tab, array $page_meta, array $settings, $usage): void {
+		$connected = ! is_wp_error($usage);
+		?>
+		<header class="optivra-app-header">
+			<div class="optivra-brand-block">
+				<div class="optivra-brand-mark" aria-hidden="true">O</div>
+				<div>
+					<p class="optivra-kicker"><?php echo esc_html__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'); ?></p>
+					<h1><?php echo esc_html($page_meta['title']); ?></h1>
+					<p class="catalogue-image-studio-page-intro"><?php echo esc_html($page_meta['description']); ?></p>
+				</div>
+			</div>
+			<div class="optivra-header-actions">
+				<?php $this->render_status_badge($connected ? __('Ready', 'optivra-image-studio-for-woocommerce') : __('Needs Review', 'optivra-image-studio-for-woocommerce'), $connected ? 'ready' : 'needs-review'); ?>
+				<?php $this->render_action_button(__('Scan Products', 'optivra-image-studio-for-woocommerce'), $this->get_admin_page_url('scan'), 'primary'); ?>
+				<?php $this->render_action_button(__('Settings', 'optivra-image-studio-for-woocommerce'), $this->get_admin_page_url('settings'), 'secondary'); ?>
+				<?php if (! empty($settings['debug_mode'])) : ?>
+					<?php $this->render_status_badge(__('Debug Mode', 'optivra-image-studio-for-woocommerce'), 'processing'); ?>
+				<?php endif; ?>
+			</div>
+		</header>
+		<?php
 	}
 
 	/**
@@ -946,8 +1669,8 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_usage($usage); ?>
 				</div>
 				<div class="catalogue-image-studio-cta-buttons">
-					<a class="button button-primary" href="<?php echo esc_url(add_query_arg(['page' => 'optivra', 'cis_tab' => 'scan'], admin_url('admin.php'))); ?>"><?php echo esc_html__('Scan Catalogue', 'optivra-image-studio-for-woocommerce'); ?></a>
-					<a class="button" href="<?php echo esc_url(add_query_arg(['page' => 'optivra', 'cis_tab' => 'review'], admin_url('admin.php'))); ?>"><?php echo esc_html__('Review Images', 'optivra-image-studio-for-woocommerce'); ?></a>
+					<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('scan')); ?>"><?php echo esc_html__('Scan Catalogue', 'optivra-image-studio-for-woocommerce'); ?></a>
+					<a class="button" href="<?php echo esc_url($this->get_admin_page_url('review')); ?>"><?php echo esc_html__('Review Images', 'optivra-image-studio-for-woocommerce'); ?></a>
 					<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy Credits', 'optivra-image-studio-for-woocommerce'); ?></a>
 					<a class="button" href="<?php echo esc_url($this->get_account_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage Account', 'optivra-image-studio-for-woocommerce'); ?></a>
 				</div>
@@ -967,47 +1690,272 @@ class Catalogue_Image_Studio_Admin {
 	}
 
 	private function render_metric(string $label, int $value): void {
+		$this->render_metric_card($label, (string) $value);
+	}
+
+	private function render_metric_card(string $label, string $value, string $context = ''): void {
 		?>
-		<div class="catalogue-image-studio-metric">
+		<div class="optivra-metric-card catalogue-image-studio-metric">
 			<span><?php echo esc_html($label); ?></span>
 			<strong><?php echo esc_html((string) $value); ?></strong>
+			<?php if ('' !== $context) : ?>
+				<small><?php echo esc_html($context); ?></small>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function render_score_card(string $label, float $score, string $description = ''): void {
+		$score = max(0, min(100, $score));
+		?>
+		<div class="optivra-score-card">
+			<div>
+				<span><?php echo esc_html($label); ?></span>
+				<strong><?php echo esc_html(number_format_i18n($score, 0)); ?></strong>
+			</div>
+			<div class="optivra-score-ring" style="<?php echo esc_attr('--optivra-score:' . (string) $score . '%'); ?>" aria-hidden="true"></div>
+			<?php if ('' !== $description) : ?>
+				<p><?php echo esc_html($description); ?></p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function render_insight_card(string $title, string $body, string $severity = 'info'): void {
+		?>
+		<section class="optivra-insight-card">
+			<div class="optivra-card-topline">
+				<h3><?php echo esc_html($title); ?></h3>
+				<?php $this->render_severity_badge($severity); ?>
+			</div>
+			<p><?php echo esc_html($body); ?></p>
+		</section>
+		<?php
+	}
+
+	private function render_recommendation_card(string $title, string $body, string $priority = 'medium', string $action_url = ''): void {
+		?>
+		<section class="optivra-recommendation-card">
+			<div class="optivra-card-topline">
+				<h3><?php echo esc_html($title); ?></h3>
+				<?php $this->render_severity_badge($priority); ?>
+			</div>
+			<p><?php echo esc_html($body); ?></p>
+			<?php if ('' !== $action_url) : ?>
+				<?php $this->render_action_button(__('Open', 'optivra-image-studio-for-woocommerce'), $action_url, 'secondary'); ?>
+			<?php endif; ?>
+		</section>
+		<?php
+	}
+
+	private function render_severity_badge(string $severity): void {
+		$severity = sanitize_key($severity);
+		$labels = [
+			'critical' => __('Critical', 'optivra-image-studio-for-woocommerce'),
+			'high'     => __('High', 'optivra-image-studio-for-woocommerce'),
+			'medium'   => __('Medium', 'optivra-image-studio-for-woocommerce'),
+			'low'      => __('Low', 'optivra-image-studio-for-woocommerce'),
+			'info'     => __('Info', 'optivra-image-studio-for-woocommerce'),
+		];
+		?>
+		<span class="optivra-severity-badge is-<?php echo esc_attr(isset($labels[$severity]) ? $severity : 'info'); ?>"><?php echo esc_html($labels[$severity] ?? $labels['info']); ?></span>
+		<?php
+	}
+
+	private function render_status_badge(string $label, string $status): void {
+		$status = sanitize_key($status);
+		?>
+		<span class="optivra-status-badge is-<?php echo esc_attr($status); ?>"><?php echo esc_html($label); ?></span>
+		<?php
+	}
+
+	private function render_empty_state(string $title, string $body, string $action_label = '', string $action_url = ''): void {
+		?>
+		<div class="optivra-empty-state catalogue-image-studio-empty-state">
+			<div class="optivra-empty-icon" aria-hidden="true"></div>
+			<h3><?php echo esc_html($title); ?></h3>
+			<p><?php echo esc_html($body); ?></p>
+			<?php if ('' !== $action_label && '' !== $action_url) : ?>
+				<?php $this->render_action_button($action_label, $action_url, 'primary'); ?>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function render_loading_state(string $label): void {
+		?>
+		<div class="optivra-loading-state" aria-live="polite">
+			<span aria-hidden="true"></span>
+			<?php echo esc_html($label); ?>
+		</div>
+		<?php
+	}
+
+	private function render_scan_progress(int $current, int $total): void {
+		$percent = $total > 0 ? min(100, max(0, ($current / $total) * 100)) : 0;
+		?>
+		<div class="optivra-scan-progress">
+			<div class="optivra-scan-progress-meta">
+				<span><?php echo esc_html__('Scan progress', 'optivra-image-studio-for-woocommerce'); ?></span>
+				<strong><?php echo esc_html(sprintf('%d / %d', $current, $total)); ?></strong>
+			</div>
+			<div class="optivra-progress-track"><span style="<?php echo esc_attr('width:' . (string) $percent . '%'); ?>"></span></div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $progress Progress state.
+	 */
+	private function get_scan_progress_percent(array $progress): int {
+		$total = max(0, (int) ($progress['total_products'] ?? 0));
+		$current = max(0, (int) ($progress['products_scanned'] ?? 0));
+
+		return $total > 0 ? (int) min(100, max(0, round(($current / $total) * 100))) : 0;
+	}
+
+	private function render_action_button(string $label, string $url, string $variant = 'secondary'): void {
+		$variant = in_array($variant, ['primary', 'secondary', 'danger'], true) ? $variant : 'secondary';
+		?>
+		<a class="button optivra-action-button is-<?php echo esc_attr($variant); ?>" href="<?php echo esc_url($url); ?>"><?php echo esc_html($label); ?></a>
+		<?php
+	}
+
+	private function render_settings_section(string $title, string $description): void {
+		?>
+		<div class="optivra-card-header">
+			<h3><?php echo esc_html($title); ?></h3>
+			<p><?php echo esc_html($description); ?></p>
 		</div>
 		<?php
 	}
 
 	private function render_scan_tab(): void {
-		$filters = $this->get_scan_filters_from_query();
-		$slots   = $this->filter_slots_by_processing_state($this->plugin->scanner()->get_product_images($filters));
+		$categories = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
+		$progress = $this->get_audit_progress();
+		$scan_in_progress = (bool) get_option('optivra_scan_in_progress', false);
+		$cache = get_option('optivra_report_summary_cache', []);
+		$cache = is_array($cache) ? $cache : [];
+		$history = isset($cache['history']) && is_array($cache['history']) ? $cache['history'] : [];
 		?>
-		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Scan Catalogue', 'optivra-image-studio-for-woocommerce'); ?></h2>
-			<?php $this->render_scan_filters($filters); ?>
-			<form method="post" action="">
-				<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
-				<?php $this->render_hidden_scan_filters($filters); ?>
-				<div class="catalogue-image-studio-toolbar">
-					<?php /* translators: %d: number of visible scanned images. */ ?>
-					<strong><?php echo esc_html(sprintf(__('%d image(s) visible', 'optivra-image-studio-for-woocommerce'), count($slots))); ?></strong>
-					<div class="catalogue-image-studio-cta-buttons">
-						<button type="submit" name="catalogue_image_studio_action" value="scan" class="button"><?php echo esc_html__('Scan all product images', 'optivra-image-studio-for-woocommerce'); ?></button>
-						<button type="submit" name="catalogue_image_studio_action" value="queue_selected_slots" class="button button-primary"><?php echo esc_html__('Queue selected', 'optivra-image-studio-for-woocommerce'); ?></button>
-						<button type="submit" name="catalogue_image_studio_action" value="queue_visible" class="button"><?php echo esc_html__('Queue all visible', 'optivra-image-studio-for-woocommerce'); ?></button>
-						<button type="submit" name="catalogue_image_studio_action" value="queue_category" class="button"><?php echo esc_html__('Queue category', 'optivra-image-studio-for-woocommerce'); ?></button>
+		<div class="catalogue-image-studio-panel optivra-scan-wizard">
+			<div class="optivra-card-header">
+				<h2><?php echo esc_html__('Product Image Health Scan', 'optivra-image-studio-for-woocommerce'); ?></h2>
+				<p><?php echo esc_html__('Scan WooCommerce product image metadata, send it to Optivra in safe batches, and generate a free Product Image Health Report.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			</div>
+
+			<form id="optivra-audit-scan-form" class="optivra-scan-form">
+				<section class="optivra-wizard-section">
+					<div class="optivra-wizard-heading">
+						<span>1</span>
+						<div>
+							<h3><?php echo esc_html__('Scan Scope', 'optivra-image-studio-for-woocommerce'); ?></h3>
+							<p><?php echo esc_html__('Choose the product set to audit. Large catalogues are scanned in small background batches.', 'optivra-image-studio-for-woocommerce'); ?></p>
+						</div>
 					</div>
+					<div class="optivra-option-grid">
+						<label class="optivra-choice-card"><input type="radio" name="scan_scope" value="all" checked /><span><?php echo esc_html__('All products', 'optivra-image-studio-for-woocommerce'); ?></span><small><?php echo esc_html__('Audit every published WooCommerce product.', 'optivra-image-studio-for-woocommerce'); ?></small></label>
+						<label class="optivra-choice-card"><input type="radio" name="scan_scope" value="categories" /><span><?php echo esc_html__('Selected categories', 'optivra-image-studio-for-woocommerce'); ?></span><small><?php echo esc_html__('Limit the report to the categories selected below.', 'optivra-image-studio-for-woocommerce'); ?></small></label>
+						<label class="optivra-choice-card"><input type="radio" name="scan_scope" value="missing_main" /><span><?php echo esc_html__('Products missing main images', 'optivra-image-studio-for-woocommerce'); ?></span><small><?php echo esc_html__('Find catalogue gaps that affect trust and feeds.', 'optivra-image-studio-for-woocommerce'); ?></small></label>
+						<label class="optivra-choice-card"><input type="radio" name="scan_scope" value="updated_since_last_scan" /><span><?php echo esc_html__('Updated since last scan', 'optivra-image-studio-for-woocommerce'); ?></span><small><?php echo esc_html__('Audit recently changed product imagery.', 'optivra-image-studio-for-woocommerce'); ?></small></label>
+						<label class="optivra-choice-card"><input type="radio" name="scan_scope" value="unprocessed" /><span><?php echo esc_html__('Products with unprocessed images', 'optivra-image-studio-for-woocommerce'); ?></span><small><?php echo esc_html__('Focus on images not yet processed by Optivra.', 'optivra-image-studio-for-woocommerce'); ?></small></label>
+					</div>
+					<?php if (! is_wp_error($categories) && ! empty($categories)) : ?>
+						<div class="optivra-category-picker">
+							<strong><?php echo esc_html__('Categories', 'optivra-image-studio-for-woocommerce'); ?></strong>
+							<div>
+								<?php foreach ($categories as $category) : ?>
+									<label><input type="checkbox" name="category_ids[]" value="<?php echo esc_attr((string) $category->term_id); ?>" /> <?php echo esc_html($category->name); ?></label>
+								<?php endforeach; ?>
+							</div>
+						</div>
+					<?php endif; ?>
+				</section>
+
+				<section class="optivra-wizard-section">
+					<div class="optivra-wizard-heading">
+						<span>2</span>
+						<div>
+							<h3><?php echo esc_html__('Image Types', 'optivra-image-studio-for-woocommerce'); ?></h3>
+							<p><?php echo esc_html__('Select which WooCommerce image roles should be included in the report.', 'optivra-image-studio-for-woocommerce'); ?></p>
+						</div>
+					</div>
+					<div class="optivra-switch-grid">
+						<label><input type="checkbox" name="image_types[]" value="main" checked /> <span><?php echo esc_html__('Main product images', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="image_types[]" value="gallery" checked /> <span><?php echo esc_html__('Gallery images', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="image_types[]" value="variation" checked /> <span><?php echo esc_html__('Variation images', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="image_types[]" value="category" /> <span><?php echo esc_html__('Category thumbnails', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+					</div>
+				</section>
+
+				<section class="optivra-wizard-section">
+					<div class="optivra-wizard-heading">
+						<span>3</span>
+						<div>
+							<h3><?php echo esc_html__('Checks', 'optivra-image-studio-for-woocommerce'); ?></h3>
+							<p><?php echo esc_html__('The audit uses deterministic metadata checks and placeholders for visual scoring where available.', 'optivra-image-studio-for-woocommerce'); ?></p>
+						</div>
+					</div>
+					<div class="optivra-switch-grid">
+						<label><input type="checkbox" name="checks[]" value="seo" checked /> <span><?php echo esc_html__('Image SEO metadata', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="checks[]" value="performance" checked /> <span><?php echo esc_html__('File size / performance', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="checks[]" value="consistency" checked /> <span><?php echo esc_html__('Catalogue consistency', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="checks[]" value="feed_readiness" checked /> <span><?php echo esc_html__('Product feed readiness estimate', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+						<label><input type="checkbox" name="checks[]" value="visual_quality" /> <span><?php echo esc_html__('Visual quality placeholders', 'optivra-image-studio-for-woocommerce'); ?></span></label>
+					</div>
+				</section>
+
+				<div class="optivra-scan-actions">
+					<button type="button" id="optivra-audit-start" class="button button-primary optivra-action-button is-primary"><?php echo esc_html__('Start Scan', 'optivra-image-studio-for-woocommerce'); ?></button>
+					<button type="button" id="optivra-audit-cancel" class="button optivra-action-button is-secondary" <?php echo $scan_in_progress ? '' : 'hidden'; ?>><?php echo esc_html__('Cancel Scan', 'optivra-image-studio-for-woocommerce'); ?></button>
+					<span><?php echo esc_html__('Scans are free and do not consume image processing credits.', 'optivra-image-studio-for-woocommerce'); ?></span>
 				</div>
-				<table class="widefat fixed striped catalogue-image-studio-jobs">
-					<thead><tr><td class="check-column"><input type="checkbox" class="catalogue-image-studio-check-all" onclick="document.querySelectorAll('.catalogue-image-studio-job-check').forEach((box) => box.checked = this.checked); catalogueImageStudioUpdateSelectedCount();" /></td><th><?php echo esc_html__('Image', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Product', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Slot', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Status', 'optivra-image-studio-for-woocommerce'); ?></th></tr></thead>
-					<tbody>
-						<?php if (empty($slots)) : ?>
-							<tr><td colspan="5"><?php echo esc_html__('No images found. Check product status/category filters or run with debug mode enabled.', 'optivra-image-studio-for-woocommerce'); ?></td></tr>
-						<?php else : ?>
-							<?php foreach ($slots as $slot) : ?>
-								<?php $this->render_scan_slot_row($slot); ?>
-							<?php endforeach; ?>
-						<?php endif; ?>
-					</tbody>
-				</table>
 			</form>
+
+			<div id="optivra-audit-scan-progress" class="optivra-scan-progress-panel" <?php echo empty($progress) && ! $scan_in_progress ? 'hidden' : ''; ?>>
+				<div class="optivra-scan-progress-meta">
+					<span><?php echo esc_html__('Scan status', 'optivra-image-studio-for-woocommerce'); ?></span>
+					<strong data-optivra-scan-status><?php echo esc_html((string) ($progress['status_label'] ?? __('Ready', 'optivra-image-studio-for-woocommerce'))); ?></strong>
+				</div>
+				<div class="optivra-progress-track"><span data-optivra-scan-bar style="<?php echo esc_attr('width:' . $this->get_scan_progress_percent($progress) . '%'); ?>"></span></div>
+				<div class="optivra-progress-grid">
+					<div><span><?php echo esc_html__('Products scanned', 'optivra-image-studio-for-woocommerce'); ?></span><strong data-optivra-scan-products><?php echo esc_html((string) ((int) ($progress['products_scanned'] ?? 0)) . ' / ' . (string) ((int) ($progress['total_products'] ?? 0))); ?></strong></div>
+					<div><span><?php echo esc_html__('Images scanned', 'optivra-image-studio-for-woocommerce'); ?></span><strong data-optivra-scan-images><?php echo esc_html((string) (int) ($progress['images_scanned'] ?? 0)); ?></strong></div>
+					<div><span><?php echo esc_html__('Current batch', 'optivra-image-studio-for-woocommerce'); ?></span><strong data-optivra-scan-batch><?php echo esc_html((string) (int) ($progress['current_batch'] ?? 0)); ?></strong></div>
+					<div><span><?php echo esc_html__('Start time', 'optivra-image-studio-for-woocommerce'); ?></span><strong data-optivra-scan-started><?php echo esc_html((string) ($progress['started_at'] ?? '')); ?></strong></div>
+				</div>
+				<p data-optivra-scan-message><?php echo esc_html((string) ($progress['message'] ?? '')); ?></p>
+				<?php if (! empty($progress['warnings']) && is_array($progress['warnings'])) : ?>
+					<ul class="optivra-scan-warnings"><?php foreach (array_slice($progress['warnings'], 0, 5) as $warning) : ?><li><?php echo esc_html((string) $warning); ?></li><?php endforeach; ?></ul>
+				<?php endif; ?>
+			</div>
+		</div>
+
+		<div class="catalogue-image-studio-panel optivra-scan-history">
+			<div class="optivra-card-header">
+				<h2><?php echo esc_html__('Scan History', 'optivra-image-studio-for-woocommerce'); ?></h2>
+				<p><?php echo esc_html__('Recent Product Image Health Report scans for this WooCommerce store.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			</div>
+			<table class="widefat fixed striped">
+				<thead><tr><th><?php echo esc_html__('Date', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Products', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Images', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Health Score', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Issues', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Status', 'optivra-image-studio-for-woocommerce'); ?></th><th><?php echo esc_html__('Report', 'optivra-image-studio-for-woocommerce'); ?></th></tr></thead>
+				<tbody>
+					<?php if (empty($history)) : ?>
+						<tr><td colspan="7"><?php $this->render_empty_state(__('No scan history yet', 'optivra-image-studio-for-woocommerce'), __('Run your first Product Image Health scan to create a report history.', 'optivra-image-studio-for-woocommerce')); ?></td></tr>
+					<?php else : ?>
+						<?php foreach ($history as $row) : ?>
+							<tr>
+								<td><?php echo esc_html((string) ($row['created_at'] ?? '')); ?></td>
+								<td><?php echo esc_html((string) (int) ($row['products_scanned'] ?? 0)); ?></td>
+								<td><?php echo esc_html((string) (int) ($row['images_scanned'] ?? 0)); ?></td>
+								<td><?php echo esc_html(number_format_i18n((float) ($row['health_score'] ?? 0), 0)); ?></td>
+								<td><?php echo esc_html((string) (int) ($row['issues_found'] ?? 0)); ?></td>
+								<td><?php $this->render_status_badge($this->format_status((string) ($row['status'] ?? 'completed')), 'approved'); ?></td>
+								<td><a class="button" href="<?php echo esc_url($this->get_admin_page_url('health')); ?>"><?php echo esc_html__('View report', 'optivra-image-studio-for-woocommerce'); ?></a></td>
+							</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</tbody>
+			</table>
 		</div>
 		<?php
 	}
@@ -1040,8 +1988,7 @@ class Catalogue_Image_Studio_Admin {
 		$processing_state = $this->get_processing_state_filter();
 		?>
 		<form method="get" action="" class="catalogue-image-studio-filters">
-			<input type="hidden" name="page" value="optivra" />
-			<input type="hidden" name="cis_tab" value="scan" />
+			<input type="hidden" name="page" value="<?php echo esc_attr($this->get_admin_page_slug('scan')); ?>" />
 			<label><span><?php echo esc_html__('Category', 'optivra-image-studio-for-woocommerce'); ?></span><select name="filter_category"><option value="0"><?php echo esc_html__('All categories', 'optivra-image-studio-for-woocommerce'); ?></option><?php if (! is_wp_error($categories)) : foreach ($categories as $category) : ?><option value="<?php echo esc_attr((string) $category->term_id); ?>" <?php selected((int) ($filters['category'] ?? 0), (int) $category->term_id); ?>><?php echo esc_html($category->name); ?></option><?php endforeach; endif; ?></select></label>
 			<label><span><?php echo esc_html__('Product status', 'optivra-image-studio-for-woocommerce'); ?></span><select name="filter_product_status"><option value="publish" <?php selected('publish', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Published', 'optivra-image-studio-for-woocommerce'); ?></option><option value="draft" <?php selected('draft', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Draft', 'optivra-image-studio-for-woocommerce'); ?></option><option value="private" <?php selected('private', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('Private', 'optivra-image-studio-for-woocommerce'); ?></option><option value="all" <?php selected('all', (string) ($filters['status'] ?? 'publish')); ?>><?php echo esc_html__('All', 'optivra-image-studio-for-woocommerce'); ?></option></select></label>
 			<label><span><?php echo esc_html__('Product type', 'optivra-image-studio-for-woocommerce'); ?></span><select name="filter_product_type"><option value=""><?php echo esc_html__('All types', 'optivra-image-studio-for-woocommerce'); ?></option><option value="simple" <?php selected('simple', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Simple', 'optivra-image-studio-for-woocommerce'); ?></option><option value="variable" <?php selected('variable', (string) ($filters['product_type'] ?? '')); ?>><?php echo esc_html__('Variable', 'optivra-image-studio-for-woocommerce'); ?></option></select></label>
@@ -1151,7 +2098,7 @@ class Catalogue_Image_Studio_Admin {
 				<?php $this->render_monetisation_prompt($usage, max(0, (int) ($usage['credits_remaining'] ?? 0)), count($jobs), false); ?>
 			<?php endif; ?>
 			<?php if (! empty($settings['auto_refresh_job_status']) && ! empty($jobs)) : ?>
-				<p class="catalogue-image-studio-help"><?php echo esc_html__('This queue refreshes automatically while jobs are active.', 'optivra-image-studio-for-woocommerce'); ?></p>
+				<?php $this->render_loading_state(__('Watching active jobs. This queue refreshes automatically.', 'optivra-image-studio-for-woocommerce')); ?>
 				<script>window.setTimeout(function () { window.location.reload(); }, 15000);</script>
 			<?php endif; ?>
 			<form method="post" action="">
@@ -1190,6 +2137,131 @@ class Catalogue_Image_Studio_Admin {
 				</div>
 				<?php $this->render_jobs_table($jobs, true); ?>
 			</form>
+		</div>
+		<?php
+	}
+
+	private function render_health_report_tab(array $settings): void {
+		$cache = get_option('optivra_report_summary_cache', []);
+		$cache = is_array($cache) ? $cache : [];
+		$latest = isset($cache['latest']) && is_array($cache['latest']) ? $cache['latest'] : [];
+		$score = isset($latest['health_score']) ? (float) $latest['health_score'] : (float) get_option('optivra_latest_health_score', 0);
+		$issues = isset($latest['issues_found']) ? (int) $latest['issues_found'] : 0;
+		$last_completed = (string) get_option('optivra_last_scan_completed_at', '');
+		?>
+		<div class="catalogue-image-studio-panel">
+			<h2><?php echo esc_html__('Product Image Health Report', 'optivra-image-studio-for-woocommerce'); ?></h2>
+			<p><?php echo esc_html__('Audit WooCommerce product images for SEO metadata, image weight, catalogue consistency, completeness and product-feed readiness.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<div class="optivra-card-grid">
+				<?php $this->render_score_card(__('Health score', 'optivra-image-studio-for-woocommerce'), $score, '' !== $last_completed ? sprintf(__('Last completed: %s', 'optivra-image-studio-for-woocommerce'), $last_completed) : __('Run a product scan to generate a deterministic health report.', 'optivra-image-studio-for-woocommerce')); ?>
+				<?php $this->render_metric_card(__('Issues found', 'optivra-image-studio-for-woocommerce'), (string) $issues, __('Open recommendations to prioritise fixes.', 'optivra-image-studio-for-woocommerce')); ?>
+				<?php $this->render_metric_card(__('Credits used', 'optivra-image-studio-for-woocommerce'), '0', __('Health scans are metadata-only and free.', 'optivra-image-studio-for-woocommerce')); ?>
+			</div>
+			<?php if (empty($latest)) : ?>
+				<?php $this->render_empty_state(__('No health report yet', 'optivra-image-studio-for-woocommerce'), __('Start with a product scan. Optivra will then show image health scores, insights and recommended next actions.', 'optivra-image-studio-for-woocommerce'), __('Start Product Scan', 'optivra-image-studio-for-woocommerce'), $this->get_admin_page_url('scan')); ?>
+			<?php else : ?>
+				<?php $this->render_insight_card(__('Latest report is ready', 'optivra-image-studio-for-woocommerce'), __('Open Recommendations to turn the report into an action plan for image SEO, performance, consistency and feed readiness.', 'optivra-image-studio-for-woocommerce'), 'info'); ?>
+			<?php endif; ?>
+			<div class="catalogue-image-studio-cta-buttons">
+				<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('scan')); ?>"><?php echo esc_html__('Scan Products', 'optivra-image-studio-for-woocommerce'); ?></a>
+				<a class="button" href="<?php echo esc_url($this->get_admin_page_url('recommendations')); ?>"><?php echo esc_html__('View Recommendations', 'optivra-image-studio-for-woocommerce'); ?></a>
+			</div>
+			<p class="catalogue-image-studio-help"><?php echo esc_html__('The health report uses deterministic catalogue metadata and image measurements. It does not consume image processing credits.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php if (empty($settings['api_token'])) : ?>
+				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Connect your Optivra account in Settings before submitting store audit reports.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function render_recommendations_tab(): void {
+		$counts = $this->plugin->jobs()->counts_by_status();
+		?>
+		<div class="catalogue-image-studio-panel">
+			<h2><?php echo esc_html__('Recommendations', 'optivra-image-studio-for-woocommerce'); ?></h2>
+			<p><?php echo esc_html__('Recommendations will prioritise missing main images, weak SEO metadata, oversized files, inconsistent ratios and product-feed readiness warnings from the Image Health Report.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<div class="optivra-card-grid">
+				<?php $this->render_recommendation_card(__('Fix missing alt text', 'optivra-image-studio-for-woocommerce'), __('Prioritise main product images with missing or weak alt text.', 'optivra-image-studio-for-woocommerce'), 'high', $this->get_admin_page_url('seo')); ?>
+				<?php $this->render_recommendation_card(__('Optimise oversized images', 'optivra-image-studio-for-woocommerce'), __('Queue heavy product images for optimisation after reviewing scan results.', 'optivra-image-studio-for-woocommerce'), 'medium', $this->get_admin_page_url('queue')); ?>
+				<?php $this->render_recommendation_card(__('Standardise main image ratios', 'optivra-image-studio-for-woocommerce'), __('Review inconsistent product image crops before approving changes.', 'optivra-image-studio-for-woocommerce'), 'medium', $this->get_admin_page_url('review')); ?>
+			</div>
+			<div class="catalogue-image-studio-metrics">
+				<?php
+				$this->render_metric(__('Queued fixes', 'optivra-image-studio-for-woocommerce'), (int) ($counts['queued'] ?? 0));
+				$this->render_metric(__('Failed jobs needing review', 'optivra-image-studio-for-woocommerce'), (int) ($counts['failed'] ?? 0));
+				$this->render_metric(__('Ready for approval', 'optivra-image-studio-for-woocommerce'), (int) ($counts['completed'] ?? 0));
+				?>
+			</div>
+			<div class="catalogue-image-studio-cta-buttons">
+				<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('health')); ?>"><?php echo esc_html__('Open Health Report', 'optivra-image-studio-for-woocommerce'); ?></a>
+				<a class="button" href="<?php echo esc_url($this->get_admin_page_url('queue')); ?>"><?php echo esc_html__('Open Processing Queue', 'optivra-image-studio-for-woocommerce'); ?></a>
+			</div>
+		</div>
+		<?php
+	}
+
+	private function render_backgrounds_tab(array $settings): void {
+		$background = (string) ($settings['background_preset'] ?? 'optivra-default');
+		$source     = (string) ($settings['background_source'] ?? 'preset');
+		?>
+		<div class="catalogue-image-studio-panel">
+			<h2><?php echo esc_html__('Backgrounds', 'optivra-image-studio-for-woocommerce'); ?></h2>
+			<?php $this->render_settings_section(__('Background defaults', 'optivra-image-studio-for-woocommerce'), __('Manage clean product background defaults used by Optivra processing jobs.', 'optivra-image-studio-for-woocommerce')); ?>
+			<p><strong><?php echo esc_html__('Current preset:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html($background); ?></p>
+			<p><strong><?php echo esc_html__('Current source:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html($source); ?></p>
+			<p><strong><?php echo esc_html__('Custom background:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo ! empty($settings['custom_background_attachment_id']) ? esc_html__('Configured', 'optivra-image-studio-for-woocommerce') : esc_html__('Not configured', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php if (! empty($settings['debug_mode'])) : ?>
+				<p class="catalogue-image-studio-help"><strong><?php echo esc_html__('Debug attachment ID:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) (int) ($settings['custom_background_attachment_id'] ?? 0)); ?></p>
+			<?php endif; ?>
+			<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('settings')); ?>"><?php echo esc_html__('Edit Background Settings', 'optivra-image-studio-for-woocommerce'); ?></a>
+		</div>
+		<?php
+	}
+
+	private function render_seo_tools_tab(array $settings): void {
+		?>
+		<div class="catalogue-image-studio-panel">
+			<h2><?php echo esc_html__('SEO Tools', 'optivra-image-studio-for-woocommerce'); ?></h2>
+			<?php $this->render_settings_section(__('Metadata automation', 'optivra-image-studio-for-woocommerce'), __('Review the SEO metadata settings Optivra uses when creating processed product images.', 'optivra-image-studio-for-woocommerce')); ?>
+			<ul class="catalogue-image-studio-list">
+				<li><?php echo esc_html(sprintf(__('Generate alt text: %s', 'optivra-image-studio-for-woocommerce'), ! empty($settings['generate_alt_text']) ? __('Yes', 'optivra-image-studio-for-woocommerce') : __('No', 'optivra-image-studio-for-woocommerce'))); ?></li>
+				<li><?php echo esc_html(sprintf(__('Generate image titles: %s', 'optivra-image-studio-for-woocommerce'), ! empty($settings['generate_image_title']) ? __('Yes', 'optivra-image-studio-for-woocommerce') : __('No', 'optivra-image-studio-for-woocommerce'))); ?></li>
+				<li><?php echo esc_html(sprintf(__('Generate SEO filenames: %s', 'optivra-image-studio-for-woocommerce'), ! empty($settings['generate_seo_filename']) ? __('Yes', 'optivra-image-studio-for-woocommerce') : __('No', 'optivra-image-studio-for-woocommerce'))); ?></li>
+			</ul>
+			<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('settings')); ?>"><?php echo esc_html__('Edit SEO Settings', 'optivra-image-studio-for-woocommerce'); ?></a>
+		</div>
+		<?php
+	}
+
+	private function render_account_billing_tab(array $settings, $usage): void {
+		$connected = ! is_wp_error($usage);
+		?>
+		<div class="catalogue-image-studio-panel">
+			<h2><?php echo esc_html__('Account & Billing', 'optivra-image-studio-for-woocommerce'); ?></h2>
+			<?php $this->render_connection_status($usage, $connected); ?>
+			<?php if ($connected && is_array($usage)) : ?>
+				<div class="catalogue-image-studio-cta-buttons">
+					<a class="button button-primary" href="<?php echo esc_url($this->get_account_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Manage Account', 'optivra-image-studio-for-woocommerce'); ?></a>
+					<a class="button" href="<?php echo esc_url($this->get_buy_credits_url($usage, $settings)); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Buy Credits', 'optivra-image-studio-for-woocommerce'); ?></a>
+				</div>
+			<?php else : ?>
+				<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('settings')); ?>"><?php echo esc_html__('Connect Store', 'optivra-image-studio-for-woocommerce'); ?></a>
+			<?php endif; ?>
+			<p class="catalogue-image-studio-help"><?php echo esc_html__('Saved API tokens are masked in the plugin and are never displayed directly.', 'optivra-image-studio-for-woocommerce'); ?></p>
+		</div>
+		<?php
+	}
+
+	private function render_support_tab(): void {
+		?>
+		<div class="catalogue-image-studio-panel">
+			<h2><?php echo esc_html__('Support', 'optivra-image-studio-for-woocommerce'); ?></h2>
+			<p><?php echo esc_html__('Use this page to find diagnostics, failed job information and account support links.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php $this->render_insight_card(__('Support-ready diagnostics', 'optivra-image-studio-for-woocommerce'), __('Debug details stay hidden unless Debug Mode is enabled in Settings, so normal admin pages do not expose technical internals.', 'optivra-image-studio-for-woocommerce'), 'info'); ?>
+			<div class="catalogue-image-studio-cta-buttons">
+				<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('logs')); ?>"><?php echo esc_html__('View Diagnostics', 'optivra-image-studio-for-woocommerce'); ?></a>
+				<a class="button" href="<?php echo esc_url('https://www.optivra.app/support'); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Contact Support', 'optivra-image-studio-for-woocommerce'); ?></a>
+			</div>
 		</div>
 		<?php
 	}
@@ -1348,8 +2420,13 @@ class Catalogue_Image_Studio_Admin {
 				<section><h3><?php echo esc_html__('Connection logs', 'optivra-image-studio-for-woocommerce'); ?></h3><p><?php echo esc_html__('Connection attempts are recorded in WooCommerce logs under source catalogue-image-studio. Secrets are never written to logs.', 'optivra-image-studio-for-woocommerce'); ?></p></section>
 				<section><h3><?php echo esc_html__('Job logs', 'optivra-image-studio-for-woocommerce'); ?></h3><p><?php echo esc_html__('Recent failed job messages appear below. Full job events are available in WooCommerce logs.', 'optivra-image-studio-for-woocommerce'); ?></p></section>
 			</div>
-			<button type="button" class="button" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('catalogue-image-studio-diagnostics').textContent);"><?php echo esc_html__('Copy support diagnostics', 'optivra-image-studio-for-woocommerce'); ?></button>
-			<pre id="catalogue-image-studio-diagnostics"><?php echo esc_html(wp_json_encode(['plugin' => CIS_VERSION, 'site' => home_url(), 'php' => PHP_VERSION], JSON_PRETTY_PRINT)); ?></pre>
+			<?php $settings = $this->plugin->get_settings(); ?>
+			<?php if (! empty($settings['debug_mode'])) : ?>
+				<button type="button" class="button" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('catalogue-image-studio-diagnostics').textContent);"><?php echo esc_html__('Copy support diagnostics', 'optivra-image-studio-for-woocommerce'); ?></button>
+				<pre id="catalogue-image-studio-diagnostics"><?php echo esc_html(wp_json_encode(['plugin' => CIS_VERSION, 'site' => home_url(), 'php' => PHP_VERSION], JSON_PRETTY_PRINT)); ?></pre>
+			<?php else : ?>
+				<?php $this->render_empty_state(__('Diagnostics are hidden', 'optivra-image-studio-for-woocommerce'), __('Enable Debug Mode in Settings when Optivra support asks for technical diagnostics.', 'optivra-image-studio-for-woocommerce'), __('Open Settings', 'optivra-image-studio-for-woocommerce'), $this->get_admin_page_url('settings')); ?>
+			<?php endif; ?>
 			<?php $this->render_jobs_table($failed, false); ?>
 		</div>
 		<?php
@@ -1369,7 +2446,7 @@ class Catalogue_Image_Studio_Admin {
 			</thead>
 			<tbody>
 				<?php if (empty($jobs)) : ?>
-					<tr><td colspan="<?php echo $selectable ? '8' : '7'; ?>"><?php echo esc_html($empty_message); ?></td></tr>
+					<tr><td colspan="<?php echo esc_attr($selectable ? '8' : '7'); ?>"><?php $this->render_empty_state(__('Nothing to show yet', 'optivra-image-studio-for-woocommerce'), $empty_message); ?></td></tr>
 				<?php else : ?>
 					<?php foreach ($jobs as $job) : ?>
 						<?php $this->render_job_row($job, $selectable); ?>
@@ -1382,17 +2459,22 @@ class Catalogue_Image_Studio_Admin {
 
 	private function render_tabs(string $active_tab): void {
 		$tabs = [
-			'dashboard' => __('Dashboard', 'optivra-image-studio-for-woocommerce'),
-			'scan'      => __('Scan Catalogue', 'optivra-image-studio-for-woocommerce'),
-			'queue'     => __('Queue', 'optivra-image-studio-for-woocommerce'),
-			'review'    => __('Review & Approve', 'optivra-image-studio-for-woocommerce'),
-			'settings'  => __('Settings', 'optivra-image-studio-for-woocommerce'),
-			'logs'      => __('Logs', 'optivra-image-studio-for-woocommerce'),
+			'dashboard'       => __('Dashboard', 'optivra-image-studio-for-woocommerce'),
+			'scan'            => __('Product Scan', 'optivra-image-studio-for-woocommerce'),
+			'health'          => __('Health Report', 'optivra-image-studio-for-woocommerce'),
+			'recommendations' => __('Recommendations', 'optivra-image-studio-for-woocommerce'),
+			'queue'           => __('Queue', 'optivra-image-studio-for-woocommerce'),
+			'review'          => __('Review', 'optivra-image-studio-for-woocommerce'),
+			'backgrounds'     => __('Backgrounds', 'optivra-image-studio-for-woocommerce'),
+			'seo'             => __('SEO Tools', 'optivra-image-studio-for-woocommerce'),
+			'settings'        => __('Settings', 'optivra-image-studio-for-woocommerce'),
+			'account'         => __('Account', 'optivra-image-studio-for-woocommerce'),
+			'support'         => __('Support', 'optivra-image-studio-for-woocommerce'),
 		];
 		?>
 		<nav class="nav-tab-wrapper catalogue-image-studio-tabs">
 			<?php foreach ($tabs as $tab => $label) : ?>
-				<a class="nav-tab <?php echo $tab === $active_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['page' => 'optivra', 'cis_tab' => $tab], admin_url('admin.php'))); ?>">
+				<a class="nav-tab <?php echo $tab === $active_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url($this->get_admin_page_url($tab)); ?>">
 					<?php echo esc_html($label); ?>
 				</a>
 			<?php endforeach; ?>
@@ -2303,7 +3385,7 @@ class Catalogue_Image_Studio_Admin {
 			<td><?php echo esc_html((string) $job['image_role']); ?> <?php echo 'gallery' === (string) $job['image_role'] ? esc_html('#' . ((int) $job['gallery_index'] + 1)) : ''; ?></td>
 			<td>
 				<?php $display_error = $this->format_job_error((string) ($job['error_message'] ?? '')); ?>
-				<span class="catalogue-image-studio-status catalogue-image-studio-status-<?php echo esc_attr(sanitize_key((string) $job['status'])); ?>"><?php echo esc_html($this->format_status((string) $job['status'])); ?></span><?php echo '' !== $display_error ? '<br /><small>' . esc_html($display_error) . '</small>' : ''; ?>
+				<?php $this->render_status_badge($this->format_status((string) $job['status']), $this->map_job_status_to_badge((string) $job['status'])); ?><?php echo '' !== $display_error ? '<br /><small>' . esc_html($display_error) . '</small>' : ''; ?>
 				<?php if (in_array((string) ($job['status'] ?? ''), ['queued', 'processing', 'failed', 'completed', 'rejected'], true)) : ?>
 					<?php $this->render_job_edge_controls($job); ?>
 				<?php endif; ?>
@@ -2384,7 +3466,7 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		?>
-		<a href="<?php echo esc_url($url); ?>" target="_blank" rel="noopener noreferrer">
+		<a href="<?php echo esc_url($url); ?>" target="_blank" rel="noopener noreferrer" class="optivra-image-thumbnail">
 			<img src="<?php echo esc_url($url); ?>" alt="<?php echo esc_attr($label); ?>" class="catalogue-image-studio-thumb" />
 		</a>
 		<?php
@@ -2478,6 +3560,11 @@ class Catalogue_Image_Studio_Admin {
 	 * @param array<string,mixed> $job Job.
 	 */
 	private function render_job_diagnostics(array $job): void {
+		$settings = $this->plugin->get_settings();
+		if (empty($settings['debug_mode'])) {
+			return;
+		}
+
 		$rows = [
 			__('Job ID', 'optivra-image-studio-for-woocommerce')                  => (string) ($job['id'] ?? ''),
 			__('Product ID', 'optivra-image-studio-for-woocommerce')              => (string) ($job['product_id'] ?? ''),
@@ -2659,6 +3746,28 @@ class Catalogue_Image_Studio_Admin {
 
 	private function format_status(string $status): string {
 		return ucwords(str_replace('_', ' ', sanitize_key($status)));
+	}
+
+	private function map_job_status_to_badge(string $status): string {
+		switch (sanitize_key($status)) {
+			case 'failed':
+				return 'failed';
+			case 'queued':
+				return 'queued';
+			case 'processing':
+				return 'processing';
+			case 'approved':
+				return 'approved';
+			case 'completed':
+			case 'rejected':
+				return 'needs-review';
+			case 'reverted':
+			case 'resolved':
+				return 'resolved';
+			case 'unprocessed':
+			default:
+				return 'ready';
+		}
 	}
 
 	private function format_job_error(string $message): string {

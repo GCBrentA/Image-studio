@@ -165,6 +165,74 @@ class Catalogue_Image_Studio_SaaSClient {
 	}
 
 	/**
+	 * Start a free Product Image Health Report audit scan.
+	 *
+	 * @param string              $store_id Store identifier validated by the backend token.
+	 * @param array<string,mixed> $scan_options Sanitized scan options.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function start_image_audit(string $store_id, array $scan_options = []) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audits/start',
+			[
+				'store_id'     => $store_id,
+				'source'       => 'woocommerce',
+				'scan_options' => $scan_options,
+			],
+			30
+		);
+	}
+
+	/**
+	 * Submit a batch of scanned image metadata.
+	 *
+	 * @param string                    $scan_id Remote scan ID.
+	 * @param array<int,array<string,mixed>> $items Metadata items.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function submit_image_audit_items(string $scan_id, array $items) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/items',
+			[
+				'items' => array_values($items),
+			],
+			45
+		);
+	}
+
+	/**
+	 * Complete a Product Image Health Report audit scan.
+	 *
+	 * @param string $scan_id Remote scan ID.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function complete_image_audit(string $scan_id) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/complete',
+			[],
+			60
+		);
+	}
+
+	/**
+	 * Fetch the latest Product Image Health Report summary.
+	 *
+	 * @param string $store_id Store identifier validated by the backend token.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function get_latest_image_audit(string $store_id) {
+		return $this->request_json(
+			'GET',
+			'/api/image-studio/audits/latest?store_id=' . rawurlencode($store_id),
+			[],
+			20
+		);
+	}
+
+	/**
 	 * Send a small operational event after the store is connected.
 	 *
 	 * @param string              $event_type Event type.
@@ -255,6 +323,71 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		return $output;
+	}
+
+	/**
+	 * Send a JSON request to the Optivra backend.
+	 *
+	 * @param string              $method HTTP method.
+	 * @param string              $path API path.
+	 * @param array<string,mixed> $payload Request payload.
+	 * @param int                 $timeout Timeout seconds.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	private function request_json(string $method, string $path, array $payload = [], int $timeout = 30) {
+		if ('' === $this->api_base_url || '' === $this->api_token) {
+			return new WP_Error(
+				'catalogue_image_studio_missing_api_settings',
+				__('Paste your Site API Token to connect this store.', 'optivra-image-studio-for-woocommerce')
+			);
+		}
+
+		$args = [
+			'timeout' => $timeout,
+			'headers' => [
+				'Authorization' => 'Bearer ' . $this->api_token,
+				'Accept'        => 'application/json',
+			] + $this->get_site_headers(),
+		];
+
+		if ('POST' === strtoupper($method)) {
+			$args['headers']['Content-Type'] = 'application/json';
+			$args['body'] = wp_json_encode($payload);
+			$response = wp_remote_post($this->api_base_url . $path, $args);
+		} else {
+			$response = wp_remote_get($this->api_base_url . $path, $args);
+		}
+
+		if (is_wp_error($response)) {
+			$this->logger->error('Optivra API request failed.', ['path' => $path, 'message' => $response->get_error_message()]);
+			return $response;
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code($response);
+		$body        = (string) wp_remote_retrieve_body($response);
+		$decoded     = json_decode($body, true);
+
+		if (! is_array($decoded)) {
+			return new WP_Error(
+				'catalogue_image_studio_invalid_api_response',
+				sprintf(
+					/* translators: 1: status code, 2: API path */
+					__('Optivra returned an unexpected response for %2$s (HTTP %1$d).', 'optivra-image-studio-for-woocommerce'),
+					$status_code,
+					$path
+				)
+			);
+		}
+
+		if ($status_code < 200 || $status_code >= 300) {
+			return new WP_Error(
+				'catalogue_image_studio_api_error',
+				$this->get_error_message($decoded, __('Optivra could not complete the audit request.', 'optivra-image-studio-for-woocommerce')),
+				['status_code' => $status_code]
+			);
+		}
+
+		return $decoded;
 	}
 
 	/**

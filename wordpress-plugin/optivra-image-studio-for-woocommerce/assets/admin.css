@@ -1,4 +1,4 @@
-.catalogue-image-studio-admin {
+.optivra-admin-app.catalogue-image-studio-admin {
 	--cis-ink: #101828;
 	--cis-muted: #667085;
 	--cis-line: #d9dce7;
@@ -12,12 +12,12 @@
 	padding: 8px 0 24px;
 }
 
-.catalogue-image-studio-admin h1 {
+.optivra-admin-app.catalogue-image-studio-admin h1 {
 	color: var(--cis-ink);
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-panel {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-panel {
 	margin-top: 16px;
 	padding: 24px;
 	background: #fff;
@@ -26,41 +26,41 @@
 	box-shadow: 0 12px 34px rgba(16, 24, 40, 0.06);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-grid {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-grid {
 	display: grid;
 	grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
 	gap: 18px;
 	align-items: start;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-panel-wide {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-panel-wide {
 	min-width: 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-panel h2 {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-panel h2 {
 	margin: 0 0 8px;
 	color: var(--cis-ink);
 	font-size: 22px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-page-intro {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-page-intro {
 	margin: 4px 0 0;
 	color: var(--cis-muted);
 	font-size: 13px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-tabs {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-tabs {
 	margin-top: 18px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-tabs.nav-tab-wrapper {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-tabs.nav-tab-wrapper {
 	display: flex;
 	gap: 8px;
 	padding: 0;
 	border-bottom: 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-tabs .nav-tab {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-tabs .nav-tab {
 	margin-left: 0;
 	padding: 10px 16px;
 	border: 1px solid #e5e7eb;
@@ -69,60 +69,60 @@
 	color: var(--cis-muted);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-tabs .nav-tab-active {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-tabs .nav-tab-active {
 	color: #fff;
 	border-color: transparent;
 	background: linear-gradient(135deg, var(--cis-brand), var(--cis-brand-strong));
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-dashboard-head {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-dashboard-head {
 	display: flex;
 	justify-content: space-between;
 	gap: 20px;
 	align-items: flex-start;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-metrics,
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
-.catalogue-image-studio-admin .catalogue-image-studio-log-grid {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-metrics,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-log-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 12px;
 	margin-top: 18px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
-.catalogue-image-studio-admin .catalogue-image-studio-log-grid {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-log-grid {
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	align-items: start;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-metric,
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid section,
-.catalogue-image-studio-admin .catalogue-image-studio-log-grid section {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-metric,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid section,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-log-grid section {
 	padding: 16px;
 	background: var(--cis-soft);
 	border: 1px solid var(--cis-line);
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-settings-section h3 {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-section h3 {
 	margin-top: 0;
 	font-size: 19px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-settings-section {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-section {
 	display: flex;
 	flex-direction: column;
 	gap: 18px;
 	align-self: start;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-settings-section + .catalogue-image-studio-settings-section {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-section + .catalogue-image-studio-settings-section {
 	margin-top: 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-metric span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-metric span {
 	display: block;
 	color: var(--cis-muted);
 	font-size: 12px;
@@ -130,14 +130,14 @@
 	text-transform: uppercase;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-metric strong {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-metric strong {
 	display: block;
 	margin-top: 6px;
 	color: var(--cis-ink);
 	font-size: 28px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-filters {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filters {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(150px, 1fr));
 	gap: 16px;
@@ -148,59 +148,59 @@
 	border-radius: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-filters label,
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid label {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filters label,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid label {
 	display: grid;
 	gap: 8px;
 	font-weight: 600;
 	width: 100%;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-filters label > span,
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid label > span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filters label > span,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid label > span {
 	color: var(--cis-ink);
 	font-size: 13px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-help {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-help {
 	color: var(--cis-muted);
 	font-size: 12px;
 	font-weight: 500;
 	line-height: 1.5;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toggle {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toggle {
 	padding: 16px;
 	background: #fff;
 	border: 1px solid #e5e7eb;
 	border-radius: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toggle-grid {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toggle-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 16px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toggle-content {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toggle-content {
 	display: flex;
 	gap: 16px;
 	align-items: flex-start;
 	justify-content: space-between;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toggle-copy {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toggle-copy {
 	display: grid;
 	gap: 4px;
 	flex: 1 1 auto;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toggle-copy strong {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toggle-copy strong {
 	font-size: 14px;
 	line-height: 1.35;
 }
 
-.catalogue-image-studio-admin input[type="checkbox"] {
+.optivra-admin-app.catalogue-image-studio-admin input[type="checkbox"] {
 	position: relative;
 	width: 38px;
 	height: 22px;
@@ -215,7 +215,7 @@
 	transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.catalogue-image-studio-admin input[type="checkbox"]::after {
+.optivra-admin-app.catalogue-image-studio-admin input[type="checkbox"]::after {
 	content: "";
 	position: absolute;
 	top: 2px;
@@ -228,29 +228,29 @@
 	transition: transform 0.2s ease;
 }
 
-.catalogue-image-studio-admin input[type="checkbox"]:checked {
+.optivra-admin-app.catalogue-image-studio-admin input[type="checkbox"]:checked {
 	background: linear-gradient(135deg, var(--cis-brand), var(--cis-brand-strong));
 	border-color: var(--cis-brand-strong);
 }
 
-.catalogue-image-studio-admin input[type="checkbox"]:checked::after {
+.optivra-admin-app.catalogue-image-studio-admin input[type="checkbox"]:checked::after {
 	transform: translateX(16px);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-example {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-example {
 	padding: 12px;
 	background: #fff;
 	border: 1px dashed var(--cis-line);
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-presets-list {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-presets-list {
 	display: grid;
 	gap: 8px;
 	margin-top: 10px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-preset-chip {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-preset-chip {
 	display: flex;
 	gap: 8px;
 	flex-wrap: wrap;
@@ -261,7 +261,7 @@
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-preset-chip span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-preset-chip span {
 	padding: 2px 8px;
 	background: var(--cis-soft);
 	border-radius: 999px;
@@ -269,35 +269,35 @@
 	font-size: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-filters select,
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid select,
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid input[type="text"],
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid input[type="number"],
-.catalogue-image-studio-admin .catalogue-image-studio-settings-grid input[type="url"] {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filters select,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid select,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid input[type="text"],
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid input[type="number"],
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid input[type="url"] {
 	width: 100%;
 	max-width: 100%;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-connected-details {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-connected-details {
 	margin-bottom: 16px;
 	padding: 12px;
 	border: 1px solid var(--cis-line);
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-connection-card {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-connection-card {
 	display: grid;
 	grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
 	gap: 24px;
 	align-items: start;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-connection-form {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-connection-form {
 	display: grid;
 	gap: 16px;
 }
 
-.catalogue-image-studio-admin #catalogue-image-studio-diagnostics {
+.optivra-admin-app.catalogue-image-studio-admin #catalogue-image-studio-diagnostics {
 	max-height: 220px;
 	overflow: auto;
 	padding: 12px;
@@ -306,12 +306,12 @@
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-onboarding > p {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-onboarding > p {
 	margin-top: 0;
 	color: var(--cis-muted);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-disclosure {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-disclosure {
 	display: grid;
 	gap: 8px;
 	max-width: 820px;
@@ -323,14 +323,14 @@
 	color: #1e3a8a;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-disclosure p {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-disclosure p {
 	margin: 0;
 	color: #1e40af;
 	line-height: 1.5;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-step,
-.catalogue-image-studio-admin .catalogue-image-studio-workflow-step span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-step,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-workflow-step span {
 	display: inline-grid;
 	place-items: center;
 	width: 32px;
@@ -341,32 +341,32 @@
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-token-field,
-.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid label {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-token-field,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid label {
 	display: grid;
 	gap: 7px;
 	font-weight: 700;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-token-field input {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-token-field input {
 	width: 100%;
 	max-width: 100%;
 	min-height: 44px;
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-connection-status-panel {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-connection-status-panel {
 	display: grid;
 	gap: 16px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-control-grid {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-control-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 16px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-background-picker {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-background-picker {
 	display: grid;
 	gap: 10px;
 	padding: 16px;
@@ -375,7 +375,7 @@
 	border-radius: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-background-preview {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-background-preview {
 	width: 180px;
 	max-width: 180px;
 	max-height: 100px;
@@ -385,46 +385,46 @@
 	background: var(--cis-soft);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-background-filename {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-background-filename {
 	color: var(--cis-muted);
 	font-size: 12px;
 	font-weight: 600;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-link-row,
-.catalogue-image-studio-admin .catalogue-image-studio-actions,
-.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-link-row,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-actions,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
 	display: flex;
 	gap: 10px;
 	flex-wrap: wrap;
 	align-items: center;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-link-row {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-link-row {
 	margin: 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-link-row a {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-link-row a {
 	color: var(--cis-brand-strong);
 	font-weight: 700;
 	text-decoration: none;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-link-row a:hover {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-link-row a:hover {
 	text-decoration: underline;
 }
 
-.catalogue-image-studio-admin .button.button-primary {
+.optivra-admin-app.catalogue-image-studio-admin .button.button-primary {
 	background: linear-gradient(135deg, var(--cis-brand), var(--cis-brand-strong));
 	border-color: var(--cis-brand-strong);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-danger-link {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-danger-link {
 	color: var(--cis-danger);
 	border-color: #f2b8b5;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-advanced {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced {
 	margin-top: 20px;
 	padding: 20px;
 	background: #fff;
@@ -432,13 +432,13 @@
 	border-radius: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-advanced summary {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced summary {
 	cursor: pointer;
 	color: var(--cis-ink);
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-warning {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-warning {
 	padding: 10px 12px;
 	color: #7a4b00;
 	background: #fff7e6;
@@ -446,15 +446,15 @@
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 16px;
 	margin: 12px 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-card,
-.catalogue-image-studio-admin .catalogue-image-studio-empty-state {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-card,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-empty-state {
 	margin-top: 18px;
 	padding: 14px;
 	background: var(--cis-soft);
@@ -462,33 +462,33 @@
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-card p,
-.catalogue-image-studio-admin .catalogue-image-studio-monetisation p {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-card p,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-monetisation p {
 	margin: 4px 0 0;
 	color: var(--cis-muted);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-card-connected {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-card-connected {
 	border-color: #abefc6;
 	background: #ecfdf3;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-card-connected strong {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-card-connected strong {
 	color: var(--cis-success);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-card-disconnected strong {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-card-disconnected strong {
 	color: var(--cis-danger);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-workflow-steps {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-workflow-steps {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: 10px;
 	margin-bottom: 18px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-workflow-step {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-workflow-step {
 	display: flex;
 	gap: 8px;
 	align-items: center;
@@ -499,7 +499,7 @@
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-toolbar {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toolbar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -508,28 +508,28 @@
 	flex-wrap: wrap;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-usage {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-usage {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 8px;
 	margin-top: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-usage div {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-usage div {
 	padding: 14px;
 	background: #fff;
 	border: 1px solid var(--cis-line);
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-usage span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-usage span {
 	display: block;
 	margin-bottom: 4px;
 	color: var(--cis-muted);
 	font-size: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-credit-meter {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-credit-meter {
 	height: 10px;
 	margin: 12px 0 8px;
 	overflow: hidden;
@@ -537,13 +537,13 @@
 	border-radius: 999px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-credit-meter div {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-credit-meter div {
 	height: 100%;
 	background: linear-gradient(135deg, var(--cis-brand), var(--cis-brand-strong));
 	border-radius: inherit;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-monetisation {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-monetisation {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -555,16 +555,16 @@
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-monetisation-warning {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-monetisation-warning {
 	background: #fff8e5;
 	border-color: #dba617;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
 	justify-content: flex-end;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-thumb {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-thumb {
 	width: 84px;
 	height: 84px;
 	object-fit: cover;
@@ -573,12 +573,12 @@
 	border-radius: 6px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-after-link {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-after-link {
 	display: inline-block;
 	line-height: 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-missing-after {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-missing-after {
 	display: grid;
 	gap: 6px;
 	max-width: 170px;
@@ -589,11 +589,11 @@
 	color: var(--cis-danger);
 }
 
-.catalogue-image-studio-admin [hidden] {
+.optivra-admin-app.catalogue-image-studio-admin [hidden] {
 	display: none !important;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-after-pending {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-after-pending {
 	display: grid;
 	gap: 6px;
 	max-width: 170px;
@@ -604,31 +604,31 @@
 	color: var(--cis-muted);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-after-pending span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-after-pending span {
 	font-weight: 700;
 	color: var(--cis-ink);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-after-pending small {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-after-pending small {
 	line-height: 1.4;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-missing-after span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-missing-after span {
 	font-weight: 700;
 	line-height: 1.3;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-missing-after small {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-missing-after small {
 	color: #7f1d1d;
 	line-height: 1.4;
 }
 
-.catalogue-image-studio-admin .optivra-job-diagnostics {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics {
 	margin-top: 10px;
 	position: static;
 }
 
-.catalogue-image-studio-admin .optivra-validation-summary {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-validation-summary {
 	margin-top: 8px;
 	padding: 8px;
 	background: #fbfcfe;
@@ -638,14 +638,14 @@
 	line-height: 1.45;
 }
 
-.catalogue-image-studio-admin .optivra-job-diagnostics summary {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics summary {
 	cursor: pointer;
 	color: var(--cis-muted);
 	font-size: 12px;
 	font-weight: 700;
 }
 
-.catalogue-image-studio-admin .optivra-job-diagnostics dl {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics dl {
 	display: grid;
 	grid-template-columns: minmax(150px, 190px) minmax(260px, 1fr);
 	gap: 7px 14px;
@@ -664,8 +664,8 @@
 	z-index: 100000;
 }
 
-.catalogue-image-studio-admin .optivra-job-diagnostics dt,
-.catalogue-image-studio-admin .optivra-job-diagnostics dd {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics dt,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics dd {
 	margin: 0;
 	font-size: 12px;
 	line-height: 1.5;
@@ -674,22 +674,22 @@
 	white-space: normal;
 }
 
-.catalogue-image-studio-admin .optivra-job-diagnostics dt {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics dt {
 	color: var(--cis-muted);
 	font-weight: 700;
 }
 
-.catalogue-image-studio-admin .optivra-job-diagnostics dd {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-diagnostics dd {
 	min-width: 0;
 	color: #111827;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-muted {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-muted {
 	color: var(--cis-muted);
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status {
 	display: inline-block;
 	padding: 2px 7px;
 	border-radius: 999px;
@@ -698,72 +698,72 @@
 	font-weight: 600;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-completed,
-.catalogue-image-studio-admin .catalogue-image-studio-status-approved {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-completed,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-approved {
 	background: #edfaef;
 	color: #0a6b2b;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-status-failed,
-.catalogue-image-studio-admin .catalogue-image-studio-status-rejected {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-failed,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-status-rejected {
 	background: #fcf0f1;
 	color: #b32d2e;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-seo-fields {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields {
 	display: grid;
 	grid-template-columns: minmax(180px, 1fr);
 	gap: 6px;
 	max-width: 280px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-seo-fields label {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields label {
 	display: grid;
 	gap: 2px;
 	margin: 0;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-seo-fields span {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields span {
 	color: var(--cis-muted);
 	font-size: 11px;
 	font-weight: 600;
 	text-transform: uppercase;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-seo-fields input,
-.catalogue-image-studio-admin .catalogue-image-studio-seo-fields textarea {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields input,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-seo-fields textarea {
 	width: 100%;
 	min-height: 30px;
 	font-size: 12px;
 }
 
 @media (max-width: 1200px) {
-	.catalogue-image-studio-admin .catalogue-image-studio-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-connection-card,
-	.catalogue-image-studio-admin .catalogue-image-studio-workflow-steps,
-	.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-metrics,
-	.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-log-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-filters,
-	.catalogue-image-studio-admin .catalogue-image-studio-control-grid {
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-connection-card,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-workflow-steps,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-metrics,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-log-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filters,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-control-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.catalogue-image-studio-admin .catalogue-image-studio-dashboard-head {
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-dashboard-head {
 		display: block;
 	}
 
-	.catalogue-image-studio-admin .catalogue-image-studio-monetisation {
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-monetisation {
 		display: block;
 	}
 
-	.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-cta-buttons {
 		justify-content: flex-start;
 		margin-top: 10px;
 	}
 }
-.catalogue-image-studio-admin .catalogue-image-studio-filter-check {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filter-check {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -774,12 +774,12 @@
 	border-radius: 12px;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-filter-actions {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filter-actions {
 	display: flex;
 	align-items: end;
 }
 
-.catalogue-image-studio-admin .catalogue-image-studio-save-bar {
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-save-bar {
 	position: sticky;
 	bottom: 16px;
 	display: flex;
@@ -793,25 +793,25 @@
 }
 
 @media (max-width: 960px) {
-	.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-log-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-control-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-toggle-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-connection-card,
-	.catalogue-image-studio-admin .catalogue-image-studio-grid,
-	.catalogue-image-studio-admin .catalogue-image-studio-filters,
-	.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid {
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-settings-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-log-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-control-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-toggle-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-connection-card,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-filters,
+	.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced-grid {
 		grid-template-columns: 1fr;
 	}
 }
 
-.catalogue-image-studio-admin .optivra-settings-page {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-page {
 	max-width: 1280px;
 	display: grid;
 	gap: 20px;
 }
 
-.catalogue-image-studio-admin .optivra-settings-header {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-header {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
@@ -819,24 +819,24 @@
 	padding: 4px 2px;
 }
 
-.catalogue-image-studio-admin .optivra-settings-header h2 {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-header h2 {
 	margin: 0;
 	font-size: 28px;
 	line-height: 1.2;
 	color: var(--cis-ink);
 }
 
-.catalogue-image-studio-admin .optivra-settings-header p,
-.catalogue-image-studio-admin .optivra-card-header p,
-.catalogue-image-studio-admin .optivra-setting-description,
-.catalogue-image-studio-admin .optivra-muted {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-header p,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card-header p,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-description,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-muted {
 	margin: 6px 0 0;
 	color: var(--cis-muted);
 	font-size: 13px;
 	line-height: 1.45;
 }
 
-.catalogue-image-studio-admin .optivra-status-pill {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-status-pill {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -847,37 +847,37 @@
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .optivra-status-pill.is-connected {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-status-pill.is-connected {
 	color: #067647;
 	background: #ecfdf3;
 	border: 1px solid #abefc6;
 }
 
-.catalogue-image-studio-admin .optivra-status-pill.is-disconnected {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-status-pill.is-disconnected {
 	color: #b42318;
 	background: #fff1f3;
 	border: 1px solid #fecdca;
 }
 
-.catalogue-image-studio-admin .optivra-summary-grid {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-summary-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 14px;
 }
 
-.catalogue-image-studio-admin .optivra-summary-card,
-.catalogue-image-studio-admin .optivra-card {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-summary-card,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card {
 	background: #fff;
 	border: 1px solid #e5e7eb;
 	border-radius: 10px;
 	box-shadow: 0 12px 30px rgba(16, 24, 40, 0.05);
 }
 
-.catalogue-image-studio-admin .optivra-summary-card {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-summary-card {
 	padding: 16px 18px;
 }
 
-.catalogue-image-studio-admin .optivra-summary-card span {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-summary-card span {
 	display: block;
 	color: var(--cis-muted);
 	font-size: 12px;
@@ -885,44 +885,44 @@
 	text-transform: uppercase;
 }
 
-.catalogue-image-studio-admin .optivra-summary-card strong {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-summary-card strong {
 	display: block;
 	margin-top: 6px;
 	color: var(--cis-ink);
 	font-size: 18px;
 }
 
-.catalogue-image-studio-admin .optivra-settings-form,
-.catalogue-image-studio-admin .optivra-card {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-form,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card {
 	display: grid;
 	gap: 0;
 }
 
-.catalogue-image-studio-admin .optivra-card {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card {
 	padding: 22px 24px;
 	margin: 0;
 }
 
-.catalogue-image-studio-admin .optivra-card + .optivra-card,
-.catalogue-image-studio-admin .optivra-card + .catalogue-image-studio-advanced,
-.catalogue-image-studio-admin .catalogue-image-studio-advanced + .optivra-save-bar {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card + .optivra-card,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card + .catalogue-image-studio-advanced,
+.optivra-admin-app.catalogue-image-studio-admin .catalogue-image-studio-advanced + .optivra-save-bar {
 	margin-top: 18px;
 }
 
-.catalogue-image-studio-admin .optivra-card-header {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card-header {
 	margin-bottom: 16px;
 	padding-bottom: 14px;
 	border-bottom: 1px solid #eef0f4;
 }
 
-.catalogue-image-studio-admin .optivra-card-header h3 {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-card-header h3 {
 	margin: 0;
 	color: var(--cis-ink);
 	font-size: 20px;
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .optivra-setting-row {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-row {
 	display: grid;
 	grid-template-columns: minmax(260px, 1fr) minmax(220px, 360px);
 	gap: 24px;
@@ -931,30 +931,30 @@
 	border-bottom: 1px solid #f0f2f5;
 }
 
-.catalogue-image-studio-admin .optivra-setting-row:last-child {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-row:last-child {
 	border-bottom: 0;
 }
 
-.catalogue-image-studio-admin .optivra-setting-label {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-label {
 	display: block;
 	color: var(--cis-ink);
 	font-size: 14px;
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .optivra-setting-control {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control {
 	display: flex;
 	justify-content: flex-end;
 	align-items: center;
 	gap: 10px;
 }
 
-.catalogue-image-studio-admin .optivra-setting-control select,
-.catalogue-image-studio-admin .optivra-setting-control input[type="text"],
-.catalogue-image-studio-admin .optivra-setting-control input[type="password"],
-.catalogue-image-studio-admin .optivra-setting-control input[type="email"],
-.catalogue-image-studio-admin .optivra-setting-control input[type="url"],
-.catalogue-image-studio-admin .optivra-setting-control input[type="number"] {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control select,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control input[type="text"],
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control input[type="password"],
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control input[type="email"],
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control input[type="url"],
+.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control input[type="number"] {
 	width: 100%;
 	max-width: 360px;
 	min-height: 40px;
@@ -962,27 +962,27 @@
 	border-color: #d0d5dd;
 }
 
-.catalogue-image-studio-admin .optivra-compact-control input {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-compact-control input {
 	max-width: 120px;
 }
 
-.catalogue-image-studio-admin .optivra-range-control input[type="range"] {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-range-control input[type="range"] {
 	width: 220px;
 }
 
-.catalogue-image-studio-admin .optivra-range-control output {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-range-control output {
 	min-width: 34px;
 	text-align: right;
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"] {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"] {
 	position: absolute;
 	opacity: 0;
 	pointer-events: none;
 }
 
-.catalogue-image-studio-admin .optivra-toggle span {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-toggle span {
 	position: relative;
 	display: inline-block;
 	width: 44px;
@@ -992,7 +992,7 @@
 	transition: background 0.2s ease;
 }
 
-.catalogue-image-studio-admin .optivra-toggle span::after {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-toggle span::after {
 	content: "";
 	position: absolute;
 	top: 3px;
@@ -1005,29 +1005,29 @@
 	transition: transform 0.2s ease;
 }
 
-.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"]:checked + span {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"]:checked + span {
 	background: linear-gradient(135deg, var(--cis-brand), var(--cis-brand-strong));
 }
 
-.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"]:checked + span::after {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-toggle input[type="checkbox"]:checked + span::after {
 	transform: translateX(20px);
 }
 
-.catalogue-image-studio-admin .optivra-connection-grid {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-connection-grid {
 	display: grid;
 	grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
 	gap: 24px;
 }
 
-.catalogue-image-studio-admin .optivra-status-panel {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-status-panel {
 	padding: 16px;
 	background: var(--cis-soft);
 	border: 1px solid #e5e7eb;
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .optivra-button-row,
-.catalogue-image-studio-admin .optivra-link-row {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-button-row,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-link-row {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -1035,13 +1035,13 @@
 	margin-top: 12px;
 }
 
-.catalogue-image-studio-admin .optivra-link-row a {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-link-row a {
 	color: var(--cis-brand-strong);
 	font-weight: 700;
 	text-decoration: none;
 }
 
-.catalogue-image-studio-admin .optivra-preview-card {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-preview-card {
 	display: grid;
 	gap: 8px;
 	justify-items: start;
@@ -1051,7 +1051,7 @@
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .optivra-background-preview {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-background-preview {
 	width: 220px;
 	height: 160px;
 	max-width: 220px;
@@ -1062,7 +1062,7 @@
 	background: #f6f7f7;
 }
 
-.catalogue-image-studio-admin .optivra-subdetails {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-subdetails {
 	margin-top: 12px;
 	padding: 14px 16px;
 	background: #fbfcfe;
@@ -1070,13 +1070,13 @@
 	border-radius: 10px;
 }
 
-.catalogue-image-studio-admin .optivra-subdetails summary {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-subdetails summary {
 	cursor: pointer;
 	font-weight: 800;
 	color: var(--cis-ink);
 }
 
-.catalogue-image-studio-admin .optivra-save-bar {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-save-bar {
 	position: sticky;
 	bottom: 16px;
 	display: flex;
@@ -1089,12 +1089,12 @@
 	box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
 }
 
-.catalogue-image-studio-admin .optivra-danger-button {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-danger-button {
 	color: var(--cis-danger);
 	border-color: #f2b8b5;
 }
 
-.catalogue-image-studio-admin .optivra-job-options {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-options {
 	margin-top: 10px;
 	padding: 10px;
 	background: #fff;
@@ -1102,13 +1102,13 @@
 	border-radius: 8px;
 }
 
-.catalogue-image-studio-admin .optivra-job-options summary {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-job-options summary {
 	cursor: pointer;
 	font-weight: 800;
 }
 
-.catalogue-image-studio-admin .optivra-inline-check input[type="checkbox"],
-.catalogue-image-studio-admin .optivra-edge-grid input[type="checkbox"] {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-inline-check input[type="checkbox"],
+.optivra-admin-app.catalogue-image-studio-admin .optivra-edge-grid input[type="checkbox"] {
 	position: static;
 	width: 16px;
 	height: 16px;
@@ -1119,20 +1119,20 @@
 	background: #fff;
 }
 
-.catalogue-image-studio-admin .optivra-inline-check input[type="checkbox"]::after,
-.catalogue-image-studio-admin .optivra-edge-grid input[type="checkbox"]::after {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-inline-check input[type="checkbox"]::after,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-edge-grid input[type="checkbox"]::after {
 	content: none;
 }
 
-.catalogue-image-studio-admin .optivra-edge-grid {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-edge-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 8px;
 	margin-top: 8px;
 }
 
-.catalogue-image-studio-admin .optivra-edge-grid label,
-.catalogue-image-studio-admin .optivra-inline-check {
+.optivra-admin-app.catalogue-image-studio-admin .optivra-edge-grid label,
+.optivra-admin-app.catalogue-image-studio-admin .optivra-inline-check {
 	display: flex;
 	align-items: center;
 	font-size: 12px;
@@ -1140,13 +1140,559 @@
 }
 
 @media (max-width: 960px) {
-	.catalogue-image-studio-admin .optivra-setting-row,
-	.catalogue-image-studio-admin .optivra-connection-grid,
-	.catalogue-image-studio-admin .optivra-summary-grid {
+	.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-row,
+	.optivra-admin-app.catalogue-image-studio-admin .optivra-connection-grid,
+	.optivra-admin-app.catalogue-image-studio-admin .optivra-summary-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.catalogue-image-studio-admin .optivra-setting-control {
+	.optivra-admin-app.catalogue-image-studio-admin .optivra-setting-control {
 		justify-content: flex-start;
+	}
+}
+.optivra-admin-app {
+	--optivra-ink: #111827;
+	--optivra-muted: #667085;
+	--optivra-subtle: #f8fafc;
+	--optivra-card: #ffffff;
+	--optivra-line: #e5e7eb;
+	--optivra-brand: #245cff;
+	--optivra-brand-soft: #eef4ff;
+	--optivra-purple: #7c3dff;
+	--optivra-success: #067647;
+	--optivra-warning: #b54708;
+	--optivra-danger: #b42318;
+	--optivra-radius: 8px;
+	box-sizing: border-box;
+}
+
+.optivra-admin-app *,
+.optivra-admin-app *::before,
+.optivra-admin-app *::after {
+	box-sizing: border-box;
+}
+
+.optivra-admin-app.catalogue-image-studio-admin {
+	width: min(100%, 1280px);
+	max-width: 1280px;
+	margin: 18px 20px 32px 2px;
+	padding: 0;
+	background: transparent;
+	color: var(--optivra-ink);
+}
+
+.optivra-admin-app .optivra-app-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 24px;
+	margin: 0 0 18px;
+	padding: 22px 24px;
+	background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.optivra-admin-app .optivra-brand-block {
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-brand-mark {
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 44px;
+	height: 44px;
+	border-radius: 12px;
+	background: linear-gradient(135deg, var(--optivra-purple), var(--optivra-brand));
+	color: #fff;
+	font-weight: 900;
+	font-size: 18px;
+	box-shadow: 0 14px 30px rgba(36, 92, 255, 0.22);
+}
+
+.optivra-admin-app .optivra-kicker {
+	margin: 0 0 4px;
+	color: var(--optivra-brand);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0;
+}
+
+.optivra-admin-app .optivra-app-header h1 {
+	margin: 0;
+	color: var(--optivra-ink);
+	font-size: 30px;
+	line-height: 1.18;
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-header-actions,
+.optivra-admin-app .optivra-card-topline {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.optivra-admin-app .optivra-action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 36px;
+	border-radius: var(--optivra-radius);
+	font-weight: 800;
+}
+
+.optivra-admin-app .optivra-action-button.is-primary,
+.optivra-admin-app .button.optivra-action-button.is-primary {
+	background: linear-gradient(135deg, var(--optivra-purple), var(--optivra-brand));
+	border-color: var(--optivra-brand);
+	color: #fff;
+}
+
+.optivra-admin-app .optivra-action-button.is-secondary {
+	background: #fff;
+	border-color: #cfd8e3;
+	color: var(--optivra-ink);
+}
+
+.optivra-admin-app .optivra-action-button.is-danger {
+	background: #fff1f3;
+	border-color: #fecdca;
+	color: var(--optivra-danger);
+}
+
+.optivra-admin-app .optivra-card-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 14px;
+	margin: 18px 0;
+}
+
+.optivra-admin-app .optivra-score-card,
+.optivra-admin-app .optivra-metric-card,
+.optivra-admin-app .optivra-insight-card,
+.optivra-admin-app .optivra-recommendation-card,
+.optivra-admin-app .optivra-empty-state,
+.optivra-admin-app .optivra-loading-state,
+.optivra-admin-app .optivra-scan-progress {
+	background: var(--optivra-card);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+.optivra-admin-app .optivra-score-card {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 56px;
+	gap: 12px;
+	align-items: center;
+	padding: 18px;
+}
+
+.optivra-admin-app .optivra-score-card span,
+.optivra-admin-app .optivra-metric-card span {
+	display: block;
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0;
+}
+
+.optivra-admin-app .optivra-score-card strong,
+.optivra-admin-app .optivra-metric-card strong {
+	display: block;
+	margin-top: 6px;
+	color: var(--optivra-ink);
+	font-size: 28px;
+	line-height: 1;
+}
+
+.optivra-admin-app .optivra-score-card p,
+.optivra-admin-app .optivra-insight-card p,
+.optivra-admin-app .optivra-recommendation-card p,
+.optivra-admin-app .optivra-empty-state p {
+	margin: 10px 0 0;
+	color: var(--optivra-muted);
+	line-height: 1.5;
+}
+
+.optivra-admin-app .optivra-score-ring {
+	width: 52px;
+	height: 52px;
+	border-radius: 50%;
+	background:
+		radial-gradient(circle at center, #fff 57%, transparent 58%),
+		conic-gradient(var(--optivra-brand) var(--optivra-score, 0%), #e5e7eb 0);
+}
+
+.optivra-admin-app .optivra-insight-card,
+.optivra-admin-app .optivra-recommendation-card {
+	padding: 18px;
+}
+
+.optivra-admin-app .optivra-card-topline h3,
+.optivra-admin-app .optivra-empty-state h3 {
+	margin: 0;
+	color: var(--optivra-ink);
+	font-size: 16px;
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-severity-badge,
+.optivra-admin-app .optivra-status-badge {
+	display: inline-flex;
+	align-items: center;
+	min-height: 24px;
+	padding: 4px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 850;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.optivra-admin-app .optivra-severity-badge.is-critical,
+.optivra-admin-app .optivra-status-badge.is-failed {
+	background: #fff1f3;
+	border: 1px solid #fecdca;
+	color: var(--optivra-danger);
+}
+
+.optivra-admin-app .optivra-severity-badge.is-high,
+.optivra-admin-app .optivra-status-badge.is-needs-review {
+	background: #fff7ed;
+	border: 1px solid #fed7aa;
+	color: var(--optivra-warning);
+}
+
+.optivra-admin-app .optivra-severity-badge.is-medium,
+.optivra-admin-app .optivra-status-badge.is-queued,
+.optivra-admin-app .optivra-status-badge.is-processing {
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	color: #1d4ed8;
+}
+
+.optivra-admin-app .optivra-severity-badge.is-low,
+.optivra-admin-app .optivra-status-badge.is-approved,
+.optivra-admin-app .optivra-status-badge.is-resolved,
+.optivra-admin-app .optivra-status-badge.is-ready {
+	background: #ecfdf3;
+	border: 1px solid #abefc6;
+	color: var(--optivra-success);
+}
+
+.optivra-admin-app .optivra-severity-badge.is-info {
+	background: #f8fafc;
+	border: 1px solid #d0d5dd;
+	color: #475467;
+}
+
+.optivra-admin-app .optivra-empty-state {
+	display: grid;
+	justify-items: center;
+	gap: 8px;
+	padding: 28px;
+	text-align: center;
+}
+
+.optivra-admin-app .optivra-empty-icon {
+	width: 42px;
+	height: 42px;
+	border-radius: 12px;
+	background: linear-gradient(135deg, var(--optivra-brand-soft), #fff);
+	border: 1px solid #dbeafe;
+}
+
+.optivra-admin-app .optivra-loading-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	color: var(--optivra-muted);
+	font-weight: 700;
+}
+
+.optivra-admin-app .optivra-loading-state span {
+	width: 14px;
+	height: 14px;
+	border: 2px solid #c7d2fe;
+	border-top-color: var(--optivra-brand);
+	border-radius: 50%;
+	animation: optivra-spin 0.8s linear infinite;
+}
+
+.optivra-admin-app .optivra-scan-progress {
+	display: grid;
+	gap: 10px;
+	padding: 16px;
+}
+
+.optivra-admin-app .optivra-scan-progress-meta {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	color: var(--optivra-muted);
+	font-weight: 800;
+}
+
+.optivra-admin-app .optivra-progress-track {
+	height: 9px;
+	overflow: hidden;
+	background: #edf1f7;
+	border-radius: 999px;
+}
+
+.optivra-admin-app .optivra-progress-track span {
+	display: block;
+	height: 100%;
+	background: linear-gradient(135deg, var(--optivra-purple), var(--optivra-brand));
+	border-radius: inherit;
+}
+
+.optivra-admin-app .optivra-image-thumbnail {
+	display: inline-grid;
+	place-items: center;
+	width: 88px;
+	height: 88px;
+	padding: 3px;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-preview-card,
+.optivra-admin-app .catalogue-image-studio-background-picker {
+	max-width: 280px;
+}
+
+.optivra-admin-app .optivra-background-preview,
+.optivra-admin-app .catalogue-image-studio-background-preview {
+	max-width: 240px;
+	max-height: 160px;
+	object-fit: cover;
+}
+
+.optivra-admin-app .optivra-scan-wizard {
+	display: grid;
+	gap: 18px;
+}
+
+.optivra-admin-app .optivra-scan-form {
+	display: grid;
+	gap: 18px;
+}
+
+.optivra-admin-app .optivra-wizard-section {
+	display: grid;
+	gap: 16px;
+	padding: 18px;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-wizard-heading {
+	display: grid;
+	grid-template-columns: 34px minmax(0, 1fr);
+	gap: 12px;
+	align-items: start;
+}
+
+.optivra-admin-app .optivra-wizard-heading > span {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border-radius: 50%;
+	background: var(--optivra-brand-soft);
+	color: var(--optivra-brand);
+	font-weight: 900;
+}
+
+.optivra-admin-app .optivra-wizard-heading h3 {
+	margin: 0;
+	color: var(--optivra-ink);
+	font-size: 17px;
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-wizard-heading p {
+	margin: 5px 0 0;
+	color: var(--optivra-muted);
+}
+
+.optivra-admin-app .optivra-option-grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.optivra-admin-app .optivra-choice-card {
+	display: grid;
+	gap: 8px;
+	min-height: 128px;
+	padding: 14px;
+	background: var(--optivra-subtle);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	cursor: pointer;
+}
+
+.optivra-admin-app .optivra-choice-card:has(input:checked) {
+	background: #eef4ff;
+	border-color: #9db8ff;
+	box-shadow: inset 0 0 0 1px #9db8ff;
+}
+
+.optivra-admin-app .optivra-choice-card span,
+.optivra-admin-app .optivra-switch-grid span {
+	color: var(--optivra-ink);
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-choice-card small {
+	color: var(--optivra-muted);
+	line-height: 1.45;
+}
+
+.optivra-admin-app .optivra-category-picker {
+	display: grid;
+	gap: 10px;
+	padding: 14px;
+	background: #fbfcfe;
+	border: 1px dashed #cfd8e3;
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-category-picker > div {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 8px 14px;
+	max-height: 180px;
+	overflow: auto;
+}
+
+.optivra-admin-app .optivra-category-picker label,
+.optivra-admin-app .optivra-switch-grid label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--optivra-ink);
+}
+
+.optivra-admin-app .optivra-switch-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.optivra-admin-app .optivra-switch-grid label {
+	min-height: 54px;
+	padding: 12px 14px;
+	background: var(--optivra-subtle);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-scan-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	padding: 16px;
+	background: #f8fafc;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-scan-actions span {
+	color: var(--optivra-muted);
+	font-weight: 700;
+}
+
+.optivra-admin-app .optivra-scan-progress-panel {
+	display: grid;
+	gap: 14px;
+	padding: 18px;
+	background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+.optivra-admin-app .optivra-progress-grid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.optivra-admin-app .optivra-progress-grid div {
+	padding: 12px;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-progress-grid span {
+	display: block;
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+.optivra-admin-app .optivra-progress-grid strong {
+	display: block;
+	margin-top: 5px;
+	color: var(--optivra-ink);
+}
+
+.optivra-admin-app .optivra-scan-warnings {
+	margin: 0;
+	padding: 12px 14px 12px 30px;
+	background: #fffbeb;
+	border: 1px solid #fde68a;
+	border-radius: var(--optivra-radius);
+	color: #92400e;
+}
+
+@media (max-width: 960px) {
+	.optivra-admin-app .optivra-app-header,
+	.optivra-admin-app .optivra-brand-block,
+	.optivra-admin-app .optivra-header-actions {
+		display: grid;
+		grid-template-columns: 1fr;
+	}
+
+	.optivra-admin-app .optivra-header-actions {
+		justify-items: start;
+	}
+
+	.optivra-admin-app .optivra-card-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.optivra-admin-app .optivra-option-grid,
+	.optivra-admin-app .optivra-switch-grid,
+	.optivra-admin-app .optivra-category-picker > div,
+	.optivra-admin-app .optivra-progress-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+@keyframes optivra-spin {
+	to {
+		transform: rotate(360deg);
 	}
 }
