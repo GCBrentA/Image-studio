@@ -2008,6 +2008,65 @@
 	color: var(--optivra-muted);
 }
 
+.optivra-admin-app .optivra-safety-badge {
+	display: inline-flex;
+	align-items: center;
+	margin-top: 8px;
+	padding: 4px 9px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 850;
+	border: 1px solid var(--optivra-line);
+	background: #f8fafc;
+	color: var(--optivra-ink);
+}
+
+.optivra-admin-app .optivra-safety-badge.passed {
+	background: #ecfdf5;
+	border-color: #bbf7d0;
+	color: #047857;
+}
+
+.optivra-admin-app .optivra-safety-badge.needs_review {
+	background: #fffbeb;
+	border-color: #fde68a;
+	color: #92400e;
+}
+
+.optivra-admin-app .optivra-safety-badge.failed {
+	background: #fef2f2;
+	border-color: #fecaca;
+	color: #b91c1c;
+}
+
+.optivra-admin-app .optivra-safety-badge.not_assessed {
+	background: #f8fafc;
+	border-color: #cbd5e1;
+	color: #475569;
+}
+
+.optivra-admin-app .optivra-version-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
+	align-items: center;
+}
+
+.optivra-admin-app .optivra-version-actions a {
+	font-weight: 750;
+	text-decoration: none;
+}
+
+.optivra-admin-app .optivra-version-history {
+	margin-top: 20px;
+}
+
+.optivra-admin-app .optivra-version-table-wrap {
+	overflow-x: auto;
+	margin-top: 12px;
+}
+
 @media (max-width: 960px) {
 	.optivra-admin-app .optivra-app-header,
 	.optivra-admin-app .optivra-brand-block,

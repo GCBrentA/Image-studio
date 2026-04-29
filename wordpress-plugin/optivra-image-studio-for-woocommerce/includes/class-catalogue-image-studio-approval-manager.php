@@ -43,6 +43,27 @@ class Catalogue_Image_Studio_ApprovalManager {
 			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
+		$safety = catalogue_image_studio_get_preservation_safety($job);
+		$is_preserve_job = $this->is_preserve_mode_job($job);
+
+		if ('failed' === $safety['status']) {
+			$error = new WP_Error(
+				'catalogue_image_studio_product_preservation_failed',
+				__('This processed image failed product preservation safety checks and cannot be applied. Reprocess it or contact Optivra support.', 'optivra-image-studio-for-woocommerce')
+			);
+			$this->mark_approval_error((int) $job_id, $error);
+			return $error;
+		}
+
+		if ($is_preserve_job && 'not_assessed' === $safety['status']) {
+			$error = new WP_Error(
+				'catalogue_image_studio_product_preservation_not_assessed',
+				__('This preserve-mode image was not assessed by the current product preservation safety checks. Reprocess it before applying.', 'optivra-image-studio-for-woocommerce')
+			);
+			$this->mark_approval_error((int) $job_id, $error);
+			return $error;
+		}
+
 		$processed_attachment_id = (int) ($job['processed_attachment_id'] ?? 0);
 
 		if ($processed_attachment_id && ! $this->attachment_is_usable($processed_attachment_id)) {
@@ -73,6 +94,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		}
 
 		$this->media->apply_seo_metadata($processed_attachment_id, $this->get_seo_from_job($job), $this->settings);
+		$version_id = $this->record_version_history($job, $processed_attachment_id, $safety);
 		$this->replace_product_image($job, $processed_attachment_id);
 		$this->jobs->update(
 			$job_id,
@@ -81,12 +103,15 @@ class Catalogue_Image_Studio_ApprovalManager {
 				'current_attachment_id' => $processed_attachment_id,
 				'processed_attachment_id' => $processed_attachment_id,
 				'approved_at'           => current_time('mysql', true),
+				'safety_status'         => $safety['status'],
+				'safety_metadata'       => wp_json_encode($safety['metadata']),
+				'processing_mode'       => $this->get_processing_mode($job),
 				'error_message'         => '',
 				'approval_error'        => '',
 			]
 		);
 
-		$this->logger->info('Processed image approved.', ['job_id' => $job_id]);
+		$this->logger->info('Processed image approved.', ['job_id' => $job_id, 'version_id' => $version_id, 'safety_status' => $safety['status']]);
 
 		return true;
 	}
@@ -138,13 +163,15 @@ class Catalogue_Image_Studio_ApprovalManager {
 			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
-		$original_attachment_id = (int) ($job['original_attachment_id'] ?? 0);
+		$version = $this->get_latest_applied_version($job_id);
+		$original_attachment_id = (int) ($version['original_attachment_id'] ?? $job['original_attachment_id'] ?? 0);
 
 		if (! $original_attachment_id) {
 			return new WP_Error('catalogue_image_studio_missing_original_image', __('The original image is missing and cannot be restored.', 'optivra-image-studio-for-woocommerce'));
 		}
 
 		$this->replace_product_image($job, $original_attachment_id);
+		$this->mark_version_reverted((int) ($version['id'] ?? 0));
 		$this->jobs->update(
 			$job_id,
 			[
@@ -161,13 +188,120 @@ class Catalogue_Image_Studio_ApprovalManager {
 
 	/**
 	 * @param array<string,mixed> $job Job.
+	 */
+	private function is_preserve_mode_job(array $job): bool {
+		$mode = strtolower($this->get_processing_mode($job));
+
+		return 'audit_report' === (string) ($job['audit_source'] ?? '')
+			|| false !== strpos($mode, 'preserve')
+			|| false !== strpos($mode, 'seo_product_feed');
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 */
+	private function get_processing_mode(array $job): string {
+		if (! empty($job['processing_mode']) && is_scalar($job['processing_mode'])) {
+			return sanitize_text_field((string) $job['processing_mode']);
+		}
+
+		$validation = catalogue_image_studio_get_output_validation($job);
+		if (! empty($validation['processingMode']) && is_scalar($validation['processingMode'])) {
+			return sanitize_text_field((string) $validation['processingMode']);
+		}
+
+		return '';
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 * @param array{status:string,label:string,metadata:array<string,mixed>,blocking:bool,requires_review:bool} $safety Safety result.
+	 */
+	private function record_version_history(array $job, int $processed_attachment_id, array $safety): int {
+		global $wpdb;
+
+		$now = current_time('mysql', true);
+		$original_attachment_id = (int) ($job['original_attachment_id'] ?? $job['attachment_id'] ?? 0);
+		$processed_url = (string) ($job['processed_url'] ?? wp_get_attachment_url($processed_attachment_id));
+		$data = [
+			'job_id'                 => (int) ($job['id'] ?? 0),
+			'product_id'             => (int) ($job['product_id'] ?? 0),
+			'image_role'             => sanitize_key((string) ($job['image_role'] ?? 'featured')),
+			'gallery_index'          => (int) ($job['gallery_index'] ?? 0),
+			'original_attachment_id'  => $original_attachment_id,
+			'original_url'            => (string) wp_get_attachment_url($original_attachment_id),
+			'original_file_path'      => (string) get_attached_file($original_attachment_id),
+			'processed_attachment_id' => $processed_attachment_id,
+			'processed_url'           => $processed_url,
+			'processed_file_path'     => (string) get_attached_file($processed_attachment_id),
+			'processing_mode'         => $this->get_processing_mode($job),
+			'approval_status'         => 'approved',
+			'approved_by'             => get_current_user_id(),
+			'approved_at'             => $now,
+			'safety_status'           => $safety['status'],
+			'safety_metadata'         => wp_json_encode($safety['metadata']),
+			'audit_scan_id'           => sanitize_text_field((string) ($job['audit_scan_id'] ?? '')),
+			'audit_recommendation_id' => sanitize_text_field((string) ($job['audit_recommendation_id'] ?? '')),
+			'audit_issue_id'          => sanitize_text_field((string) ($job['audit_issue_id'] ?? '')),
+			'audit_queue_job_id'      => sanitize_text_field((string) ($job['audit_queue_job_id'] ?? '')),
+			'created_at'              => $now,
+			'updated_at'              => $now,
+		];
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin version history insert.
+		$wpdb->insert(catalogue_image_studio_versions_table_name(), $data);
+
+		return (int) $wpdb->insert_id;
+	}
+
+	/**
+	 * @return array<string,mixed>|null
+	 */
+	private function get_latest_applied_version(int $job_id): ?array {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin version history lookup.
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT * FROM %i WHERE job_id = %d AND approval_status = %s ORDER BY approved_at DESC, id DESC LIMIT 1',
+				catalogue_image_studio_versions_table_name(),
+				$job_id,
+				'approved'
+			),
+			ARRAY_A
+		);
+
+		return $row ?: null;
+	}
+
+	private function mark_version_reverted(int $version_id): void {
+		if ($version_id <= 0) {
+			return;
+		}
+
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin version history update.
+		$wpdb->update(
+			catalogue_image_studio_versions_table_name(),
+			[
+				'approval_status' => 'reverted',
+				'reverted_by'     => get_current_user_id(),
+				'reverted_at'     => current_time('mysql', true),
+				'updated_at'      => current_time('mysql', true),
+			],
+			['id' => $version_id]
+		);
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
 	 * @return void
 	 */
 	private function replace_product_image(array $job, int $target_attachment_id): void {
 		$product_id = (int) ($job['product_id'] ?? 0);
 		$role       = (string) ($job['image_role'] ?? 'featured');
 
-		if ('featured' === $role) {
+		if ('featured' === $role || 'main' === $role) {
 			update_post_meta($product_id, '_thumbnail_id', $target_attachment_id);
 			return;
 		}

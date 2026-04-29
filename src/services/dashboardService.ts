@@ -20,6 +20,45 @@ type DashboardBilling = {
   credits_used: number;
 };
 
+const getJobSafetyStatus = (seoMetadata: unknown): string => {
+  if (typeof seoMetadata !== "object" || seoMetadata === null) {
+    return "not_assessed";
+  }
+  const metadata = seoMetadata as Record<string, unknown>;
+  const validation = typeof metadata.output_validation === "object" && metadata.output_validation !== null
+    ? metadata.output_validation as Record<string, unknown>
+    : typeof metadata.outputValidation === "object" && metadata.outputValidation !== null
+      ? metadata.outputValidation as Record<string, unknown>
+      : null;
+  const status = typeof validation?.status === "string" ? validation.status.toLowerCase().replace(/\s+/g, "_") : "";
+
+  if (status === "failed") {
+    return "failed";
+  }
+  if (status === "needs_review") {
+    return "needs_review";
+  }
+  if (status === "passed") {
+    return "passed";
+  }
+
+  return "not_assessed";
+};
+
+const getJobProcessingMode = (seoMetadata: unknown): string | null => {
+  if (typeof seoMetadata !== "object" || seoMetadata === null) {
+    return null;
+  }
+  const metadata = seoMetadata as Record<string, unknown>;
+  const validation = typeof metadata.output_validation === "object" && metadata.output_validation !== null
+    ? metadata.output_validation as Record<string, unknown>
+    : typeof metadata.outputValidation === "object" && metadata.outputValidation !== null
+      ? metadata.outputValidation as Record<string, unknown>
+      : null;
+
+  return typeof validation?.processingMode === "string" ? validation.processingMode : null;
+};
+
 export const getDashboardSummary = async (userId: string) => {
   const [usage, sites, creditLedger, imageJobs] = await Promise.all([
     getUsageForUser(userId),
@@ -65,6 +104,7 @@ export const getDashboardSummary = async (userId: string) => {
         original_url: true,
         processed_url: true,
         status: true,
+        seo_metadata: true,
         credit_deducted_at: true,
         created_at: true,
         updated_at: true
@@ -166,6 +206,8 @@ export const getDashboardSummary = async (userId: string) => {
       original_url: job.original_url,
       processed_url: job.processed_url,
       status: job.status,
+      preservation_safety_status: getJobSafetyStatus(job.seo_metadata),
+      processing_mode: getJobProcessingMode(job.seo_metadata),
       credit_deducted_at: job.credit_deducted_at?.toISOString() ?? null,
       created_at: job.created_at.toISOString(),
       updated_at: job.updated_at.toISOString()

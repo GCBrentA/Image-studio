@@ -168,6 +168,13 @@ class Catalogue_Image_Studio_ImageProcessor {
 			'seo_description'         => $seo['description'],
 		];
 
+		$safety = catalogue_image_studio_get_preservation_safety(array_merge($job, $result));
+		$result['safety_status'] = $safety['status'];
+		$result['safety_metadata'] = wp_json_encode($safety['metadata']);
+		$result['processing_mode'] = isset($processed['output_validation']['processingMode']) && is_scalar($processed['output_validation']['processingMode'])
+			? sanitize_text_field((string) $processed['output_validation']['processingMode'])
+			: sanitize_text_field((string) ($options['settings']['processingMode'] ?? ''));
+
 		$this->jobs->update($job_id, $result);
 		$this->logger->info('Image job processed successfully.', ['job_id' => $job_id]);
 

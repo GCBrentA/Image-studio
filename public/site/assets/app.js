@@ -1204,6 +1204,37 @@ function renderImageStudioDashboard(account, scans, latestReport) {
         ${renderTrendChart(scans.slice().reverse(), "product_image_health_score", "Health Score", "score")}
       </section>
     </section>
+
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Processed Image History</h2><p>Recent processed images with Product Preservation Safety status and processing mode.</p></div></div>
+      ${renderProcessedImageHistory(imageJobs)}
+    </section>
+  `;
+}
+
+function renderProcessedImageHistory(imageJobs) {
+  const rows = imageJobs.filter((job) => job.original_url || job.processed_url).slice(0, 12);
+  if (!rows.length) {
+    return `<p class="muted-note">Processed image history will appear after images are processed.</p>`;
+  }
+  return `
+    <div class="portal-table-wrap">
+      <table class="portal-table">
+        <thead><tr><th>Original</th><th>Processed</th><th>Status</th><th>Safety</th><th>Mode</th><th>Updated</th></tr></thead>
+        <tbody>
+          ${rows.map((job) => `
+            <tr>
+              <td>${job.original_url ? `<a href="${escapeHtml(job.original_url)}" target="_blank" rel="noopener noreferrer">View Original</a>` : "-"}</td>
+              <td>${job.processed_url ? `<a href="${escapeHtml(job.processed_url)}" target="_blank" rel="noopener noreferrer">View Processed</a>` : "-"}</td>
+              <td>${statusBadge(job.status || "unknown")}</td>
+              <td>${safetyBadge(job.preservation_safety_status || "not_assessed")}</td>
+              <td>${escapeHtml(formatProcessingMode(job.processing_mode || ""))}</td>
+              <td>${escapeHtml(formatDate(job.updated_at || job.created_at))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -1917,6 +1948,22 @@ function priorityBadge(value) {
 function statusBadge(value) {
   const status = String(value || "unknown").toLowerCase();
   return `<span class="status-badge ${escapeHtml(status)}">${escapeHtml(status.replaceAll("_", " "))}</span>`;
+}
+
+function safetyBadge(value) {
+  const status = String(value || "not_assessed").toLowerCase();
+  const labels = {
+    passed: "Passed",
+    needs_review: "Needs Review",
+    failed: "Failed",
+    not_assessed: "Not Assessed"
+  };
+  const tone = ["passed", "needs_review", "failed", "not_assessed"].includes(status) ? status : "not_assessed";
+  return `<span class="status-badge safety-${escapeHtml(tone)}">${escapeHtml(labels[tone] || labels.not_assessed)}</span>`;
+}
+
+function formatProcessingMode(value) {
+  return value ? String(value).replaceAll("_", " ") : "Not stored";
 }
 
 function severityClass(value) {

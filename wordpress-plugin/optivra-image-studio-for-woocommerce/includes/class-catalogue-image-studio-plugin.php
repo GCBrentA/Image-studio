@@ -162,6 +162,9 @@ class Catalogue_Image_Studio_Plugin {
 			audit_priority varchar(20) NULL,
 			audit_background_preset varchar(100) NULL,
 			audit_job_kind varchar(40) NULL,
+			safety_status varchar(20) NULL,
+			safety_metadata longtext NULL,
+			processing_mode varchar(100) NULL,
 			status varchar(20) NOT NULL DEFAULT 'unprocessed',
 			error_message longtext NULL,
 			approval_error longtext NULL,
@@ -178,11 +181,50 @@ class Catalogue_Image_Studio_Plugin {
 			KEY product_id (product_id),
 			KEY attachment_id (attachment_id),
 			KEY audit_source (audit_source),
-			KEY audit_scan_id (audit_scan_id)
+			KEY audit_scan_id (audit_scan_id),
+			KEY safety_status (safety_status)
 		) {$charset_collate};";
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- dbDelta is required for the plugin's custom queue table.
 		dbDelta($sql);
+
+		$versions_table = catalogue_image_studio_versions_table_name();
+		$versions_sql = "CREATE TABLE {$versions_table} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			job_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			product_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			image_role varchar(20) NOT NULL DEFAULT 'featured',
+			gallery_index int(11) NOT NULL DEFAULT 0,
+			original_attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			original_url text NULL,
+			original_file_path text NULL,
+			processed_attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			processed_url text NULL,
+			processed_file_path text NULL,
+			processing_mode varchar(100) NULL,
+			approval_status varchar(20) NOT NULL DEFAULT 'approved',
+			approved_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			approved_at datetime NULL,
+			reverted_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			reverted_at datetime NULL,
+			safety_status varchar(20) NULL,
+			safety_metadata longtext NULL,
+			audit_scan_id varchar(80) NULL,
+			audit_recommendation_id varchar(80) NULL,
+			audit_issue_id varchar(80) NULL,
+			audit_queue_job_id varchar(80) NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			KEY job_id (job_id),
+			KEY product_id (product_id),
+			KEY approval_status (approval_status),
+			KEY safety_status (safety_status),
+			KEY audit_scan_id (audit_scan_id)
+		) {$charset_collate};";
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- dbDelta is required for the plugin's custom version history table.
+		dbDelta($versions_sql);
 	}
 
 	/**

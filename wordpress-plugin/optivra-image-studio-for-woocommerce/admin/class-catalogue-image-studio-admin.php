@@ -2419,7 +2419,7 @@ class Catalogue_Image_Studio_Admin {
 			$slot_label .= ': ' . (string) $slot['category_name'];
 		}
 		?>
-		<tr>
+		<tr id="optivra-job-<?php echo esc_attr((string) (int) ($job['id'] ?? 0)); ?>">
 			<th scope="row" class="check-column"><input type="checkbox" class="catalogue-image-studio-job-check" name="slots[]" value="<?php echo esc_attr($value); ?>" /></th>
 			<td><?php $this->render_thumbnail((string) ($slot['image_url'] ?? wp_get_attachment_image_url($attachment_id, 'thumbnail')), __('Product image', 'optivra-image-studio-for-woocommerce')); ?></td>
 			<td><strong><?php echo esc_html($product_name); ?></strong><br /><a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>"><?php echo esc_html__('Edit product', 'optivra-image-studio-for-woocommerce'); ?></a></td>
@@ -2455,8 +2455,70 @@ class Catalogue_Image_Studio_Admin {
 				</div>
 				<?php $this->render_jobs_table($jobs, true); ?>
 			</form>
+			<?php $this->render_version_history_table(); ?>
 		</div>
 		<?php
+	}
+
+	private function render_version_history_table(): void {
+		$versions = $this->get_version_history(50);
+		?>
+		<section class="optivra-version-history optivra-card">
+			<div class="optivra-card-topline">
+				<h3><?php echo esc_html__('Before/After Version History', 'optivra-image-studio-for-woocommerce'); ?></h3>
+				<span class="optivra-action-chip"><?php echo esc_html__('Rollback protected', 'optivra-image-studio-for-woocommerce'); ?></span>
+			</div>
+			<?php if (empty($versions)) : ?>
+				<p class="catalogue-image-studio-help"><?php echo esc_html__('Approved image changes will appear here with original and processed image links so you can restore originals later.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php else : ?>
+				<div class="optivra-version-table-wrap">
+					<table class="widefat striped">
+						<thead>
+							<tr>
+								<th><?php echo esc_html__('Product', 'optivra-image-studio-for-woocommerce'); ?></th>
+								<th><?php echo esc_html__('Original', 'optivra-image-studio-for-woocommerce'); ?></th>
+								<th><?php echo esc_html__('Processed', 'optivra-image-studio-for-woocommerce'); ?></th>
+								<th><?php echo esc_html__('Safety', 'optivra-image-studio-for-woocommerce'); ?></th>
+								<th><?php echo esc_html__('Mode', 'optivra-image-studio-for-woocommerce'); ?></th>
+								<th><?php echo esc_html__('Approved', 'optivra-image-studio-for-woocommerce'); ?></th>
+								<th><?php echo esc_html__('Status', 'optivra-image-studio-for-woocommerce'); ?></th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php foreach ($versions as $version) : ?>
+								<tr>
+									<td><strong><?php echo esc_html(get_the_title((int) ($version['product_id'] ?? 0)) ?: __('Product image', 'optivra-image-studio-for-woocommerce')); ?></strong><br /><small><?php echo esc_html($this->get_image_role_label((string) ($version['image_role'] ?? ''))); ?></small></td>
+									<td><?php $this->render_thumbnail((string) ($version['original_url'] ?? ''), __('Original', 'optivra-image-studio-for-woocommerce')); ?></td>
+									<td><?php $this->render_thumbnail((string) ($version['processed_url'] ?? ''), __('Processed', 'optivra-image-studio-for-woocommerce')); ?></td>
+									<td><?php $this->render_status_badge($this->get_safety_status_label((string) ($version['safety_status'] ?? 'not_assessed')), $this->map_safety_status_to_badge((string) ($version['safety_status'] ?? 'not_assessed'))); ?></td>
+									<td><?php echo esc_html($this->format_processing_mode((string) ($version['processing_mode'] ?? ''))); ?></td>
+									<td><?php echo esc_html($this->format_date((string) ($version['approved_at'] ?? ''))); ?></td>
+									<td><?php $this->render_status_badge($this->format_status((string) ($version['approval_status'] ?? 'approved')), (string) ($version['approval_status'] ?? 'approved')); ?></td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+				</div>
+			<?php endif; ?>
+		</section>
+		<?php
+	}
+
+	/**
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_version_history(int $limit = 50): array {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin version history query for admin review UI.
+		return (array) $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT * FROM %i ORDER BY approved_at DESC, id DESC LIMIT %d',
+				catalogue_image_studio_versions_table_name(),
+				max(1, $limit)
+			),
+			ARRAY_A
+		);
 	}
 
 	private function render_review_tab(): void {
@@ -2554,6 +2616,16 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_metric_card(__('Manual work estimate', 'optivra-image-studio-for-woocommerce'), sprintf('%s-%s min', number_format_i18n($minutes_low, 0), number_format_i18n($minutes_high, 0))); ?>
 					<?php $this->render_metric_card(__('Estimated editing value', 'optivra-image-studio-for-woocommerce'), sprintf('$%s-$%s', number_format_i18n($cost_low, 0), number_format_i18n($cost_high, 0))); ?>
 					<?php $this->render_metric_card(__('Hourly rate used', 'optivra-image-studio-for-woocommerce'), sprintf('$%s/hr', number_format_i18n($hourly_rate, 0))); ?>
+				</div>
+			</section>
+
+			<section class="optivra-report-section">
+				<h3><?php echo esc_html__('Processing Safety', 'optivra-image-studio-for-woocommerce'); ?></h3>
+				<p><?php echo esc_html__('Product Preservation Safety protects your store from processed images where the product may have been altered, poorly masked, or left unverified.', 'optivra-image-studio-for-woocommerce'); ?></p>
+				<div class="optivra-report-meta-grid">
+					<?php foreach ($this->get_local_safety_counts() as $status => $count) : ?>
+						<?php $this->render_metric_card($this->get_safety_status_label($status), (string) $count); ?>
+					<?php endforeach; ?>
 				</div>
 			</section>
 
@@ -3187,6 +3259,43 @@ class Catalogue_Image_Studio_Admin {
 		];
 
 		return $labels[$priority] ?? $labels['info'];
+	}
+
+	private function get_safety_status_label(string $status): string {
+		$labels = [
+			'passed'       => __('Preservation Passed', 'optivra-image-studio-for-woocommerce'),
+			'needs_review' => __('Needs Review', 'optivra-image-studio-for-woocommerce'),
+			'failed'       => __('Failed Safety', 'optivra-image-studio-for-woocommerce'),
+			'not_assessed' => __('Not Assessed', 'optivra-image-studio-for-woocommerce'),
+		];
+
+		return $labels[$status] ?? $labels['not_assessed'];
+	}
+
+	/**
+	 * @return array{passed:int,needs_review:int,failed:int,not_assessed:int}
+	 */
+	private function get_local_safety_counts(): array {
+		$counts = [
+			'passed'       => 0,
+			'needs_review' => 0,
+			'failed'       => 0,
+			'not_assessed' => 0,
+		];
+		$jobs = $this->plugin->jobs()->query(['status' => ['completed', 'approved', 'rejected', 'failed']], 200, 0);
+		foreach ($jobs as $job) {
+			if (! is_array($job)) {
+				continue;
+			}
+			$safety = catalogue_image_studio_get_preservation_safety($job);
+			$status = (string) ($safety['status'] ?? 'not_assessed');
+			if (! isset($counts[$status])) {
+				$status = 'not_assessed';
+			}
+			++$counts[$status];
+		}
+
+		return $counts;
 	}
 
 	private function get_recommendation_status_label(string $status): string {
@@ -4521,6 +4630,7 @@ class Catalogue_Image_Studio_Admin {
 			<td>
 				<?php $display_error = $this->format_job_error((string) ($job['error_message'] ?? '')); ?>
 				<?php $this->render_status_badge($this->format_status((string) $job['status']), $this->map_job_status_to_badge((string) $job['status'])); ?><?php echo '' !== $display_error ? '<br /><small>' . esc_html($display_error) . '</small>' : ''; ?>
+				<?php $this->render_preservation_safety_badge($job); ?>
 				<?php if ('audit_report' === (string) ($job['audit_source'] ?? '')) : ?>
 					<br /><span class="optivra-action-chip"><?php echo esc_html__('From Health Report', 'optivra-image-studio-for-woocommerce'); ?></span>
 					<?php if (! empty($job['audit_action_type'])) : ?>
@@ -4536,8 +4646,53 @@ class Catalogue_Image_Studio_Admin {
 			<td><?php $this->render_seo_fields($job); ?></td>
 			<td>
 				<?php echo '' !== $display_error ? esc_html($display_error) : esc_html((string) ($job['updated_at'] ?? '')); ?>
+				<?php $this->render_version_actions($job, $processed_links); ?>
 			</td>
 		</tr>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 */
+	private function render_preservation_safety_badge(array $job): void {
+		$safety = catalogue_image_studio_get_preservation_safety($job);
+		$class = sanitize_html_class($safety['status']);
+		?>
+		<br /><span class="optivra-safety-badge <?php echo esc_attr($class); ?>"><?php echo esc_html(sprintf(__('Product Preservation: %s', 'optivra-image-studio-for-woocommerce'), $safety['label'])); ?></span>
+		<?php if ('failed' === $safety['status']) : ?>
+			<small class="catalogue-image-studio-warning"><?php echo esc_html__('This output cannot be applied because product preservation failed.', 'optivra-image-studio-for-woocommerce'); ?></small>
+		<?php elseif ('needs_review' === $safety['status']) : ?>
+			<small class="catalogue-image-studio-help"><?php echo esc_html__('Manual review is required before approval.', 'optivra-image-studio-for-woocommerce'); ?></small>
+		<?php endif; ?>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed>                             $job Job.
+	 * @param array{preview:string,full:string,source:string} $processed_links Processed image links.
+	 */
+	private function render_version_actions(array $job, array $processed_links): void {
+		$attachment_id = (int) ($job['attachment_id'] ?? 0);
+		$original_id = (int) ($job['original_attachment_id'] ?? $attachment_id);
+		$original_url = $original_id > 0 ? (string) wp_get_attachment_url($original_id) : '';
+		$processed_url = (string) ($processed_links['full'] ?? '');
+		$job_id = (int) ($job['id'] ?? 0);
+		?>
+		<div class="optivra-version-actions">
+			<?php if ('' !== $original_url) : ?>
+				<a href="<?php echo esc_url($original_url); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('View Original', 'optivra-image-studio-for-woocommerce'); ?></a>
+			<?php endif; ?>
+			<?php if ('' !== $processed_url) : ?>
+				<a href="<?php echo esc_url($processed_url); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('View Processed', 'optivra-image-studio-for-woocommerce'); ?></a>
+			<?php endif; ?>
+			<?php if ('' !== $original_url && '' !== $processed_url) : ?>
+				<a href="#optivra-job-<?php echo esc_attr((string) $job_id); ?>"><?php echo esc_html__('Compare', 'optivra-image-studio-for-woocommerce'); ?></a>
+			<?php endif; ?>
+			<?php if (in_array((string) ($job['status'] ?? ''), ['approved', 'completed', 'rejected'], true) && $job_id > 0) : ?>
+				<button type="submit" class="button button-small" name="catalogue_image_studio_action" value="revert" onclick="var box=this.closest('tr').querySelector('.catalogue-image-studio-job-check'); if (box) { box.checked = true; }"><?php echo esc_html__('Restore Original', 'optivra-image-studio-for-woocommerce'); ?></button>
+			<?php endif; ?>
+		</div>
 		<?php
 	}
 
@@ -4889,6 +5044,22 @@ class Catalogue_Image_Studio_Admin {
 		return ucwords(str_replace('_', ' ', sanitize_key($status)));
 	}
 
+	private function format_processing_mode(string $mode): string {
+		$mode = sanitize_key($mode);
+
+		return '' === $mode ? __('Not stored', 'optivra-image-studio-for-woocommerce') : ucwords(str_replace('_', ' ', $mode));
+	}
+
+	private function format_date(string $date): string {
+		if ('' === trim($date)) {
+			return __('Not stored', 'optivra-image-studio-for-woocommerce');
+		}
+
+		$timestamp = strtotime($date);
+
+		return $timestamp ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), $timestamp) : $date;
+	}
+
 	private function map_job_status_to_badge(string $status): string {
 		switch (sanitize_key($status)) {
 			case 'failed':
@@ -4906,6 +5077,20 @@ class Catalogue_Image_Studio_Admin {
 			case 'resolved':
 				return 'resolved';
 			case 'unprocessed':
+			default:
+				return 'ready';
+		}
+	}
+
+	private function map_safety_status_to_badge(string $status): string {
+		switch (sanitize_key($status)) {
+			case 'passed':
+				return 'approved';
+			case 'needs_review':
+				return 'needs-review';
+			case 'failed':
+				return 'failed';
+			case 'not_assessed':
 			default:
 				return 'ready';
 		}
