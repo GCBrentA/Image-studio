@@ -2,6 +2,18 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma";
 import type { ImageStudioAuthContext } from "../middleware/imageStudioAuth";
 import type { ImageAuditActionType, ImageAuditItemInput, ImageAuditSeverity } from "../types/imageAudit";
+import {
+  calculateAuditMetrics,
+  generateCategoryScores,
+  generateInsights as generateAuditInsights,
+  generateIssues as generateAuditIssues,
+  generateRecommendations as generateAuditRecommendations,
+  type AuditCategoryScore,
+  type AuditIssue,
+  type AuditMetrics,
+  type AuditRecommendation,
+  type AuditScoringItem
+} from "./imageAuditScoringEngine";
 
 type AuditScanRow = {
   id: string;
@@ -95,6 +107,79 @@ type RecommendationDraft = {
   actionFilter?: Record<string, unknown>;
   displayOrder: number;
 };
+
+const toScoringItem = (item: AuditItemRow): AuditScoringItem => ({
+  id: item.id,
+  product_id: item.product_id,
+  product_name: item.product_name,
+  product_sku: item.product_sku,
+  product_url: item.product_url,
+  image_id: item.image_id,
+  image_url: item.image_url,
+  image_role: item.image_role,
+  category_ids: item.category_ids ?? [],
+  category_names: item.category_names ?? [],
+  filename: item.filename,
+  file_extension: item.file_extension,
+  mime_type: item.mime_type,
+  width: item.width,
+  height: item.height,
+  file_size_bytes: item.file_size_bytes,
+  alt_text: item.alt_text,
+  image_title: item.image_title,
+  caption: item.caption
+});
+
+const toScoreBundle = (metrics: AuditMetrics): ScoreBundle => ({
+  productImageHealthScore: metrics.product_image_health_score,
+  seoScore: metrics.seo_score,
+  imageQualityScore: metrics.image_quality_score,
+  catalogueConsistencyScore: metrics.catalogue_consistency_score,
+  performanceScore: metrics.performance_score,
+  completenessScore: metrics.completeness_score,
+  googleShoppingReadinessScore: metrics.google_shopping_readiness_score
+});
+
+const toIssueDraft = (issue: AuditIssue): IssueDraft => ({
+  itemId: issue.item_id,
+  productId: issue.product_id,
+  imageId: issue.image_id,
+  issueType: issue.issue_type,
+  severity: issue.severity,
+  title: issue.title,
+  description: issue.description,
+  recommendedAction: issue.recommended_action,
+  actionType: issue.action_type,
+  confidenceScore: issue.confidence_score,
+  metadata: issue.metadata
+});
+
+const toInsightDraft = (
+  insight: ReturnType<typeof generateAuditInsights>[number]
+): InsightDraft => ({
+  insightType: insight.insight_type,
+  severity: insight.severity,
+  title: insight.title,
+  body: insight.body,
+  metricKey: insight.metric_key,
+  metricValue: insight.metric_value,
+  suggestedAction: insight.suggested_action,
+  actionType: insight.action_type,
+  actionFilter: insight.action_filter,
+  displayOrder: insight.display_order
+});
+
+const toRecommendationDraft = (recommendation: AuditRecommendation): RecommendationDraft => ({
+  title: recommendation.title,
+  description: recommendation.description,
+  priority: recommendation.priority,
+  actionType: recommendation.action_type,
+  estimatedImagesAffected: recommendation.estimated_images_affected,
+  estimatedMinutesSavedLow: recommendation.estimated_minutes_saved_low,
+  estimatedMinutesSavedHigh: recommendation.estimated_minutes_saved_high,
+  actionFilter: recommendation.action_filter,
+  displayOrder: recommendation.display_order
+});
 
 const maxStringLengths: Record<string, number> = {
   product_id: 128,
@@ -1125,6 +1210,60 @@ const insertCategoryScores = async (
   }
 };
 
+const insertEngineCategoryScores = async (
+  scan: AuditScanRow,
+  categoryScores: AuditCategoryScore[]
+): Promise<void> => {
+  for (const category of categoryScores) {
+    await prisma.$executeRaw`
+      INSERT INTO "image_audit_category_scores" (
+        "scan_id",
+        "store_id",
+        "category_id",
+        "category_name",
+        "products_scanned",
+        "images_scanned",
+        "health_score",
+        "seo_score",
+        "quality_score",
+        "consistency_score",
+        "performance_score",
+        "priority",
+        "issue_count",
+        "critical_issue_count",
+        "high_issue_count",
+        "medium_issue_count",
+        "low_issue_count",
+        "top_issue_type",
+        "recommendation",
+        "created_at"
+      )
+      VALUES (
+        ${scan.id}::uuid,
+        ${scan.store_id},
+        ${category.category_id ?? null},
+        ${category.category_name},
+        ${category.products_scanned},
+        ${category.images_scanned},
+        ${category.health_score},
+        ${category.seo_score},
+        ${category.quality_score},
+        ${category.consistency_score},
+        ${category.performance_score},
+        ${category.priority},
+        ${category.issue_count},
+        ${category.critical_issue_count},
+        ${category.high_issue_count},
+        ${category.medium_issue_count},
+        ${category.low_issue_count},
+        ${category.top_issue_type ?? null},
+        ${category.recommendation ?? null},
+        now()
+      )
+    `;
+  }
+};
+
 const insertMetrics = async (
   scan: AuditScanRow,
   items: AuditItemRow[],
@@ -1267,10 +1406,14 @@ export const completeAuditScan = async (
     throw new ImageAuditError("No audit items were submitted for this scan.", 422);
   }
 
-  const issues = items.flatMap(buildItemIssues);
-  const scores = calculateScores(items, issues);
-  const insights = buildInsights(items, issues, scores);
-  const recommendations = buildRecommendations(items, issues);
+  const scoringItems = items.map(toScoringItem);
+  const metrics = calculateAuditMetrics(scoringItems);
+  const auditIssues = generateAuditIssues(scoringItems, metrics);
+  const categoryScores = generateCategoryScores(scoringItems, auditIssues);
+  const issues = auditIssues.map(toIssueDraft);
+  const scores = toScoreBundle(metrics);
+  const insights = generateAuditInsights(metrics, auditIssues, categoryScores).map(toInsightDraft);
+  const recommendations = generateAuditRecommendations(metrics, auditIssues, categoryScores).map(toRecommendationDraft);
   const products = new Map<string, AuditItemRow[]>();
   const categories = new Set<string>();
 
@@ -1291,7 +1434,7 @@ export const completeAuditScan = async (
   await scoreAndPersistItems(scan, items, issues);
   await insertIssues(scan, issues);
   await insertInsights(scan, insights);
-  await insertCategoryScores(scan, items, issues);
+  await insertEngineCategoryScores(scan, categoryScores);
   await insertRecommendations(scan, recommendations);
   await insertMetrics(scan, items, issues, scores);
 
