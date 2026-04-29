@@ -750,21 +750,28 @@ input {
 .download-modal {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 9999;
   display: none;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(4, 9, 24, 0.72);
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(6px);
   overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;
   overscroll-behavior: contain;
 }
 .download-modal[aria-hidden="false"] { display: flex; }
-.download-modal-open { overflow: hidden; }
+body.download-modal-open {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
 .download-modal__backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: auto;
 }
@@ -776,19 +783,31 @@ input {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.36);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 .download-modal__content {
   overflow-y: auto;
   overscroll-behavior: contain;
   min-height: 0;
   width: 100%;
-  padding: 28px;
+  padding: 30px;
   box-sizing: border-box;
-  border-radius: 22px;
+  border-radius: 24px;
+}
+.download-modal__content h2 {
+  margin: 4px 40px 10px 0;
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.08;
+  color: #0f172a;
+}
+.download-modal__intro {
+  margin: 0 0 22px;
+  color: #475569;
+  font-size: 15px;
+  line-height: 1.55;
 }
 .download-modal__close {
   position: absolute;
@@ -798,7 +817,7 @@ input {
   height: 38px;
   border: 0;
   border-radius: 999px;
-  background: #f1f5f9;
+  background: #e2e8f0;
   color: #0f172a;
   font-size: 24px;
   line-height: 1;
@@ -807,7 +826,7 @@ input {
 .download-lead-form,
 .feedback-form {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 .download-lead-form label,
 .feedback-form label {
@@ -829,21 +848,41 @@ input {
   color: #0f172a;
   background: #fff;
   font: inherit;
+  min-height: 48px;
+}
+.download-lead-form input:focus,
+.download-lead-form select:focus,
+.feedback-form input:focus,
+.feedback-form select:focus,
+.feedback-form textarea:focus {
+  border-color: rgba(124, 61, 255, 0.72);
+  box-shadow: 0 0 0 4px rgba(124, 61, 255, 0.12);
+  outline: none;
 }
 .checkbox-row {
   grid-template-columns: 20px 1fr !important;
   align-items: start;
-  gap: 10px !important;
+  gap: 12px !important;
   font-weight: 600 !important;
   color: #475569 !important;
+  line-height: 1.4;
 }
 .checkbox-row input {
   width: auto !important;
+  min-height: 0;
   margin-top: 3px;
+}
+.download-consent-group {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 .privacy-note {
   margin: 0;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid rgba(37, 99, 235, 0.16);
   border-radius: 14px;
   background: #eff6ff;
@@ -851,11 +890,14 @@ input {
   font-size: 14px;
 }
 .download-success {
-  margin-top: 18px;
-  padding: 18px;
+  margin-top: 20px;
+  padding: 20px;
   border: 1px solid rgba(16, 185, 129, 0.22);
   border-radius: 16px;
   background: #ecfdf5;
+}
+.download-success h3 {
+  margin-top: 0;
 }
 .feedback-page { max-width: 860px; }
 .download-section {

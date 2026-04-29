@@ -637,9 +637,17 @@ export const getAuthorizedScan = async (
 
 export const startAuditScan = async (
   auth: ImageStudioAuthContext,
-  input: { storeId: string; source?: string; scanOptions?: unknown }
+  input: { storeId?: string; source?: string; scanOptions?: unknown }
 ): Promise<{ ok: true; scan_id: string; status: string }> => {
-  await assertStoreAccess(auth, input.storeId);
+  const storeId = auth.authType === "site_token"
+    ? auth.siteId
+    : input.storeId;
+
+  if (!storeId) {
+    throw new ImageAuditError("store_id is required", 400);
+  }
+
+  await assertStoreAccess(auth, storeId);
 
   const source = trimText(input.source, "source") ?? "woocommerce";
   let rows: Array<{ id: string; status: string }>;
@@ -656,7 +664,7 @@ export const startAuditScan = async (
         "updated_at"
       )
       VALUES (
-        ${input.storeId},
+        ${storeId},
         ${auth.userId},
         ${source.slice(0, 80)},
         'running',
@@ -680,31 +688,6 @@ export const startAuditScan = async (
   };
 };
 
-const findExistingItemId = async (scanId: string, storeId: string, item: ImageAuditItemInput): Promise<string | null> => {
-  const rows = item.image_id
-    ? await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"::text
-      FROM "image_audit_items"
-      WHERE "scan_id" = ${scanId}::uuid
-        AND "store_id" = ${storeId}
-        AND "product_id" = ${item.product_id}
-        AND "image_id" = ${item.image_id}
-      LIMIT 1
-    `
-    : await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"::text
-      FROM "image_audit_items"
-      WHERE "scan_id" = ${scanId}::uuid
-        AND "store_id" = ${storeId}
-        AND "product_id" = ${item.product_id}
-        AND "image_url" = ${item.image_url}
-        AND "image_role" = ${item.image_role ?? "unknown"}
-      LIMIT 1
-    `;
-
-  return rows[0]?.id ?? null;
-};
-
 export const addAuditItems = async (
   auth: ImageStudioAuthContext,
   scanId: string,
@@ -721,89 +704,60 @@ export const addAuditItems = async (
   }
 
   const items = rawItems.map(sanitizeAuditItemInput);
-  let inserted = 0;
+  const rows = items.map((item) => Prisma.sql`(
+    ${scan.id}::uuid,
+    ${scan.store_id},
+    ${item.product_id},
+    ${item.product_name ?? null},
+    ${item.product_sku ?? null},
+    ${item.product_url ?? null},
+    ${item.image_id ?? null},
+    ${item.image_url},
+    ${item.image_role ?? "unknown"},
+    ${sqlTextArray(item.category_ids ?? [])},
+    ${sqlTextArray(item.category_names ?? [])},
+    ${item.filename ?? null},
+    ${item.file_extension ?? null},
+    ${item.mime_type ?? null},
+    ${item.width ?? null},
+    ${item.height ?? null},
+    ${item.file_size_bytes ?? null},
+    ${item.alt_text ?? null},
+    ${item.image_title ?? null},
+    ${item.caption ?? null},
+    now(),
+    now()
+  )`);
 
-  for (const item of items) {
-    const existingId = await findExistingItemId(scan.id, scan.store_id, item);
-    const categoryIds = sqlTextArray(item.category_ids ?? []);
-    const categoryNames = sqlTextArray(item.category_names ?? []);
-
-    if (existingId) {
-      await prisma.$executeRaw`
-        UPDATE "image_audit_items"
-        SET
-          "product_name" = ${item.product_name ?? null},
-          "product_sku" = ${item.product_sku ?? null},
-          "product_url" = ${item.product_url ?? null},
-          "category_ids" = ${categoryIds},
-          "category_names" = ${categoryNames},
-          "filename" = ${item.filename ?? null},
-          "file_extension" = ${item.file_extension ?? null},
-          "mime_type" = ${item.mime_type ?? null},
-          "width" = ${item.width ?? null},
-          "height" = ${item.height ?? null},
-          "file_size_bytes" = ${item.file_size_bytes ?? null},
-          "alt_text" = ${item.alt_text ?? null},
-          "image_title" = ${item.image_title ?? null},
-          "caption" = ${item.caption ?? null},
-          "updated_at" = now()
-        WHERE "id" = ${existingId}::uuid
-          AND "store_id" = ${scan.store_id}
-      `;
-    } else {
-      await prisma.$executeRaw`
-        INSERT INTO "image_audit_items" (
-          "scan_id",
-          "store_id",
-          "product_id",
-          "product_name",
-          "product_sku",
-          "product_url",
-          "image_id",
-          "image_url",
-          "image_role",
-          "category_ids",
-          "category_names",
-          "filename",
-          "file_extension",
-          "mime_type",
-          "width",
-          "height",
-          "file_size_bytes",
-          "alt_text",
-          "image_title",
-          "caption",
-          "created_at",
-          "updated_at"
-        )
-        VALUES (
-          ${scan.id}::uuid,
-          ${scan.store_id},
-          ${item.product_id},
-          ${item.product_name ?? null},
-          ${item.product_sku ?? null},
-          ${item.product_url ?? null},
-          ${item.image_id ?? null},
-          ${item.image_url},
-          ${item.image_role ?? "unknown"},
-          ${categoryIds},
-          ${categoryNames},
-          ${item.filename ?? null},
-          ${item.file_extension ?? null},
-          ${item.mime_type ?? null},
-          ${item.width ?? null},
-          ${item.height ?? null},
-          ${item.file_size_bytes ?? null},
-          ${item.alt_text ?? null},
-          ${item.image_title ?? null},
-          ${item.caption ?? null},
-          now(),
-          now()
-        )
-      `;
-      inserted += 1;
-    }
-  }
+  const insertedRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    INSERT INTO "image_audit_items" (
+      "scan_id",
+      "store_id",
+      "product_id",
+      "product_name",
+      "product_sku",
+      "product_url",
+      "image_id",
+      "image_url",
+      "image_role",
+      "category_ids",
+      "category_names",
+      "filename",
+      "file_extension",
+      "mime_type",
+      "width",
+      "height",
+      "file_size_bytes",
+      "alt_text",
+      "image_title",
+      "caption",
+      "created_at",
+      "updated_at"
+    )
+    VALUES ${Prisma.join(rows)}
+    RETURNING "id"::text
+  `;
+  const inserted = insertedRows.length;
 
   const totalRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
     SELECT COUNT(*)::bigint AS "count"

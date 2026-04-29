@@ -1574,13 +1574,7 @@ class Catalogue_Image_Studio_Admin {
 			}
 		}
 
-		$install_id = (string) get_option('optivra_image_studio_install_id', '');
-		if ('' === $install_id) {
-			$install_id = wp_generate_uuid4();
-			update_option('optivra_image_studio_install_id', $install_id, false);
-		}
-
-		return sanitize_text_field($install_id);
+		return '';
 	}
 
 	/**

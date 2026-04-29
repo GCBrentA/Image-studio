@@ -212,6 +212,8 @@ const blogArticles = [
 let currentUser = null;
 let currentUserLoaded = false;
 let headerAccountMenuOpen = false;
+let pluginDownloadLastFocus = null;
+let pluginDownloadScrollY = 0;
 const authActionsRoot = document.getElementById("header-auth-actions");
 const mobileHeaderShortcuts = document.getElementById("mobile-account-shortcuts");
 
@@ -2917,6 +2919,30 @@ function pluginReleaseBySlug(slug) {
   return slug === "optivra-gateway-rules" ? gatewayRulesRelease : pluginRelease;
 }
 
+function isPluginDownloadModalOpen() {
+  const modal = document.getElementById("plugin-download-modal");
+  return Boolean(modal && modal.getAttribute("aria-hidden") === "false");
+}
+
+function pluginDownloadFocusableNodes() {
+  const modal = document.getElementById("plugin-download-modal");
+  if (!modal || modal.getAttribute("aria-hidden") === "true") return [];
+  return Array.from(modal.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"))
+    .filter((node) => node.offsetParent !== null && !node.hidden);
+}
+
+function lockPluginDownloadScroll() {
+  pluginDownloadScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.style.top = `-${pluginDownloadScrollY}px`;
+  document.body.classList.add("download-modal-open");
+}
+
+function unlockPluginDownloadScroll() {
+  document.body.classList.remove("download-modal-open");
+  document.body.style.top = "";
+  window.scrollTo(0, pluginDownloadScrollY);
+}
+
 function openPluginDownloadModal(slug = "optivra-image-studio", target = null) {
   const modal = document.getElementById("plugin-download-modal");
   const form = document.getElementById("plugin-download-form");
@@ -2928,15 +2954,16 @@ function openPluginDownloadModal(slug = "optivra-image-studio", target = null) {
   const normalized = pluginFromTarget({ dataset: { pluginDownload: slug }, getAttribute: () => "" });
   const release = pluginReleaseBySlug(normalized);
   if (!modal || !form || !hidden) return;
+  pluginDownloadLastFocus = target instanceof HTMLElement ? target : document.activeElement;
   hidden.value = normalized;
   if (title) title.textContent = `Get ${release.name}`;
   if (message) message.textContent = "";
   if (success) success.hidden = true;
   form.hidden = false;
   modal.setAttribute("aria-hidden", "false");
-  document.body.classList.add("download-modal-open");
+  lockPluginDownloadScroll();
   window.setTimeout(() => {
-    emailInput?.focus({ preventScroll: true });
+    (emailInput || pluginDownloadFocusableNodes()[0])?.focus({ preventScroll: true });
   }, 0);
   const params = { ...(target ? downloadParamsForTarget(target) : { plugin_slug: normalized, plugin_version: release.version, download_type: "zip", gated: true }), plugin_slug: normalized };
   trackEvent("plugin_download_click", params);
@@ -2946,7 +2973,11 @@ function openPluginDownloadModal(slug = "optivra-image-studio", target = null) {
 function closePluginDownloadModal() {
   const modal = document.getElementById("plugin-download-modal");
   if (modal) modal.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("download-modal-open");
+  unlockPluginDownloadScroll();
+  if (pluginDownloadLastFocus && typeof pluginDownloadLastFocus.focus === "function") {
+    pluginDownloadLastFocus.focus({ preventScroll: true });
+  }
+  pluginDownloadLastFocus = null;
 }
 
 function currentCampaignParams() {
@@ -2965,10 +2996,25 @@ document.querySelectorAll("[data-download-close]").forEach((node) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
   const modal = document.getElementById("plugin-download-modal");
   if (!modal || modal.getAttribute("aria-hidden") === "true") return;
-  closePluginDownloadModal();
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePluginDownloadModal();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = pluginDownloadFocusableNodes();
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 
 document.getElementById("plugin-download-form")?.addEventListener("submit", async (event) => {
@@ -3008,7 +3054,11 @@ document.getElementById("plugin-download-form")?.addEventListener("submit", asyn
     const copy = document.getElementById("plugin-download-success-copy");
     if (direct) direct.href = body.download_url;
     if (setup) setup.href = body.setup_guide_url || "/docs";
-    if (copy) copy.textContent = body.email_queued ? "Your download should start automatically. We have also queued an email with the link." : "Your download should start automatically. Email delivery is not configured yet, so keep this direct link handy.";
+    if (copy) {
+      copy.textContent = body.email_status === "sent"
+        ? "Your download should start automatically. We have also emailed you the link."
+        : "Your download should start automatically. Your direct link is ready below.";
+    }
     if (success) success.hidden = false;
     form.hidden = true;
     trackEvent("plugin_download_started", { plugin_slug: pluginSlug, plugin_version: body.version, download_type: "zip", gated: true, funnel_stage: "conversion" });

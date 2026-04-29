@@ -3,6 +3,24 @@ declare(strict_types=1);
 
 define('ABSPATH', __DIR__);
 
+if (! function_exists('esc_url_raw')) {
+	function esc_url_raw($url) {
+		return (string) $url;
+	}
+}
+
+if (! function_exists('wp_parse_url')) {
+	function wp_parse_url($url) {
+		return parse_url((string) $url);
+	}
+}
+
+if (! function_exists('untrailingslashit')) {
+	function untrailingslashit($value) {
+		return rtrim((string) $value, '/');
+	}
+}
+
 require __DIR__ . '/../wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-saas-client.php';
 
 $cases = [

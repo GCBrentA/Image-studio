@@ -37,6 +37,13 @@ const main = async (): Promise<void> => {
     const duplicated = await fetch(`${baseUrl}/api/api/image-studio/health`);
     assert.equal(duplicated.status, 404, "Duplicated /api/api image-studio route should not exist");
 
+    const duplicatedStart = await fetch(`${baseUrl}/api/api/image-studio/audits/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "woocommerce", scan_options: {} })
+    });
+    assert.equal(duplicatedStart.status, 404, "Duplicated /api/api image-studio audit start route should not exist");
+
     console.log("Image audit route checks passed.");
   } finally {
     server.close();

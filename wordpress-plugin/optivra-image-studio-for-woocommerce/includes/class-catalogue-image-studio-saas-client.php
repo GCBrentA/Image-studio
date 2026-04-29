@@ -44,8 +44,9 @@ class Catalogue_Image_Studio_SaaSClient {
 		$base_path = strtolower(trim($base_path, '/'));
 		if ('' !== $base_path) {
 			$segments = array_values(array_filter(explode('/', $base_path), 'strlen'));
-			while (! empty($segments) && 'api' === end($segments)) {
-				array_pop($segments);
+			$api_index = array_search('api', $segments, true);
+			if (false !== $api_index) {
+				$segments = array_slice($segments, 0, (int) $api_index);
 			}
 			$base_path = '' === implode('/', $segments) ? '' : '/' . implode('/', $segments);
 		}
@@ -61,6 +62,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	public static function build_api_url_for_base(string $api_base_url, string $endpoint): string {
 		$base = self::normalize_api_base_url($api_base_url);
 		$base = untrailingslashit(trim($base));
+		$base_api_tail = self::get_api_base_api_tail($api_base_url);
 
 		$endpoint = trim((string) $endpoint);
 		$endpoint_parts = wp_parse_url($endpoint);
@@ -69,13 +71,51 @@ class Catalogue_Image_Studio_SaaSClient {
 		$fragment = isset($endpoint_parts['fragment']) ? '#' . trim((string) $endpoint_parts['fragment']) : '';
 
 		$normalized_endpoint_path = self::normalize_api_endpoint_path($endpoint_path);
-		$final_path = '/api' . $normalized_endpoint_path . $query . $fragment;
+		$endpoint_segments = array_values(array_filter(explode('/', trim($normalized_endpoint_path, '/')), 'strlen'));
+		if (! empty($base_api_tail) && array_slice($endpoint_segments, 0, count($base_api_tail)) === $base_api_tail) {
+			$endpoint_segments = array_slice($endpoint_segments, count($base_api_tail));
+		}
+		$final_segments = array_merge(['api'], $base_api_tail, $endpoint_segments);
+		$final_path = '/' . implode('/', $final_segments) . $query . $fragment;
 
 		if ('' === $base) {
 			return $final_path;
 		}
 
 		return $base . $final_path;
+	}
+
+	/**
+	 * Return path segments that were configured after /api in older API base URLs.
+	 *
+	 * This keeps legacy overrides such as https://www.optivra.app/api/image-studio
+	 * working without creating /api/image-studio/api/image-studio.
+	 *
+	 * @return array<int,string>
+	 */
+	private static function get_api_base_api_tail(string $api_base_url): array {
+		$base = trim(esc_url_raw($api_base_url));
+		if ('' === $base) {
+			return [];
+		}
+
+		$base_parts = wp_parse_url($base);
+		if (false === $base_parts || empty($base_parts['path'])) {
+			return [];
+		}
+
+		$segments = array_values(array_filter(explode('/', strtolower(trim((string) $base_parts['path'], '/'))), 'strlen'));
+		$api_index = array_search('api', $segments, true);
+		if (false === $api_index) {
+			return [];
+		}
+
+		$tail = array_slice($segments, (int) $api_index + 1);
+		while (! empty($tail) && 'api' === $tail[0]) {
+			array_shift($tail);
+		}
+
+		return $tail;
 	}
 
 	private function normalize_request_url(string $path, string $method): string {
@@ -162,7 +202,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			$normalized .= '#' . (string) $parts['fragment'];
 		}
 
-		return preg_replace('#/+#', '/', $normalized);
+		return $normalized;
 	}
 
 	private static function normalize_api_base_path_and_api_segment(string $path): string {
@@ -350,19 +390,25 @@ class Catalogue_Image_Studio_SaaSClient {
 	/**
 	 * Start a free Product Image Health Report audit scan.
 	 *
-	 * @param string              $store_id Store identifier validated by the backend token.
+	 * @param string              $store_id Store identifier returned by the backend usage endpoint, when available.
 	 * @param array<string,mixed> $scan_options Sanitized scan options.
 	 * @return array<string,mixed>|\WP_Error
 	 */
 	public function start_image_audit(string $store_id, array $scan_options = []) {
+		$payload = [
+			'source'       => 'woocommerce',
+			'scan_options' => $scan_options,
+		];
+
+		$store_id = trim($store_id);
+		if ('' !== $store_id) {
+			$payload['store_id'] = $store_id;
+		}
+
 		return $this->request_json(
 			'POST',
 			'/api/image-studio/audits/start',
-			[
-				'store_id'     => $store_id,
-				'source'       => 'woocommerce',
-				'scan_options' => $scan_options,
-			],
+			$payload,
 			30,
 			true
 		);
@@ -382,7 +428,8 @@ class Catalogue_Image_Studio_SaaSClient {
 			[
 				'items' => array_values($items),
 			],
-			45
+			120,
+			true
 		);
 	}
 
@@ -397,7 +444,8 @@ class Catalogue_Image_Studio_SaaSClient {
 			'POST',
 			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/complete',
 			[],
-			60
+			180,
+			true
 		);
 	}
 
@@ -408,9 +456,11 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * @return array<string,mixed>|\WP_Error
 	 */
 	public function get_latest_image_audit(string $store_id) {
+		$store_id = trim($store_id);
+
 		return $this->request_json(
 			'GET',
-			'/api/image-studio/audits/latest?store_id=' . rawurlencode($store_id),
+			'' === $store_id ? '/api/image-studio/audits/latest' : '/api/image-studio/audits/latest?store_id=' . rawurlencode($store_id),
 			[],
 			20
 		);

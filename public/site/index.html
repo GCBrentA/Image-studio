@@ -38,6 +38,7 @@
         <a href="/optivra-image-studio" data-link>Image Studio</a>
         <a href="/free-woocommerce-image-audit" data-link>Free Image Audit</a>
         <a href="/pricing" data-link>Pricing</a>
+        <a href="/downloads" data-link>Download</a>
         <a href="/payment-gateway-rules-for-woocommerce" data-link>Gateway Rules</a>
         <a href="/blog" data-link>Blog</a>
         <a href="/docs" data-link>Docs</a>
@@ -924,22 +925,24 @@
         </div>
       </section>
 
-      <section class="download-modal" id="plugin-download-modal" aria-hidden="true" aria-labelledby="download-modal-title">
+      <section class="download-modal" id="plugin-download-modal" aria-hidden="true" aria-labelledby="download-modal-title" aria-describedby="download-modal-copy">
         <div class="download-modal__backdrop" data-download-close></div>
         <div class="download-modal__dialog" role="dialog" aria-modal="true">
-          <button class="download-modal__close" type="button" data-download-close aria-label="Close download form">×</button>
+          <button class="download-modal__close" type="button" data-download-close aria-label="Close download form">&times;</button>
           <div class="download-modal__content">
-            <p class="eyebrow">Free plugin download</p>
+            <p class="eyebrow">FREE PLUGIN DOWNLOAD</p>
             <h2 id="download-modal-title">Get your Optivra plugin download</h2>
-            <p id="download-modal-copy">Enter your email and we will start the download, send setup help, and keep you in control of follow-up messages.</p>
+            <p id="download-modal-copy" class="download-modal__intro">Enter your email and we will send the download link, setup help, and product updates based on your preferences.</p>
             <form id="plugin-download-form" class="download-lead-form">
               <input type="hidden" name="plugin_slug" id="download-plugin-slug" value="optivra-image-studio" />
-              <label>Email address <input type="email" name="email" required autocomplete="email" /></label>
-              <label>Name <input type="text" name="name" autocomplete="name" /></label>
-              <label>Store URL <input type="url" name="store_url" placeholder="https://example.com" /></label>
-              <label class="checkbox-row"><input type="checkbox" name="consent_product_updates" checked /> Send me plugin setup help and important product updates.</label>
-              <label class="checkbox-row"><input type="checkbox" name="consent_marketing" /> Send me occasional Optivra tips, feature updates and offers.</label>
-              <label class="checkbox-row"><input type="checkbox" name="consent_feedback" checked /> I am happy to receive a follow-up asking for feedback.</label>
+              <label><span>Email address</span><input type="email" name="email" required autocomplete="email" /></label>
+              <label><span>Name</span><input type="text" name="name" autocomplete="name" /></label>
+              <label><span>Store URL</span><input type="url" name="store_url" placeholder="https://example.com" /></label>
+              <div class="download-consent-group" aria-label="Email preferences">
+                <label class="checkbox-row"><input type="checkbox" name="consent_product_updates" checked /> <span>Send me plugin setup help and important product updates.</span></label>
+                <label class="checkbox-row"><input type="checkbox" name="consent_marketing" /> <span>Send me occasional Optivra tips, feature updates and offers.</span></label>
+                <label class="checkbox-row"><input type="checkbox" name="consent_feedback" checked /> <span>I am happy to receive a follow-up asking for feedback.</span></label>
+              </div>
               <p class="privacy-note">We use your email to send the download link, setup help, product updates, and feedback requests according to your choices. You can unsubscribe at any time.</p>
               <div class="form-actions">
                 <button class="button primary" type="submit">Get Download Link</button>
@@ -957,7 +960,9 @@
             </div>
           </div>
         </div>
+      </section>
 
+      <section class="page" data-page="/free-woocommerce-image-audit">
         <div class="page-band compact audit-home-band">
           <section class="landing-section" id="example-report-preview">
             <div data-example-report-mock></div>
