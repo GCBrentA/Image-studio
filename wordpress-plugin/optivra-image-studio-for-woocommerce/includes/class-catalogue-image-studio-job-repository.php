@@ -151,6 +151,82 @@ class Catalogue_Image_Studio_Job_Repository {
 	}
 
 	/**
+	 * Find a local queue job by product and attachment.
+	 *
+	 * @return array<string,mixed>|null
+	 */
+	public function find_by_product_attachment(int $product_id, int $attachment_id, string $image_role = ''): ?array {
+		global $wpdb;
+
+		$table  = catalogue_image_studio_table_name();
+		$params = [$table, absint($product_id), absint($attachment_id)];
+		$where  = 'product_id = %d AND attachment_id = %d';
+
+		if ('' !== $image_role) {
+			$where .= ' AND image_role = %s';
+			$params[] = sanitize_key($image_role);
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE fragment is fixed above and values are prepared in $params.
+		$sql = $wpdb->prepare("SELECT * FROM %i WHERE {$where} LIMIT 1", $params);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Custom plugin queue table lookup.
+		$job = $wpdb->get_row($sql, ARRAY_A);
+
+		return $job ?: null;
+	}
+
+	/**
+	 * Queue a real image-processing job from an audit report queue payload.
+	 *
+	 * @param array<string,mixed> $payload Queue payload from Optivra.
+	 * @return int
+	 */
+	public function queue_from_audit_payload(array $payload): int {
+		$product_id    = absint($payload['product_id'] ?? 0);
+		$attachment_id = absint($payload['image_id'] ?? 0);
+
+		if ($product_id <= 0 || $attachment_id <= 0) {
+			return 0;
+		}
+
+		$image_role = sanitize_key((string) ($payload['image_role'] ?? 'main'));
+		$slot = [
+			'product_id'    => $product_id,
+			'attachment_id' => $attachment_id,
+			'image_role'    => $image_role,
+			'gallery_index' => isset($payload['gallery_index']) ? absint($payload['gallery_index']) : 0,
+		];
+
+		$job_id = $this->upsert_from_slot($slot);
+		if ($job_id <= 0) {
+			return 0;
+		}
+
+		$this->update(
+			$job_id,
+			[
+				'status'                    => 'queued',
+				'queued_at'                 => current_time('mysql', true),
+				'audit_source'              => 'audit_report',
+				'audit_scan_id'             => sanitize_text_field((string) ($payload['scan_id'] ?? '')),
+				'audit_recommendation_id'   => sanitize_text_field((string) ($payload['recommendation_id'] ?? '')),
+				'audit_issue_id'            => sanitize_text_field((string) ($payload['issue_id'] ?? '')),
+				'audit_queue_job_id'        => sanitize_text_field((string) ($payload['id'] ?? '')),
+				'audit_action_type'         => sanitize_key((string) ($payload['action_type'] ?? 'replace_background')),
+				'audit_priority'            => sanitize_key((string) ($payload['priority'] ?? 'medium')),
+				'audit_background_preset'   => sanitize_text_field((string) ($payload['background_preset'] ?? '')),
+				'audit_job_kind'            => sanitize_key((string) ($payload['job_kind'] ?? 'image_processing')),
+				'processing_diagnostics'    => '',
+				'error_message'             => '',
+				'approval_error'            => '',
+			]
+		);
+
+		return $job_id;
+	}
+
+	/**
 	 * @param array<string,mixed> $data Data.
 	 * @return void
 	 */

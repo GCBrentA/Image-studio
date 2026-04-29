@@ -14,6 +14,11 @@ import {
   type AuditRecommendation,
   type AuditScoringItem
 } from "./imageAuditScoringEngine";
+import {
+  classifyAuditQueueAction,
+  mapAuditActionToQueueAction,
+  type AuditQueueActionType
+} from "./imageAuditQueueRules";
 
 type AuditScanRow = {
   id: string;
@@ -106,6 +111,64 @@ type RecommendationDraft = {
   estimatedMinutesSavedHigh: number;
   actionFilter?: Record<string, unknown>;
   displayOrder: number;
+};
+
+type AuditQueueOptions = {
+  backgroundPreset?: string;
+};
+
+type AuditQueueIssueRow = {
+  id: string;
+  scan_id: string;
+  store_id: string;
+  audit_item_id: string | null;
+  product_id: string | null;
+  image_id: string | null;
+  issue_type: string;
+  severity: string;
+  title: string;
+  action_type: string | null;
+  status: string;
+  item_product_id: string | null;
+  item_image_id: string | null;
+  item_image_role: string | null;
+  item_image_url: string | null;
+  item_product_name: string | null;
+  item_category_names: string[] | null;
+};
+
+type AuditRecommendationRow = {
+  id: string;
+  scan_id: string;
+  store_id: string;
+  title: string;
+  priority: string;
+  action_type: string;
+  action_filter: unknown;
+  status: string;
+};
+
+type AuditQueueJobPayload = {
+  id: string;
+  scan_id: string;
+  store_id: string;
+  recommendation_id: string | null;
+  issue_id: string | null;
+  audit_item_id: string | null;
+  action_type: AuditQueueActionType;
+  job_kind: string;
+  product_id: string | null;
+  image_id: string | null;
+  image_role: string | null;
+  source: "audit_report";
+  priority: string;
+  status: string;
+  background_preset: string | null;
+  processing_mode: string;
+  requires_review: boolean;
+  consumes_credit_when_processed: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
 };
 
 const toScoringItem = (item: AuditItemRow): AuditScoringItem => ({
@@ -212,7 +275,7 @@ export class ImageAuditError extends Error {
 const isMissingAuditTableError = (error: unknown): boolean => {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010") {
     const message = String(error.meta?.message ?? "").toLowerCase();
-    return message.includes("image_audit_scans") || message.includes("image_audit_items") || message.includes("undefined_table");
+    return message.includes("image_audit_scans") || message.includes("image_audit_items") || message.includes("image_audit_queue_jobs") || message.includes("undefined_table");
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
@@ -220,7 +283,7 @@ const isMissingAuditTableError = (error: unknown): boolean => {
   }
 
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return message.includes("image_audit_scans") && (message.includes("does not exist") || message.includes("undefined_table"));
+  return (message.includes("image_audit_scans") || message.includes("image_audit_queue_jobs")) && (message.includes("does not exist") || message.includes("undefined_table"));
 };
 
 const auditTableMissingError = (): ImageAuditError =>
@@ -1946,36 +2009,297 @@ export const ignoreAuditIssues = async (
   };
 };
 
+const sanitizeQueueOptions = (options: unknown): AuditQueueOptions => {
+  const input = typeof options === "object" && options !== null ? options as Record<string, unknown> : {};
+  const backgroundPreset = trimText(input.background_preset ?? input.backgroundPreset, "background_preset");
+  return {
+    backgroundPreset
+  };
+};
+
+const normalizeJsonFilter = (value: unknown): Record<string, unknown> => {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+};
+
+const filterValueMatches = (actual: unknown, expected: unknown): boolean => {
+  if (expected == null || expected === "") {
+    return true;
+  }
+  if (Array.isArray(expected)) {
+    return expected.map((value) => String(value).toLowerCase()).includes(String(actual ?? "").toLowerCase());
+  }
+  return String(actual ?? "").toLowerCase() === String(expected).toLowerCase();
+};
+
+const issueMatchesRecommendationFilter = (
+  issue: AuditQueueIssueRow,
+  recommendation: AuditRecommendationRow
+): boolean => {
+  const filter = normalizeJsonFilter(recommendation.action_filter);
+  if (!Object.keys(filter).length) {
+    return true;
+  }
+
+  if (!filterValueMatches(issue.issue_type, filter.issue_type)) {
+    return false;
+  }
+  if (!filterValueMatches(issue.severity, filter.severity)) {
+    return false;
+  }
+  if (!filterValueMatches(issue.item_image_role ?? issue.image_id, filter.image_role)) {
+    return false;
+  }
+  if (!filterValueMatches(issue.product_id ?? issue.item_product_id, filter.product_id)) {
+    return false;
+  }
+
+  const category = filter.category ?? filter.category_name;
+  if (category != null && category !== "") {
+    const categories = issue.item_category_names ?? [];
+    const expected = Array.isArray(category) ? category : [category];
+    const expectedSet = expected.map((value) => String(value).toLowerCase());
+    if (!categories.some((name) => expectedSet.includes(String(name).toLowerCase()))) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const selectQueueableIssues = async (
+  scan: AuditScanRow,
+  issueIds?: string[]
+): Promise<AuditQueueIssueRow[]> => {
+  const idFilter = issueIds && issueIds.length
+    ? Prisma.sql`AND i."id" IN (${Prisma.join(issueIds.map((id) => Prisma.sql`${id}::uuid`))})`
+    : Prisma.empty;
+
+  return prisma.$queryRaw<AuditQueueIssueRow[]>`
+    SELECT
+      i."id"::text,
+      i."scan_id"::text,
+      i."store_id",
+      i."audit_item_id"::text,
+      i."product_id",
+      i."image_id",
+      i."issue_type",
+      i."severity",
+      i."title",
+      i."action_type",
+      i."status",
+      item."product_id" AS "item_product_id",
+      item."image_id" AS "item_image_id",
+      item."image_role" AS "item_image_role",
+      item."image_url" AS "item_image_url",
+      item."product_name" AS "item_product_name",
+      item."category_names" AS "item_category_names"
+    FROM "image_audit_issues" i
+    LEFT JOIN "image_audit_items" item ON item."id" = i."audit_item_id"
+    WHERE i."scan_id" = ${scan.id}::uuid
+      AND i."store_id" = ${scan.store_id}
+      AND i."status" IN ('open', 'queued')
+      ${idFilter}
+    ORDER BY
+      CASE i."severity"
+        WHEN 'critical' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END,
+      i."created_at" ASC
+    LIMIT 500
+  `;
+};
+
+const insertAuditQueueJob = async (
+  scan: AuditScanRow,
+  source: {
+    recommendationId?: string | null;
+    issue?: AuditQueueIssueRow;
+    actionType: AuditQueueActionType;
+    priority: string;
+    options: AuditQueueOptions;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<AuditQueueJobPayload | null> => {
+  const policy = classifyAuditQueueAction(source.actionType);
+  const issue = source.issue;
+  const auditItemId = issue?.audit_item_id ?? null;
+  const productId = issue?.product_id ?? issue?.item_product_id ?? null;
+  const imageId = issue?.image_id ?? issue?.item_image_id ?? null;
+  const imageRole = issue?.item_image_role ?? null;
+  const backgroundPreset = policy.jobKind === "image_processing" ? source.options.backgroundPreset ?? "optivra-default" : null;
+  const metadata = {
+    source: "audit_report",
+    issue_type: issue?.issue_type,
+    issue_title: issue?.title,
+    product_name: issue?.item_product_name,
+    image_url: issue?.item_image_url,
+    preserve_mode_required: policy.processingMode === "preserve",
+    failed_safety_checks_not_charged: policy.jobKind === "image_processing",
+    preview_required_before_apply: policy.requiresReview,
+    ...source.metadata
+  };
+  const metadataJson = JSON.stringify(metadata);
+
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    INSERT INTO "image_audit_queue_jobs" (
+      "scan_id",
+      "store_id",
+      "recommendation_id",
+      "issue_id",
+      "audit_item_id",
+      "action_type",
+      "job_kind",
+      "product_id",
+      "image_id",
+      "image_role",
+      "source",
+      "priority",
+      "status",
+      "background_preset",
+      "processing_mode",
+      "requires_review",
+      "consumes_credit_when_processed",
+      "metadata"
+    )
+    VALUES (
+      ${scan.id}::uuid,
+      ${scan.store_id},
+      ${source.recommendationId ? Prisma.sql`${source.recommendationId}::uuid` : Prisma.sql`NULL`},
+      ${issue?.id ? Prisma.sql`${issue.id}::uuid` : Prisma.sql`NULL`},
+      ${auditItemId ? Prisma.sql`${auditItemId}::uuid` : Prisma.sql`NULL`},
+      ${policy.actionType},
+      ${policy.jobKind},
+      ${productId},
+      ${imageId},
+      ${imageRole},
+      'audit_report',
+      ${source.priority},
+      'queued',
+      ${backgroundPreset},
+      ${policy.processingMode},
+      ${policy.requiresReview},
+      ${policy.consumesCreditWhenProcessed},
+      ${metadataJson}::jsonb
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING
+      "id"::text,
+      "scan_id"::text,
+      "store_id",
+      "recommendation_id"::text,
+      "issue_id"::text,
+      "audit_item_id"::text,
+      "action_type",
+      "job_kind",
+      "product_id",
+      "image_id",
+      "image_role",
+      "source",
+      "priority",
+      "status",
+      "background_preset",
+      "processing_mode",
+      "requires_review",
+      "consumes_credit_when_processed",
+      "metadata",
+      "created_at"
+  `;
+
+  return serializeRecord(rows[0] ?? null) as AuditQueueJobPayload | null;
+};
+
+const queueIssuesForScan = async (
+  scan: AuditScanRow,
+  issues: AuditQueueIssueRow[],
+  options: AuditQueueOptions,
+  recommendationId?: string
+): Promise<AuditQueueJobPayload[]> => {
+  const created: AuditQueueJobPayload[] = [];
+
+  for (const issue of issues) {
+    const actionType = mapAuditActionToQueueAction(issue.action_type, issue.issue_type);
+    const row = await insertAuditQueueJob(scan, {
+      recommendationId: recommendationId ?? null,
+      issue,
+      actionType,
+      priority: issue.severity || "medium",
+      options
+    });
+    if (row) {
+      created.push(row);
+    }
+  }
+
+  if (issues.length) {
+    await prisma.$executeRaw`
+      UPDATE "image_audit_issues"
+      SET "status" = 'queued', "updated_at" = now()
+      WHERE "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+        AND "id" IN (${Prisma.join(issues.map((issue) => Prisma.sql`${issue.id}::uuid`))})
+        AND "status" IN ('open', 'queued')
+    `;
+  }
+
+  return created;
+};
+
 export const queueAuditIssues = async (
   auth: ImageStudioAuthContext,
   scanId: string,
-  issueIds: unknown
+  issueIds: unknown,
+  options?: unknown
 ): Promise<Record<string, unknown>> => {
-  await getAuthorizedScan(auth, scanId);
+  const scan = await getAuthorizedScan(auth, scanId);
   if (!Array.isArray(issueIds) || issueIds.length < 1 || issueIds.length > 100) {
     throw new ImageAuditError("issue_ids must contain 1 to 100 IDs", 400);
   }
-  issueIds.forEach((id) => requireUuid(String(id)));
+  const ids = issueIds.map((id) => requireUuid(String(id)));
+  const queueOptions = sanitizeQueueOptions(options);
+  const issues = await selectQueueableIssues(scan, ids);
 
-  // TODO: Connect this to the existing image processing queue once report actions
-  // are mapped to concrete WooCommerce product image job payloads.
+  if (!issues.length) {
+    throw new ImageAuditError("No open issues found for this scan", 404);
+  }
+
+  const queueJobs = await queueIssuesForScan(scan, issues, queueOptions);
   return {
-    status: "not_implemented",
-    queued_count: 0,
-    message: "Queue integration for audit issues is not implemented yet."
+    ok: true,
+    status: "queued",
+    queued_count: queueJobs.length,
+    skipped_existing_count: Math.max(0, issues.length - queueJobs.length),
+    queue_jobs: queueJobs,
+    message: queueJobs.length
+      ? "Audit issues were added to the queue."
+      : "These audit issues were already queued."
   };
 };
 
 export const queueAuditRecommendation = async (
   auth: ImageStudioAuthContext,
   scanId: string,
-  recommendationId: unknown
+  recommendationId: unknown,
+  options?: unknown
 ): Promise<Record<string, unknown>> => {
   const scan = await getAuthorizedScan(auth, scanId);
   const id = trimText(recommendationId, "recommendation_id", true);
   requireUuid(id ?? "");
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT "id"::text
+  const rows = await prisma.$queryRaw<AuditRecommendationRow[]>`
+    SELECT
+      "id"::text,
+      "scan_id"::text,
+      "store_id",
+      "title",
+      "priority",
+      "action_type",
+      "action_filter",
+      "status"
     FROM "image_audit_recommendations"
     WHERE "id" = ${id}::uuid
       AND "scan_id" = ${scan.id}::uuid
@@ -1987,12 +2311,135 @@ export const queueAuditRecommendation = async (
     throw new ImageAuditError("Recommendation not found for this scan", 404);
   }
 
-  // TODO: Connect this to the existing image processing queue once recommendation
-  // filters can be converted into concrete local WooCommerce job selections.
+  const recommendation = rows[0];
+  const queueOptions = sanitizeQueueOptions(options);
+  const issues = (await selectQueueableIssues(scan)).filter((issue) =>
+    issueMatchesRecommendationFilter(issue, recommendation)
+  );
+  let queueJobs = await queueIssuesForScan(scan, issues, queueOptions, recommendation.id);
+
+  if (!queueJobs.length && !issues.length) {
+    const actionType = mapAuditActionToQueueAction(recommendation.action_type);
+    const row = await insertAuditQueueJob(scan, {
+      recommendationId: recommendation.id,
+      actionType,
+      priority: recommendation.priority || "medium",
+      options: queueOptions,
+      metadata: {
+        recommendation_title: recommendation.title,
+        action_filter: recommendation.action_filter
+      }
+    });
+    queueJobs = row ? [row] : [];
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "image_audit_recommendations"
+    SET "status" = 'queued', "updated_at" = now()
+    WHERE "id" = ${recommendation.id}::uuid
+      AND "scan_id" = ${scan.id}::uuid
+      AND "store_id" = ${scan.store_id}
+      AND "status" IN ('available', 'queued')
+  `;
+
   return {
-    status: "not_implemented",
-    queued_count: 0,
+    ok: true,
+    status: "queued",
+    queued_count: queueJobs.length,
     recommendation_id: id,
-    message: "Queue integration for audit recommendations is not implemented yet."
+    queue_jobs: queueJobs,
+    message: queueJobs.length
+      ? "Recommendation jobs were added to the queue."
+      : "This recommendation was already queued."
+  };
+};
+
+export const listAuditQueueJobs = async (
+  auth: ImageStudioAuthContext,
+  query: Record<string, unknown>,
+  scanId?: string
+): Promise<Record<string, unknown>> => {
+  const limit = Math.min(toSafeInteger(Number(query.limit), 100) ?? 50, 100);
+  const offset = toSafeInteger(Number(query.offset), 100_000) ?? 0;
+  const status = trimText(query.status, "status");
+  const storeId = trimText(query.store_id, "store_id");
+
+  let scan: AuditScanRow | null = null;
+  if (scanId) {
+    scan = await getAuthorizedScan(auth, scanId);
+  } else if (storeId) {
+    await assertStoreAccess(auth, storeId);
+  }
+
+  const where: Prisma.Sql[] = [];
+  if (scan) {
+    where.push(Prisma.sql`q."scan_id" = ${scan.id}::uuid`);
+    where.push(Prisma.sql`q."store_id" = ${scan.store_id}`);
+  } else if (storeId) {
+    where.push(Prisma.sql`q."store_id" = ${storeId}`);
+  } else if (auth.authType === "site_token" && auth.siteId) {
+    where.push(Prisma.sql`q."store_id" = ${auth.siteId}`);
+  } else {
+    where.push(Prisma.sql`s."user_id" = ${auth.userId}`);
+  }
+  if (status) {
+    where.push(Prisma.sql`q."status" = ${status}`);
+  }
+
+  const whereSql = where.length ? Prisma.sql`WHERE ${Prisma.join(where, " AND ")}` : Prisma.empty;
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT
+      q."id"::text,
+      q."scan_id"::text,
+      q."store_id",
+      q."recommendation_id"::text,
+      q."issue_id"::text,
+      q."audit_item_id"::text,
+      q."action_type",
+      q."job_kind",
+      q."product_id",
+      q."image_id",
+      q."image_role",
+      q."source",
+      q."priority",
+      q."status",
+      q."background_preset",
+      q."processing_mode",
+      q."requires_review",
+      q."consumes_credit_when_processed",
+      q."metadata",
+      q."created_at",
+      issue."title" AS "issue_title",
+      recommendation."title" AS "recommendation_title"
+    FROM "image_audit_queue_jobs" q
+    INNER JOIN "image_audit_scans" s ON s."id" = q."scan_id"
+    LEFT JOIN "image_audit_issues" issue ON issue."id" = q."issue_id"
+    LEFT JOIN "image_audit_recommendations" recommendation ON recommendation."id" = q."recommendation_id"
+    ${whereSql}
+    ORDER BY
+      CASE q."priority"
+        WHEN 'critical' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END,
+      q."created_at" DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+
+  const countRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS "count"
+    FROM "image_audit_queue_jobs" q
+    INNER JOIN "image_audit_scans" s ON s."id" = q."scan_id"
+    ${whereSql}
+  `;
+
+  return {
+    queue_jobs: rows.map(serializeRecord),
+    total_count: Number(countRows[0]?.count ?? 0),
+    limit,
+    offset
   };
 };

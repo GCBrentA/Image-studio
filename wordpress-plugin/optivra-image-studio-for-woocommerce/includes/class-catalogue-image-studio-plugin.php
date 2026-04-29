@@ -153,6 +153,15 @@ class Catalogue_Image_Studio_Plugin {
 			edge_to_edge_right tinyint(1) NOT NULL DEFAULT 0,
 			edge_to_edge_top tinyint(1) NOT NULL DEFAULT 0,
 			edge_to_edge_bottom tinyint(1) NOT NULL DEFAULT 0,
+			audit_source varchar(40) NULL,
+			audit_scan_id varchar(80) NULL,
+			audit_recommendation_id varchar(80) NULL,
+			audit_issue_id varchar(80) NULL,
+			audit_queue_job_id varchar(80) NULL,
+			audit_action_type varchar(40) NULL,
+			audit_priority varchar(20) NULL,
+			audit_background_preset varchar(100) NULL,
+			audit_job_kind varchar(40) NULL,
 			status varchar(20) NOT NULL DEFAULT 'unprocessed',
 			error_message longtext NULL,
 			approval_error longtext NULL,
@@ -167,7 +176,9 @@ class Catalogue_Image_Studio_Plugin {
 			UNIQUE KEY product_slot (product_id, image_role, gallery_index),
 			KEY status (status),
 			KEY product_id (product_id),
-			KEY attachment_id (attachment_id)
+			KEY attachment_id (attachment_id),
+			KEY audit_source (audit_source),
+			KEY audit_scan_id (audit_scan_id)
 		) {$charset_collate};";
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- dbDelta is required for the plugin's custom queue table.

@@ -105,6 +105,7 @@ model ConnectedSite {
   image_audit_insights        ImageAuditInsight[]
   image_audit_category_scores ImageAuditCategoryScore[]
   image_audit_recommendations ImageAuditRecommendation[]
+  image_audit_queue_jobs      ImageAuditQueueJob[]
 
   @@unique([user_id, domain])
   @@unique([api_token_hash])
@@ -442,6 +443,7 @@ model ImageAuditScan {
   insights                    ImageAuditInsight[]
   category_scores             ImageAuditCategoryScore[]
   recommendations             ImageAuditRecommendation[]
+  queue_jobs                  ImageAuditQueueJob[]
 
   @@index([store_id, created_at(sort: Desc)])
   @@index([store_id, status])
@@ -531,8 +533,8 @@ model ImageAuditScanMetric {
 }
 
 model ImageAuditItem {
-  id                     String            @id @default(uuid()) @db.Uuid
-  scan_id                String            @db.Uuid
+  id                     String               @id @default(uuid()) @db.Uuid
+  scan_id                String               @db.Uuid
   store_id               String
   product_id             String
   product_name           String?
@@ -540,9 +542,9 @@ model ImageAuditItem {
   product_url            String?
   image_id               String?
   image_url              String
-  image_role             String            @default("unknown")
-  category_ids           String[]          @default([])
-  category_names         String[]          @default([])
+  image_role             String               @default("unknown")
+  category_ids           String[]             @default([])
+  category_names         String[]             @default([])
   filename               String?
   file_extension         String?
   mime_type              String?
@@ -552,27 +554,28 @@ model ImageAuditItem {
   alt_text               String?
   image_title            String?
   caption                String?
-  aspect_ratio           Decimal?          @db.Decimal(10, 4)
+  aspect_ratio           Decimal?             @db.Decimal(10, 4)
   background_style       String?
   detected_product_bbox  Json?
-  product_area_ratio     Decimal?          @db.Decimal(8, 4)
-  brightness_score       Decimal?          @db.Decimal(8, 4)
-  contrast_score         Decimal?          @db.Decimal(8, 4)
-  sharpness_score        Decimal?          @db.Decimal(8, 4)
-  clutter_score          Decimal?          @db.Decimal(8, 4)
-  quality_score          Decimal?          @db.Decimal(5, 2)
-  seo_score              Decimal?          @db.Decimal(5, 2)
-  consistency_score      Decimal?          @db.Decimal(5, 2)
-  performance_score      Decimal?          @db.Decimal(5, 2)
-  google_readiness_score Decimal?          @db.Decimal(5, 2)
-  issue_count            Int               @default(0)
+  product_area_ratio     Decimal?             @db.Decimal(8, 4)
+  brightness_score       Decimal?             @db.Decimal(8, 4)
+  contrast_score         Decimal?             @db.Decimal(8, 4)
+  sharpness_score        Decimal?             @db.Decimal(8, 4)
+  clutter_score          Decimal?             @db.Decimal(8, 4)
+  quality_score          Decimal?             @db.Decimal(5, 2)
+  seo_score              Decimal?             @db.Decimal(5, 2)
+  consistency_score      Decimal?             @db.Decimal(5, 2)
+  performance_score      Decimal?             @db.Decimal(5, 2)
+  google_readiness_score Decimal?             @db.Decimal(5, 2)
+  issue_count            Int                  @default(0)
   highest_severity       String?
   recommended_action     String?
-  created_at             DateTime          @default(now())
-  updated_at             DateTime          @updatedAt
-  scan                   ImageAuditScan    @relation(fields: [scan_id], references: [id], onDelete: Cascade)
-  store                  ConnectedSite     @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  created_at             DateTime             @default(now())
+  updated_at             DateTime             @updatedAt
+  scan                   ImageAuditScan       @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                  ConnectedSite        @relation(fields: [store_id], references: [id], onDelete: Cascade)
   issues                 ImageAuditIssue[]
+  queue_jobs             ImageAuditQueueJob[]
 
   @@index([scan_id])
   @@index([store_id, product_id])
@@ -582,10 +585,10 @@ model ImageAuditItem {
 }
 
 model ImageAuditIssue {
-  id                 String          @id @default(uuid()) @db.Uuid
-  scan_id            String          @db.Uuid
+  id                 String               @id @default(uuid()) @db.Uuid
+  scan_id            String               @db.Uuid
   store_id           String
-  audit_item_id      String?         @db.Uuid
+  audit_item_id      String?              @db.Uuid
   product_id         String?
   image_id           String?
   issue_type         String
@@ -594,15 +597,16 @@ model ImageAuditIssue {
   description        String
   recommended_action String
   action_type        String?
-  confidence_score   Decimal?        @db.Decimal(5, 2)
-  status             String          @default("open")
-  metadata           Json            @default("{}")
-  created_at         DateTime        @default(now())
-  updated_at         DateTime        @updatedAt
+  confidence_score   Decimal?             @db.Decimal(5, 2)
+  status             String               @default("open")
+  metadata           Json                 @default("{}")
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @updatedAt
   resolved_at        DateTime?
-  scan               ImageAuditScan  @relation(fields: [scan_id], references: [id], onDelete: Cascade)
-  store              ConnectedSite   @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  audit_item         ImageAuditItem? @relation(fields: [audit_item_id], references: [id], onDelete: Cascade)
+  scan               ImageAuditScan       @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store              ConnectedSite        @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  audit_item         ImageAuditItem?      @relation(fields: [audit_item_id], references: [id], onDelete: Cascade)
+  queue_jobs         ImageAuditQueueJob[]
 
   @@index([scan_id, severity])
   @@index([scan_id, issue_type])
@@ -662,24 +666,64 @@ model ImageAuditCategoryScore {
 }
 
 model ImageAuditRecommendation {
-  id                           String         @id @default(uuid()) @db.Uuid
-  scan_id                      String         @db.Uuid
+  id                           String               @id @default(uuid()) @db.Uuid
+  scan_id                      String               @db.Uuid
   store_id                     String
   title                        String
   description                  String
   priority                     String
   action_type                  String
-  estimated_images_affected    Int            @default(0)
-  estimated_minutes_saved_low  Int            @default(0)
-  estimated_minutes_saved_high Int            @default(0)
-  action_filter                Json           @default("{}")
-  status                       String         @default("available")
-  display_order                Int            @default(0)
-  created_at                   DateTime       @default(now())
-  updated_at                   DateTime       @updatedAt
-  scan                         ImageAuditScan @relation(fields: [scan_id], references: [id], onDelete: Cascade)
-  store                        ConnectedSite  @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  estimated_images_affected    Int                  @default(0)
+  estimated_minutes_saved_low  Int                  @default(0)
+  estimated_minutes_saved_high Int                  @default(0)
+  action_filter                Json                 @default("{}")
+  status                       String               @default("available")
+  display_order                Int                  @default(0)
+  created_at                   DateTime             @default(now())
+  updated_at                   DateTime             @updatedAt
+  scan                         ImageAuditScan       @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                        ConnectedSite        @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  queue_jobs                   ImageAuditQueueJob[]
 
   @@index([scan_id, priority])
   @@map("image_audit_recommendations")
+}
+
+model ImageAuditQueueJob {
+  id                             String                    @id @default(uuid()) @db.Uuid
+  scan_id                        String                    @db.Uuid
+  store_id                       String
+  recommendation_id              String?                   @db.Uuid
+  issue_id                       String?                   @db.Uuid
+  audit_item_id                  String?                   @db.Uuid
+  action_type                    String
+  job_kind                       String
+  product_id                     String?
+  image_id                       String?
+  image_role                     String?
+  source                         String                    @default("audit_report")
+  priority                       String                    @default("medium")
+  status                         String                    @default("queued")
+  background_preset              String?
+  processing_mode                String                    @default("none")
+  requires_review                Boolean                   @default(true)
+  consumes_credit_when_processed Boolean                   @default(false)
+  metadata                       Json                      @default("{}")
+  created_at                     DateTime                  @default(now())
+  updated_at                     DateTime                  @updatedAt
+  completed_at                   DateTime?
+  failed_at                      DateTime?
+  failure_reason                 String?
+  scan                           ImageAuditScan            @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  store                          ConnectedSite             @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  recommendation                 ImageAuditRecommendation? @relation(fields: [recommendation_id], references: [id], onDelete: SetNull)
+  issue                          ImageAuditIssue?          @relation(fields: [issue_id], references: [id], onDelete: SetNull)
+  audit_item                     ImageAuditItem?           @relation(fields: [audit_item_id], references: [id], onDelete: SetNull)
+
+  @@index([scan_id, status])
+  @@index([store_id, created_at(sort: Desc)])
+  @@index([recommendation_id])
+  @@index([issue_id])
+  @@index([action_type])
+  @@map("image_audit_queue_jobs")
 }

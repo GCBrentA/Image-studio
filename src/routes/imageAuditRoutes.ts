@@ -8,6 +8,7 @@ import {
   listImageAudits,
   listImageAuditIssues,
   listImageAuditItems,
+  listImageAuditQueueJobs,
   queueImageAuditIssues,
   queueImageAuditRecommendation,
   startImageAudit
@@ -28,7 +29,11 @@ imageAuditRoutes.get("/health", (_request, response) => {
       "GET /api/image-studio/audits/latest",
       "GET /api/image-studio/audits/:scanId",
       "GET /api/image-studio/audits/:scanId/issues",
-      "GET /api/image-studio/audits/:scanId/items"
+      "GET /api/image-studio/audits/:scanId/items",
+      "GET /api/image-studio/audits/:scanId/queue-jobs",
+      "GET /api/image-studio/audit-queue",
+      "POST /api/image-studio/audits/:scanId/issues/queue",
+      "POST /api/image-studio/audits/:scanId/queue-recommendation"
     ]
   });
 });
@@ -45,6 +50,10 @@ imageAuditRoutes.get("/audits/latest", (request, response, next) => {
 
 imageAuditRoutes.get("/audits", (request, response, next) => {
   listImageAudits(request, response).catch(next);
+});
+
+imageAuditRoutes.get("/audit-queue", (request, response, next) => {
+  listImageAuditQueueJobs(request, response).catch(next);
 });
 
 imageAuditRoutes.post("/audits/:scan_id/items", (request, response, next) => {
@@ -65,6 +74,10 @@ imageAuditRoutes.get("/audits/:scan_id/issues", (request, response, next) => {
 
 imageAuditRoutes.get("/audits/:scan_id/items", (request, response, next) => {
   listImageAuditItems(request, response).catch(next);
+});
+
+imageAuditRoutes.get("/audits/:scan_id/queue-jobs", (request, response, next) => {
+  listImageAuditQueueJobs(request, response).catch(next);
 });
 
 imageAuditRoutes.post("/audits/:scan_id/issues/ignore", (request, response, next) => {

@@ -1121,12 +1121,16 @@ class Catalogue_Image_Studio_Admin {
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- Nonce verified above.
 		$action = sanitize_key(wp_unslash($_POST['optivra_recommendation_action']));
 		$key = isset($_POST['optivra_recommendation_key']) ? sanitize_text_field(wp_unslash($_POST['optivra_recommendation_key'])) : '';
+		$posted_recommendation_id = isset($_POST['optivra_recommendation_id']) ? sanitize_text_field(wp_unslash($_POST['optivra_recommendation_id'])) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		$context = $this->get_recommendation_report_context();
 		$scan_id = (string) ($context['scan_id'] ?? '');
 		$recommendations = isset($context['recommendations']) && is_array($context['recommendations']) ? $context['recommendations'] : [];
 		$recommendation = $this->find_recommendation_by_key($recommendations, $key);
+		if (empty($recommendation) && '' !== $posted_recommendation_id) {
+			$recommendation = $this->find_recommendation_by_id($recommendations, $posted_recommendation_id);
+		}
 
 		if ('' === $scan_id || empty($recommendation)) {
 			$this->queue_notice(__('That recommendation is no longer available. Run a new scan or refresh the report.', 'optivra-image-studio-for-woocommerce'), 'error');
@@ -1149,7 +1153,14 @@ class Catalogue_Image_Studio_Admin {
 				exit;
 			}
 
-			$result = $this->plugin->client()->queue_audit_recommendation($scan_id, $recommendation_id);
+			$settings = $this->plugin->get_settings();
+			$result = $this->plugin->client()->queue_audit_recommendation(
+				$scan_id,
+				$recommendation_id,
+				[
+					'background_preset' => (string) ($settings['background_preset'] ?? 'optivra-default'),
+				]
+			);
 			if (is_wp_error($result)) {
 				$this->queue_notice($result->get_error_message(), 'error');
 			} else {
@@ -1158,7 +1169,18 @@ class Catalogue_Image_Studio_Admin {
 				if ('not_implemented' === $status) {
 					$this->queue_notice('' !== $message ? $message : __('Queue integration for recommendations is not available yet.', 'optivra-image-studio-for-woocommerce'), 'error');
 				} else {
-					$this->queue_notice(__('Recommendation sent to the processing queue.', 'optivra-image-studio-for-woocommerce'), 'success');
+					$local_created = $this->queue_local_image_jobs_from_audit_response(is_array($result) ? $result : []);
+					$queued_count = isset($result['queued_count']) ? (int) $result['queued_count'] : 0;
+					if ($local_created > 0) {
+						$this->queue_notice(sprintf(
+							/* translators: 1: backend queue count, 2: local image-processing job count. */
+							__('%1$d audit task(s) queued. %2$d preserve-mode image processing job(s) were added to this store queue.', 'optivra-image-studio-for-woocommerce'),
+							max(0, $queued_count),
+							$local_created
+						), 'success');
+					} else {
+						$this->queue_notice('' !== $message ? $message : __('Recommendation queued for review. SEO-only and optimisation tasks do not create AI image-processing jobs automatically.', 'optivra-image-studio-for-woocommerce'), 'success');
+					}
 				}
 			}
 
@@ -1169,6 +1191,72 @@ class Catalogue_Image_Studio_Admin {
 		$this->queue_notice(__('Unknown recommendation action.', 'optivra-image-studio-for-woocommerce'), 'error');
 		wp_safe_redirect($this->get_admin_page_url('recommendations'));
 		exit;
+	}
+
+	/**
+	 * Create local image-processing jobs only for audit queue payloads that need preserve-mode image processing.
+	 *
+	 * @param array<string,mixed> $result Backend response.
+	 * @return int
+	 */
+	private function queue_local_image_jobs_from_audit_response(array $result): int {
+		$queue_jobs = isset($result['queue_jobs']) && is_array($result['queue_jobs']) ? $result['queue_jobs'] : [];
+		$created = 0;
+
+		foreach ($queue_jobs as $queue_job) {
+			if (! is_array($queue_job)) {
+				continue;
+			}
+
+			$job_kind = sanitize_key((string) ($queue_job['job_kind'] ?? ''));
+			$action_type = sanitize_key((string) ($queue_job['action_type'] ?? ''));
+			if ('image_processing' !== $job_kind || ! in_array($action_type, ['replace_background', 'standardise_background', 'resize_crop'], true)) {
+				continue;
+			}
+
+			$product_id = absint($queue_job['product_id'] ?? 0);
+			$attachment_id = absint($queue_job['image_id'] ?? 0);
+			if ($product_id <= 0 || $attachment_id <= 0 || ! get_post($product_id) || ! get_post($attachment_id)) {
+				continue;
+			}
+
+			$queue_job['image_role'] = $this->normalize_audit_queue_image_role((string) ($queue_job['image_role'] ?? 'main'));
+			$queue_job['gallery_index'] = $this->resolve_gallery_index_for_audit_job($product_id, $attachment_id, (string) $queue_job['image_role']);
+			$job_id = $this->plugin->jobs()->queue_from_audit_payload($queue_job);
+			if ($job_id > 0) {
+				++$created;
+			}
+		}
+
+		return $created;
+	}
+
+	private function normalize_audit_queue_image_role(string $image_role): string {
+		$image_role = sanitize_key($image_role);
+		if ('featured' === $image_role) {
+			return 'main';
+		}
+		if ('category_thumbnail' === $image_role) {
+			return 'category';
+		}
+
+		return in_array($image_role, ['main', 'gallery', 'variation', 'category'], true) ? $image_role : 'main';
+	}
+
+	private function resolve_gallery_index_for_audit_job(int $product_id, int $attachment_id, string $image_role): int {
+		if ('gallery' !== $image_role) {
+			return 0;
+		}
+
+		$product = wc_get_product($product_id);
+		if (! $product) {
+			return 0;
+		}
+
+		$gallery_ids = array_values(array_map('absint', $product->get_gallery_image_ids()));
+		$index = array_search($attachment_id, $gallery_ids, true);
+
+		return false === $index ? 0 : (int) $index;
 	}
 
 	public function ajax_image_audit_start(): void {
@@ -1667,13 +1755,14 @@ class Catalogue_Image_Studio_Admin {
 	/**
 	 * @param array<string,mixed> $recommendation Recommendation row.
 	 */
-	private function render_audit_recommendation_card(array $recommendation): void {
+	private function render_audit_recommendation_card(array $recommendation, string $scan_id = ''): void {
 		$title = $this->report_text($recommendation, ['title'], __('Recommended fix', 'optivra-image-studio-for-woocommerce'));
 		$description = $this->report_text($recommendation, ['description', 'body'], '');
 		$priority = $this->report_text($recommendation, ['priority', 'severity'], 'medium');
 		$affected = (int) $this->report_number($recommendation, ['estimated_images_affected', 'images_affected'], 0);
 		$minutes_low = (int) $this->report_number($recommendation, ['estimated_minutes_saved_low'], 0);
 		$minutes_high = (int) $this->report_number($recommendation, ['estimated_minutes_saved_high'], 0);
+		$recommendation_id = $this->get_recommendation_id($recommendation);
 		?>
 		<section class="optivra-recommendation-card">
 			<div class="optivra-card-topline">
@@ -1686,7 +1775,16 @@ class Catalogue_Image_Studio_Admin {
 				<span><?php echo esc_html(sprintf(__('%1$d-%2$d min saved', 'optivra-image-studio-for-woocommerce'), $minutes_low, $minutes_high)); ?></span>
 			</div>
 			<div class="optivra-rec-actions">
-				<button type="button" class="button optivra-action-button is-secondary" disabled><?php echo esc_html__('Add to Queue', 'optivra-image-studio-for-woocommerce'); ?> - <?php echo esc_html__('Coming soon', 'optivra-image-studio-for-woocommerce'); ?></button>
+				<?php if ('' !== $scan_id && '' !== $recommendation_id) : ?>
+					<form method="post" action="">
+						<?php wp_nonce_field('optivra_recommendation_action', 'optivra_recommendation_action_nonce'); ?>
+						<input type="hidden" name="optivra_recommendation_action" value="queue_recommendation" />
+						<input type="hidden" name="optivra_recommendation_id" value="<?php echo esc_attr($recommendation_id); ?>" />
+						<button type="submit" class="button button-primary optivra-action-button is-primary"><?php echo esc_html__('Add to Queue', 'optivra-image-studio-for-woocommerce'); ?></button>
+					</form>
+				<?php else : ?>
+					<button type="button" class="button optivra-action-button is-secondary" disabled><?php echo esc_html__('Add to Queue', 'optivra-image-studio-for-woocommerce'); ?></button>
+				<?php endif; ?>
 				<a class="button optivra-action-button is-secondary" href="<?php echo esc_url($this->get_admin_page_url('review')); ?>"><?php echo esc_html__('Review', 'optivra-image-studio-for-woocommerce'); ?></a>
 			</div>
 		</section>
@@ -2486,7 +2584,7 @@ class Catalogue_Image_Studio_Admin {
 						<?php $this->render_recommendation_card(__('Review highest-priority images', 'optivra-image-studio-for-woocommerce'), __('Optivra will show targeted recommendations here after the backend returns report actions.', 'optivra-image-studio-for-woocommerce'), 'info', $this->get_admin_page_url('scan')); ?>
 					<?php else : ?>
 						<?php foreach ($recommendations as $recommendation) : ?>
-							<?php $this->render_audit_recommendation_card($recommendation); ?>
+							<?php $this->render_audit_recommendation_card($recommendation, (string) ($scan['id'] ?? '')); ?>
 						<?php endforeach; ?>
 					<?php endif; ?>
 				</div>
@@ -2702,6 +2800,20 @@ class Catalogue_Image_Studio_Admin {
 	private function find_recommendation_by_key(array $recommendations, string $key): array {
 		foreach ($recommendations as $recommendation) {
 			if ($key === (string) ($recommendation['key'] ?? '')) {
+				return $recommendation;
+			}
+		}
+
+		return [];
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $recommendations Recommendations.
+	 * @return array<string,mixed>
+	 */
+	private function find_recommendation_by_id(array $recommendations, string $id): array {
+		foreach ($recommendations as $recommendation) {
+			if ($id === (string) ($recommendation['id'] ?? '')) {
 				return $recommendation;
 			}
 		}
@@ -4144,6 +4256,12 @@ class Catalogue_Image_Studio_Admin {
 		$background_preset = (string) ($settings['background_preset'] ?? 'optivra-default');
 		$scale_mode = (string) ($settings['product_fit'] ?? $settings['default_scale_mode'] ?? $settings['scale_mode'] ?? 'auto');
 		$background_source = (string) ($settings['background_source'] ?? 'preset');
+		$is_audit_job = 'audit_report' === (string) ($job['audit_source'] ?? '');
+
+		if ($is_audit_job && ! empty($job['audit_background_preset'])) {
+			$background_preset = $this->sanitize_background_preset((string) $job['audit_background_preset']);
+			$background_source = 'preset';
+		}
 
 		$options = [];
 		$custom_background_url = '';
@@ -4165,12 +4283,15 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		$options['settings'] = [
-			'preserveProductExactly' => ! empty($settings['preserve_product_exactly']),
-			'processingMode' => (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve'),
+			'preserveProductExactly' => $is_audit_job ? true : ! empty($settings['preserve_product_exactly']),
+			'processingMode' => $is_audit_job ? 'seo_product_feed_preserve' : (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve'),
 			'promptVersion' => 'ecommerce_preserve_v2',
-			'autoFailIfProductAltered' => ! empty($settings['auto_fail_product_altered']),
+			'autoFailIfProductAltered' => $is_audit_job ? true : ! empty($settings['auto_fail_product_altered']),
 			'autoFixCropSpacing' => ! empty($settings['auto_fix_crop_spacing']),
-			'preserveDarkDetail' => ! empty($settings['preserve_dark_detail']),
+			'preserveDarkDetail' => $is_audit_job ? true : ! empty($settings['preserve_dark_detail']),
+			'requireReviewBeforeReplace' => true,
+			'auditReportSource' => $is_audit_job,
+			'auditActionType' => (string) ($job['audit_action_type'] ?? ''),
 			'maxRetries' => (int) ($settings['max_retries'] ?? 2),
 			'output' => [
 				'size' => (int) ($settings['output_size'] ?? 1024),
@@ -4400,6 +4521,12 @@ class Catalogue_Image_Studio_Admin {
 			<td>
 				<?php $display_error = $this->format_job_error((string) ($job['error_message'] ?? '')); ?>
 				<?php $this->render_status_badge($this->format_status((string) $job['status']), $this->map_job_status_to_badge((string) $job['status'])); ?><?php echo '' !== $display_error ? '<br /><small>' . esc_html($display_error) . '</small>' : ''; ?>
+				<?php if ('audit_report' === (string) ($job['audit_source'] ?? '')) : ?>
+					<br /><span class="optivra-action-chip"><?php echo esc_html__('From Health Report', 'optivra-image-studio-for-woocommerce'); ?></span>
+					<?php if (! empty($job['audit_action_type'])) : ?>
+						<small><?php echo esc_html($this->get_recommendation_action_label((string) $job['audit_action_type'])); ?></small>
+					<?php endif; ?>
+				<?php endif; ?>
 				<?php if (in_array((string) ($job['status'] ?? ''), ['queued', 'processing', 'failed', 'completed', 'rejected'], true)) : ?>
 					<?php $this->render_job_edge_controls($job); ?>
 				<?php endif; ?>

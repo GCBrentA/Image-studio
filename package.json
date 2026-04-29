@@ -16,6 +16,7 @@
     "prisma:studio": "prisma studio",
     "test:analytics": "tsx scripts/check-analytics-rules.ts",
     "test:image-audit": "tsx scripts/check-image-audit-scoring.ts",
+    "test:audit-queue": "tsx scripts/check-audit-queue-rules.ts",
     "test:wordpress-api-url": "php scripts/check-wordpress-api-url.php",
     "test:csp": "tsx scripts/check-csp-rules.ts",
     "test:preserve-debug": "node scripts/check-preserve-debug.js",

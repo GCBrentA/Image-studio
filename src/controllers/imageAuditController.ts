@@ -8,6 +8,7 @@ import {
   ignoreAuditIssues,
   listAuditScans,
   ImageAuditError,
+  listAuditQueueJobs,
   listAuditIssues,
   listAuditItems,
   queueAuditIssues,
@@ -257,8 +258,9 @@ export const queueImageAuditIssues = async (
   }
 
   try {
-    const result = await queueAuditIssues(auth, request.params.scan_id, (request.body as { issue_ids?: unknown }).issue_ids);
-    response.status(501).json(result);
+    const body = request.body as { issue_ids?: unknown; background_preset?: unknown; backgroundPreset?: unknown };
+    const result = await queueAuditIssues(auth, request.params.scan_id, body.issue_ids, body);
+    response.status(200).json(result);
   } catch (error) {
     sendError(response, error);
   }
@@ -274,9 +276,26 @@ export const queueImageAuditRecommendation = async (
   }
 
   try {
-    const body = request.body as { recommendation_id?: unknown };
-    const result = await queueAuditRecommendation(auth, request.params.scan_id, body.recommendation_id);
-    response.status(501).json(result);
+    const body = request.body as { recommendation_id?: unknown; background_preset?: unknown; backgroundPreset?: unknown };
+    const result = await queueAuditRecommendation(auth, request.params.scan_id, body.recommendation_id, body);
+    response.status(200).json(result);
+  } catch (error) {
+    sendError(response, error);
+  }
+};
+
+export const listImageAuditQueueJobs = async (
+  request: ImageStudioAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  const auth = requireAuth(request, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    const result = await listAuditQueueJobs(auth, request.query, request.params.scan_id);
+    response.status(200).json(result);
   } catch (error) {
     sendError(response, error);
   }

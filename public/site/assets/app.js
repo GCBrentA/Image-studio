@@ -263,7 +263,13 @@ function routeTo(path) {
   if (normalized === "/analytics") {
     loadAnalyticsTrends();
   }
-  if (["/recommendations", "/queue", "/backgrounds", "/seo-tools", "/settings"].includes(normalized)) {
+  if (normalized === "/recommendations") {
+    loadPortalRecommendations();
+  }
+  if (normalized === "/queue") {
+    loadAuditQueuePage();
+  }
+  if (["/backgrounds", "/seo-tools", "/settings"].includes(normalized)) {
     renderPortalPlaceholder(normalized);
   }
   if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
@@ -1396,6 +1402,67 @@ async function loadReports() {
   }
 }
 
+async function loadPortalRecommendations() {
+  const root = document.getElementById("recommendations-root");
+  if (!root) return;
+  if (!token()) {
+    root.innerHTML = portalShell("Recommendations", "Log in to view Product Image Health Report recommendations.", "recommendations", `
+      <section class="portal-empty-state"><h2>Login required</h2><p>Recommendations are tied to your Optivra account and connected store.</p><a class="button primary" href="/login" data-link>Login</a></section>
+    `);
+    return;
+  }
+
+  root.innerHTML = portalShell("Recommendations", "Loading latest audit recommendations and queue actions.", "recommendations", renderPortalLoading("Loading recommendations..."));
+  try {
+    const latest = await api("/api/image-studio/audits?limit=1&status=completed");
+    const scan = (latest.scans || [])[0];
+    if (!scan) {
+      root.innerHTML = portalShell("Recommendations", "Run a Product Image Health Report from WooCommerce to create recommendations.", "recommendations", `
+        <section class="portal-empty-state"><h2>No recommendations yet</h2><p>Run a free Product Image Health Report from the WooCommerce plugin to generate prioritised fixes.</p><a class="button primary" href="/reports" data-link>Open reports</a></section>
+      `);
+      return;
+    }
+
+    const report = await api(`/api/image-studio/audits/${encodeURIComponent(scan.id)}`);
+    window.optivraCurrentReport = report;
+    const recommendations = report.recommendations || report.top_recommendations || [];
+    root.innerHTML = portalShell("Recommendations", "Prioritised fixes from your latest Product Image Health Report.", "recommendations", `
+      <section class="portal-card">
+        <div class="portal-section-head">
+          <div><h2>Latest Report Recommendations</h2><p>SEO-only jobs stay separate from AI image processing. Background and crop jobs default to preserve mode and require review.</p></div>
+          <a class="button ghost" href="/reports" data-link>View full report</a>
+        </div>
+      </section>
+      <section class="portal-section"><div class="recommendation-grid">${renderReportRecommendations(recommendations)}</div></section>
+    `);
+  } catch (error) {
+    root.innerHTML = portalShell("Recommendations", "Something stopped recommendations from loading.", "recommendations", `
+      <section class="portal-empty-state error"><h2>Recommendations unavailable</h2><p>${escapeHtml(error.message)}</p><button class="button primary" data-recommendations-reload>Try again</button></section>
+    `);
+  }
+}
+
+async function loadAuditQueuePage() {
+  const root = document.getElementById("queue-root");
+  if (!root) return;
+  if (!token()) {
+    root.innerHTML = portalShell("Queue", "Log in to view queued Product Image Health Report tasks.", "queue", `
+      <section class="portal-empty-state"><h2>Login required</h2><p>Your queue is connected to your Optivra account and store.</p><a class="button primary" href="/login" data-link>Login</a></section>
+    `);
+    return;
+  }
+
+  root.innerHTML = portalShell("Queue", "Loading audit queue jobs.", "queue", renderPortalLoading("Loading queue..."));
+  try {
+    const data = await api("/api/image-studio/audit-queue?limit=100");
+    root.innerHTML = portalShell("Queue", "Tasks created from Product Image Health Report issues and recommendations.", "queue", renderAuditQueueJobs(data.queue_jobs || []));
+  } catch (error) {
+    root.innerHTML = portalShell("Queue", "Something stopped the queue from loading.", "queue", `
+      <section class="portal-empty-state error"><h2>Queue unavailable</h2><p>${escapeHtml(error.message)}</p><button class="button primary" data-queue-reload>Try again</button></section>
+    `);
+  }
+}
+
 function portalShell(title, subtitle, active, body) {
   return `
     <div class="portal-shell">
@@ -1734,6 +1801,51 @@ function renderReportRecommendations(recommendations) {
   `).join("");
 }
 
+function renderAuditQueueJobs(queueJobs) {
+  if (!queueJobs.length) {
+    return `
+      <section class="portal-empty-state">
+        <h2>No audit tasks queued yet</h2>
+        <p>Add recommended fixes from a Health Report. SEO-only jobs, optimisation jobs, preserve-mode image jobs, and manual review tasks will appear here.</p>
+        <a class="button primary" href="/recommendations" data-link>Open Recommendations</a>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="portal-card">
+      <div class="portal-section-head">
+        <div>
+          <h2>Product Image Health Report Queue</h2>
+          <p>Every task keeps its audit source, action type and safety policy. Image-processing jobs are preserve-mode and require review before replacement.</p>
+        </div>
+        <span class="portal-count">${queueJobs.length.toLocaleString()} queued tasks</span>
+      </div>
+      <div class="portal-table-wrap">
+        <table class="portal-table">
+          <thead><tr><th>Task</th><th>Action</th><th>Kind</th><th>Priority</th><th>Status</th><th>Safety</th><th>Source</th></tr></thead>
+          <tbody>
+            ${queueJobs.map((job) => `
+              <tr>
+                <td>
+                  <strong>${escapeHtml(job.issue_title || job.recommendation_title || "Audit report task")}</strong>
+                  <small>${escapeHtml(job.product_id ? `Product ${job.product_id}` : "Catalogue-level task")}</small>
+                </td>
+                <td>${escapeHtml(actionLabel(job.action_type))}</td>
+                <td>${escapeHtml(String(job.job_kind || "review").replaceAll("_", " "))}</td>
+                <td>${priorityBadge(job.priority || "medium")}</td>
+                <td>${statusBadge(job.status || "queued")}</td>
+                <td>${job.requires_review ? "Review required" : "Automatic"}${job.consumes_credit_when_processed ? " · credit on safe completion" : " · no image credit"}</td>
+                <td><span class="action-pill">Health Report</span></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function renderCategoryBreakdown(categories) {
   if (!categories.length) return `<p class="muted-note">Category scoring is not available for this report yet.</p>`;
   return `
@@ -1858,7 +1970,14 @@ function actionLabel(type) {
     resize_crop: "Resize or crop",
     convert_webp: "Convert WebP",
     review_manually: "Review manually",
-    add_main_image: "Add main image"
+    add_main_image: "Add main image",
+    fix_alt_text: "Generate alt text",
+    seo_update: "SEO metadata",
+    compress_image: "Optimise image",
+    preserve_background_replace: "Replace background",
+    standard_background_replace: "Standardise background",
+    manual_review: "Review manually",
+    replace_main_image: "Add main image"
   };
   return labels[type] || "Review manually";
 }
@@ -2245,6 +2364,36 @@ document.getElementById("site-form")?.addEventListener("submit", async (event) =
 });
 
 document.addEventListener("click", async (event) => {
+  const queueRecommendation = event.target.closest("[data-report-queue-recommendation]");
+  if (queueRecommendation) {
+    event.preventDefault();
+    const recommendationId = queueRecommendation.getAttribute("data-report-queue-recommendation");
+    const report = window.optivraCurrentReport || {};
+    const scanId = report.scan?.id || sessionStorage.getItem("optivraSelectedReportId") || "";
+    if (!recommendationId || !scanId) return;
+    const originalText = queueRecommendation.textContent;
+    try {
+      queueRecommendation.disabled = true;
+      queueRecommendation.textContent = "Adding...";
+      const result = await api(`/api/image-studio/audits/${encodeURIComponent(scanId)}/queue-recommendation`, {
+        method: "POST",
+        body: JSON.stringify({
+          recommendation_id: recommendationId,
+          background_preset: "optivra-default"
+        })
+      });
+      queueRecommendation.textContent = result.queued_count ? "Queued" : "Already queued";
+      queueRecommendation.classList.remove("primary");
+      queueRecommendation.classList.add("ghost");
+      trackEvent("image_studio_feature_click", { cta_location: "portal_audit_queue", funnel_stage: "retention" });
+    } catch (error) {
+      queueRecommendation.disabled = false;
+      queueRecommendation.textContent = error.message || originalText;
+      window.setTimeout(() => { queueRecommendation.textContent = originalText; }, 2500);
+    }
+    return;
+  }
+
   const reportOpen = event.target.closest("[data-report-open]");
   if (reportOpen) {
     event.preventDefault();
@@ -2288,6 +2437,18 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-analytics-reload]")) {
     event.preventDefault();
     await loadAnalyticsTrends();
+    return;
+  }
+
+  if (event.target.closest("[data-recommendations-reload]")) {
+    event.preventDefault();
+    await loadPortalRecommendations();
+    return;
+  }
+
+  if (event.target.closest("[data-queue-reload]")) {
+    event.preventDefault();
+    await loadAuditQueuePage();
     return;
   }
 });

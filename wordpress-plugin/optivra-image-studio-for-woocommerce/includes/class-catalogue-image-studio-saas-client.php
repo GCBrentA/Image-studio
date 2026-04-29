@@ -330,13 +330,16 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * @param array<int,string> $issue_ids Issue IDs.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function queue_image_audit_issues(string $scan_id, array $issue_ids) {
+	public function queue_image_audit_issues(string $scan_id, array $issue_ids, array $options = []) {
 		return $this->request_json(
 			'POST',
 			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/issues/queue',
-			[
+			array_merge(
+				[
 				'issue_ids' => array_values($issue_ids),
-			],
+				],
+				$options
+			),
 			30
 		);
 	}
@@ -348,13 +351,16 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * @param string $recommendation_id Remote recommendation ID.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function queue_audit_recommendation(string $scan_id, string $recommendation_id) {
+	public function queue_audit_recommendation(string $scan_id, string $recommendation_id, array $options = []) {
 		return $this->request_json(
 			'POST',
 			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/queue-recommendation',
-			[
-				'recommendation_id' => $recommendation_id,
-			],
+			array_merge(
+				[
+					'recommendation_id' => $recommendation_id,
+				],
+				$options
+			),
 			30
 		);
 	}
