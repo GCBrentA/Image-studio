@@ -1,5 +1,7 @@
 import { CreditLedgerReason, Prisma, SubscriptionStatus } from "@prisma/client";
 import { env } from "../config/env";
+import { sendGa4ServerEvent } from "../lib/analytics/server";
+import { errorCategoryFrom } from "../lib/analytics/privacy";
 import { prisma } from "../utils/prisma";
 import { HttpError } from "../utils/httpError";
 import { addCredits, resetMonthlyCredits } from "./creditService";
@@ -10,6 +12,7 @@ import {
 } from "./billingCatalog";
 import { ensureBillingReady, ensureCreditBillingReady, getStripe } from "./stripeService";
 import type { StripeWebhookEvent } from "./stripeService";
+import { trackSiteAnalyticsEvent } from "./siteAnalyticsService";
 
 type StripeCustomerRef = string | { id: string } | null;
 
@@ -640,6 +643,27 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
     switch (event.type) {
       case "checkout.session.completed":
         await handleCheckoutSessionCompleted(event.data.object as StripeCheckoutSessionLike, event.id);
+        await Promise.allSettled([
+          trackSiteAnalyticsEvent({
+            eventName: "server_checkout_success",
+            eventSource: "server",
+            params: {
+              plan_name: (event.data.object as StripeCheckoutSessionLike).metadata?.plan,
+              plan_interval: (event.data.object as StripeCheckoutSessionLike).mode === "subscription" ? "monthly" : "one_time",
+              currency: (event.data.object as StripeCheckoutSessionLike).currency,
+              funnel_stage: "conversion"
+            }
+          }),
+          sendGa4ServerEvent({
+            eventName: "server_checkout_success",
+            params: {
+              plan_name: (event.data.object as StripeCheckoutSessionLike).metadata?.plan,
+              plan_interval: (event.data.object as StripeCheckoutSessionLike).mode === "subscription" ? "monthly" : "one_time",
+              currency: (event.data.object as StripeCheckoutSessionLike).currency,
+              funnel_stage: "conversion"
+            }
+          })
+        ]);
         result = "processed";
         break;
       case "customer.subscription.created":
@@ -678,6 +702,25 @@ export const processStripeEvent = async (event: StripeWebhookEvent): Promise<"pr
       }
     });
   } catch (error) {
+    await Promise.allSettled([
+      trackSiteAnalyticsEvent({
+        eventName: "server_checkout_failed",
+        eventSource: "server",
+        params: {
+          error_category: errorCategoryFrom(error),
+          webhook_provider: "stripe",
+          funnel_stage: "conversion"
+        }
+      }),
+      sendGa4ServerEvent({
+        eventName: "server_checkout_failed",
+        params: {
+          error_category: errorCategoryFrom(error),
+          webhook_provider: "stripe",
+          funnel_stage: "conversion"
+        }
+      })
+    ]);
     await prisma.stripeEvent.update({
       where: {
         stripe_event_id: event.id

@@ -5,6 +5,7 @@ import path from "path";
 import { errorHandler } from "./middleware/errorHandler";
 import { logger } from "./middleware/logger";
 import { notFound } from "./middleware/notFound";
+import { staticDownloadAnalytics } from "./middleware/staticDownloadAnalytics";
 import { routes } from "./routes";
 import { billingWebhookRoutes } from "./routes/billingWebhookRoutes";
 import { webRoutes } from "./routes/webRoutes";
@@ -19,9 +20,9 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com"],
       styleSrc: ["'self'"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
       frameAncestors: ["'self'"]
@@ -75,7 +76,7 @@ app.get("/sitemap.xml", (_request, response) => {
   response.type("application/xml").sendFile(path.resolve(process.cwd(), "public", "site", "sitemap.xml"));
 });
 app.use("/assets", express.static(path.resolve(process.cwd(), "public", "site", "assets")));
-app.use("/downloads", express.static(path.resolve(process.cwd(), "public", "site", "downloads"), { redirect: false }));
+app.use("/downloads", staticDownloadAnalytics, express.static(path.resolve(process.cwd(), "public", "site", "downloads"), { redirect: false }));
 app.use("/processed-images", express.static(path.resolve(process.cwd(), "storage", "processed-images")));
 
 app.get("/account/dashboard", (request, response, next) => {

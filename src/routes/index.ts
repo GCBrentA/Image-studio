@@ -8,6 +8,7 @@ import { imageRoutes } from "./imageRoutes";
 import { siteRoutes } from "./siteRoutes";
 import { usageRoutes } from "./usageRoutes";
 import { pluginEventRoutes } from "./pluginEventRoutes";
+import { analyticsRoutes } from "./analyticsRoutes";
 
 export const routes = Router();
 
@@ -20,3 +21,4 @@ routes.use("/images", imageRoutes);
 routes.use("/sites", siteRoutes);
 routes.use("/plugin", pluginEventRoutes);
 routes.use("/usage", usageRoutes);
+routes.use("/analytics", analyticsRoutes);

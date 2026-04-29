@@ -468,11 +468,10 @@ document.addEventListener("click", (event) => {
   const normalized = routeTo(location.pathname);
   trackPageView(normalized);
   if (!link.dataset.analytics) {
-    if (normalized === "/pricing") trackConversion("pricing_clicked", { path: normalized });
-    if (normalized === "/support") trackConversion("support_clicked", { path: normalized });
-    if (normalized === "/login") trackConversion("login_clicked", { path: normalized });
-    if (normalized === "/docs" || normalized.startsWith("/docs/")) trackConversion("view_docs_clicked", { path: normalized });
-    if (normalized === "/blog" || normalized.startsWith("/blog/")) trackConversion("blog_cta_clicked", { path: normalized });
+    if (normalized === "/pricing") trackConversion("pricing_cta_click", { page_path: normalized, funnel_stage: "intent" });
+    if (normalized === "/support") trackConversion("support_docs_click", { page_path: normalized, cta_location: "navigation" });
+    if (normalized === "/docs" || normalized.startsWith("/docs/")) trackConversion("docs_support_click", { page_path: normalized, cta_location: "navigation" });
+    if (normalized === "/blog" || normalized.startsWith("/blog/")) trackConversion("blog_cta_click", { page_path: normalized, cta_location: "navigation" });
   }
 });
 
@@ -493,7 +492,45 @@ document.addEventListener("click", (event) => {
   closeMobileMenu();
 });
 
-const analyticsParamKeys = new Set(["path", "plugin", "location", "plan", "pack", "source", "cta"]);
+const approvedAnalyticsEvents = new Set([
+  "page_view", "nav_click", "footer_click", "hero_cta_click", "scroll_depth_25", "scroll_depth_50", "scroll_depth_75", "scroll_depth_90",
+  "time_on_page_30s", "time_on_page_60s", "time_on_page_120s", "outbound_click", "file_download", "error_viewed",
+  "home_page_view", "home_hero_cta_click", "home_product_card_click", "home_pricing_cta_click", "home_download_cta_click", "home_docs_cta_click",
+  "image_studio_page_view", "image_studio_hero_cta_click", "image_studio_feature_view", "image_studio_feature_click", "image_studio_before_after_view",
+  "image_studio_demo_view", "image_studio_pricing_click", "image_studio_download_click", "image_studio_docs_click", "image_studio_faq_expand",
+  "image_studio_preserve_mode_interest", "image_studio_background_generation_interest", "image_studio_seo_feature_interest", "image_studio_bulk_processing_interest",
+  "downloads_page_view", "plugin_download_click", "plugin_download_started", "plugin_download_completed", "plugin_download_failed",
+  "download_email_capture_start", "download_email_capture_submit", "download_email_capture_error", "download_version_selected", "download_changelog_view",
+  "pricing_page_view", "pricing_plan_view", "pricing_plan_expand", "pricing_plan_compare", "pricing_cta_click", "pricing_faq_expand",
+  "pricing_monthly_selected", "pricing_yearly_selected", "checkout_started", "checkout_redirected", "checkout_success_landing", "checkout_cancelled", "checkout_error",
+  "docs_page_view", "docs_section_view", "docs_search", "docs_install_step_view", "docs_copy_code_click", "docs_support_click",
+  "docs_previous_next_click", "docs_plugin_setup_interest", "docs_api_token_interest",
+  "blog_index_view", "blog_post_view", "blog_scroll_75", "blog_cta_click", "blog_related_post_click", "blog_category_click", "blog_author_click",
+  "blog_exit_to_product", "blog_exit_to_download", "blog_exit_to_pricing",
+  "support_page_view", "contact_form_start", "contact_form_submit", "contact_form_success", "contact_form_error", "support_email_click", "support_docs_click",
+  "shopify_embedded_app_loaded"
+]);
+
+const sensitiveAnalyticsKeyPattern = /(email|e_mail|phone|mobile|address|street|postcode|zip_code|postal|full_name|first_name|last_name|display_name|contact_name|license|licence|token|secret|password|api_key|apikey|openai|stripe|customer_id|session_id|checkout_session|payment_intent|key|raw|stack|trace|uploaded_image|image_url|source_image_url)/i;
+const emailAnalyticsPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const phoneAnalyticsPattern = /(?:\+?\d[\s().-]*){8,}/;
+const analyticsStorageKeys = {
+  attribution: "optivra_attribution_v1",
+  visitor: "optivra_visitor_type_v1",
+  session: "optivra_session_engagement_id"
+};
+const analyticsState = {
+  lastPagePath: null,
+  scrollDepths: new Set(),
+  timeouts: [],
+  checkoutSuccesses: new Set()
+};
+
+function analyticsDebug(message, data = {}) {
+  if (window.optivraAnalytics?.debug && window.optivraAnalytics?.environment !== "production") {
+    console.info(`[Optivra analytics] ${message}`, sanitizeAnalyticsParams(data));
+  }
+}
 
 function isPublicAnalyticsPath(path = location.pathname) {
   return !(
@@ -501,25 +538,60 @@ function isPublicAnalyticsPath(path = location.pathname) {
     path.startsWith("/api") ||
     path.startsWith("/account") ||
     path.startsWith("/dashboard") ||
-    path.startsWith("/billing/")
+    (path.startsWith("/billing/") && !["/billing/success", "/billing/cancel", "/billing/credits/success", "/billing/credits/cancel"].includes(path))
   );
 }
 
 function analyticsReady(path = location.pathname) {
-  return Boolean(
-    window.optivraAnalytics?.enabled &&
-    window.optivraAnalytics?.measurementId &&
-    typeof window.gtag === "function" &&
-    isPublicAnalyticsPath(path)
-  );
+  return Boolean(window.optivraAnalytics?.enabled && isPublicAnalyticsPath(path));
+}
+
+function sanitizeAnalyticsKey(key) {
+  return String(key || "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60);
+}
+
+function containsLikelyPii(value) {
+  if (typeof value !== "string") return false;
+  return emailAnalyticsPattern.test(value) || phoneAnalyticsPattern.test(value) || /^https?:\/\/[^?\s]+[?][^\s]+/i.test(value);
 }
 
 function sanitizeAnalyticsParams(properties = {}) {
   const safe = {};
-  Object.entries(properties).forEach(([key, value]) => {
-    if (!analyticsParamKeys.has(key)) return;
-    if (value === undefined || value === null) return;
-    safe[key] = String(value).replace(/[^\w\-./# ]/g, "").slice(0, 90);
+  Object.entries(properties).forEach(([rawKey, value]) => {
+    const key = sanitizeAnalyticsKey(rawKey);
+    if (!key || sensitiveAnalyticsKeyPattern.test(key) || value === undefined) {
+      if (window.optivraAnalytics?.debug) analyticsDebug("stripped unsafe analytics param", { key });
+      return;
+    }
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) safe[key] = value;
+      return;
+    }
+    if (typeof value === "boolean" || value === null) {
+      safe[key] = value;
+      return;
+    }
+    const text = String(value).trim();
+    if (!text || containsLikelyPii(text)) {
+      if (window.optivraAnalytics?.debug) analyticsDebug("stripped likely PII analytics value", { key });
+      return;
+    }
+    safe[key] = text
+      .replace(/https?:\/\/[^\s?#]+([?#][^\s]*)?/gi, (url) => {
+        try {
+          const parsed = new URL(url);
+          return `${parsed.origin}${parsed.pathname}`;
+        } catch {
+          return "";
+        }
+      })
+      .replace(/[^\w\-./:# ]/g, "")
+      .slice(0, 120);
   });
   return safe;
 }
@@ -532,58 +604,337 @@ function pluginFromTarget(target) {
   return "woocommerce_plugins";
 }
 
-function trackPageView(path = location.pathname) {
-  if (!analyticsReady(path)) return;
-  window.gtag("config", window.optivraAnalytics.measurementId, {
+function routeGroup(path = location.pathname) {
+  const normalized = path.split("?")[0].replace(/\/+$/, "") || "/";
+  if (normalized === "/") return "home";
+  if (normalized.startsWith("/blog") || normalized.startsWith("/resources")) return "blog";
+  if (normalized.startsWith("/docs")) return "docs";
+  if (normalized.startsWith("/downloads")) return "downloads";
+  if (normalized.startsWith("/pricing")) return "pricing";
+  if (normalized.startsWith("/optivra-image-studio") || normalized.startsWith("/catalogue-image-studio")) return "product_image_studio";
+  if (normalized.startsWith("/payment-gateway-rules")) return "product_payment_gateway_rules";
+  if (normalized.startsWith("/woocommerce-plugins") || normalized.startsWith("/plugins")) return "plugins";
+  if (normalized.startsWith("/support")) return "support";
+  if (normalized.startsWith("/billing")) return "billing";
+  if (normalized.startsWith("/login")) return "auth";
+  return "other";
+}
+
+function cleanCurrentUrl(path = location.pathname) {
+  return `${location.origin}${path.split("?")[0]}`;
+}
+
+function referrerDomain() {
+  if (!document.referrer) return "";
+  try {
+    const referrer = new URL(document.referrer);
+    return /(^|\.)optivra\.app$/i.test(referrer.hostname) ? "" : referrer.hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}
+
+function getStorageJson(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "") || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setStorageJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage can be unavailable in private browsing */
+  }
+}
+
+function campaignTouch() {
+  const url = new URL(location.href);
+  const hasUtm = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].some((key) => url.searchParams.has(key));
+  if (hasUtm) {
+    return {
+      source: url.searchParams.get("utm_source") || "campaign",
+      medium: url.searchParams.get("utm_medium") || "unknown",
+      campaign: url.searchParams.get("utm_campaign") || "",
+      content: url.searchParams.get("utm_content") || "",
+      term: url.searchParams.get("utm_term") || ""
+    };
+  }
+  const referrer = referrerDomain();
+  if (referrer) {
+    return { source: referrer, medium: "referral", campaign: "", content: "", term: "" };
+  }
+  return { source: "direct", medium: "none", campaign: "", content: "", term: "" };
+}
+
+function attributionState(path = location.pathname) {
+  const current = campaignTouch();
+  const existing = getStorageJson(analyticsStorageKeys.attribution, {});
+  const next = {
+    firstTouch: existing.firstTouch || current,
+    lastTouch: existing.lastTouch || current,
+    landingPage: existing.landingPage || path,
+    entryRouteGroup: existing.entryRouteGroup || routeGroup(path)
+  };
+  if (current.source !== "direct" || current.medium !== "none" || current.campaign) {
+    next.lastTouch = current;
+  }
+  setStorageJson(analyticsStorageKeys.attribution, next);
+  return next;
+}
+
+function visitorType() {
+  try {
+    const existing = localStorage.getItem(analyticsStorageKeys.visitor);
+    if (existing) return "returning";
+    localStorage.setItem(analyticsStorageKeys.visitor, "seen");
+  } catch {
+    return "unknown";
+  }
+  return "new";
+}
+
+function sessionEngagementId() {
+  try {
+    let id = sessionStorage.getItem(analyticsStorageKeys.session);
+    if (!id) {
+      id = `ses_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(analyticsStorageKeys.session, id);
+    }
+    return id;
+  } catch {
+    return "session_unavailable";
+  }
+}
+
+function deviceType() {
+  const width = window.innerWidth || 0;
+  if (width < 768) return "mobile";
+  if (width < 1100) return "tablet";
+  return "desktop";
+}
+
+function contentSlug(path = location.pathname) {
+  if (path.startsWith("/blog/")) return path.replace("/blog/", "");
+  if (path.startsWith("/docs/")) return path.replace("/docs/", "");
+  return "";
+}
+
+function pageBaseParams(path = location.pathname) {
+  const attribution = attributionState(path);
+  return {
     page_path: path,
-    anonymize_ip: true
-  });
+    clean_url: cleanCurrentUrl(path),
+    page_title: document.title,
+    route_group: routeGroup(path),
+    referrer_domain: referrerDomain(),
+    device_type: deviceType(),
+    viewport_size: `${window.innerWidth || 0}x${window.innerHeight || 0}`,
+    session_engagement_id: sessionEngagementId(),
+    first_touch_source: attribution.firstTouch?.source,
+    first_touch_medium: attribution.firstTouch?.medium,
+    first_touch_campaign: attribution.firstTouch?.campaign,
+    first_touch_content: attribution.firstTouch?.content,
+    first_touch_term: attribution.firstTouch?.term,
+    last_touch_source: attribution.lastTouch?.source,
+    last_touch_medium: attribution.lastTouch?.medium,
+    last_touch_campaign: attribution.lastTouch?.campaign,
+    last_touch_content: attribution.lastTouch?.content,
+    last_touch_term: attribution.lastTouch?.term,
+    landing_page: attribution.landingPage,
+    entry_route_group: attribution.entryRouteGroup,
+    visitor_type: visitorType(),
+    environment: window.optivraAnalytics?.environment || "development",
+    content_slug: contentSlug(path)
+  };
+}
+
+function sendFirstPartyEvent(eventName, params) {
+  const endpoint = window.optivraAnalytics?.serverEndpoint;
+  if (!endpoint || !navigator.sendBeacon) {
+    fetch(endpoint || "/api/analytics/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_name: eventName, params }),
+      keepalive: true
+    }).catch(() => analyticsDebug("first-party event skipped", { event_name: eventName }));
+    return;
+  }
+  navigator.sendBeacon(endpoint, new Blob([JSON.stringify({ event_name: eventName, params })], { type: "application/json" }));
 }
 
 function trackEvent(eventName, properties = {}) {
-  if (!analyticsReady()) return;
-  window.gtag("event", eventName, sanitizeAnalyticsParams(properties));
+  const normalizedEvent = sanitizeAnalyticsKey(eventName);
+  if (!approvedAnalyticsEvents.has(normalizedEvent)) {
+    analyticsDebug("skipped unapproved event", { event_name: normalizedEvent });
+    return;
+  }
+  if (!analyticsReady(properties.page_path || location.pathname)) return;
+  const safe = sanitizeAnalyticsParams({ ...pageBaseParams(properties.page_path || location.pathname), ...properties });
+  if (window.gtag && (window.optivraAnalytics?.measurementId || window.optivraAnalytics?.googleTagId)) {
+    window.gtag("event", normalizedEvent, safe);
+  }
+  sendFirstPartyEvent(normalizedEvent, safe);
+  analyticsDebug("tracked event", { event_name: normalizedEvent, ...safe });
+}
+
+function pageSpecificViewEvent(path) {
+  if (path === "/") return "home_page_view";
+  if (path === "/optivra-image-studio" || path === "/catalogue-image-studio") return "image_studio_page_view";
+  if (path === "/downloads") return "downloads_page_view";
+  if (path === "/pricing") return "pricing_page_view";
+  if (path === "/support") return "support_page_view";
+  if (path === "/blog") return "blog_index_view";
+  if (path.startsWith("/blog/")) return "blog_post_view";
+  if (path === "/docs" || path.startsWith("/docs/")) return "docs_page_view";
+  return "";
+}
+
+function trackPageView(path = location.pathname) {
+  if (!analyticsReady(path) || analyticsState.lastPagePath === path) return;
+  analyticsState.lastPagePath = path;
+  analyticsState.scrollDepths = new Set();
+  analyticsState.timeouts.forEach((id) => clearTimeout(id));
+  analyticsState.timeouts = [];
+  trackEvent("page_view", { page_path: path });
+  const specific = pageSpecificViewEvent(path);
+  if (specific) {
+    trackEvent(specific, {
+      page_path: path,
+      content_type: path.startsWith("/blog/") ? "blog_post" : path.startsWith("/docs") ? "docs" : "page",
+      content_slug: contentSlug(path),
+      product_slug: path.includes("image-studio") ? "optivra_image_studio" : undefined,
+      funnel_stage: path === "/" || path.startsWith("/blog") ? "awareness" : "interest"
+    });
+  }
+  trackCheckoutLanding(path);
+  setupPageEngagementTimers(path);
 }
 
 function trackConversion(eventName, properties = {}) {
   trackEvent(eventName, properties);
 }
 
+function setupPageEngagementTimers(path) {
+  [30, 60, 120].forEach((seconds) => {
+    const id = setTimeout(() => trackEvent(`time_on_page_${seconds}s`, { page_path: path }), seconds * 1000);
+    analyticsState.timeouts.push(id);
+  });
+}
+
+window.addEventListener("scroll", () => {
+  const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  const percent = Math.round((window.scrollY / maxScroll) * 100);
+  [25, 50, 75, 90].forEach((depth) => {
+    if (percent >= depth && !analyticsState.scrollDepths.has(depth)) {
+      analyticsState.scrollDepths.add(depth);
+      trackEvent(`scroll_depth_${depth}`, { reading_depth: depth });
+      if (depth === 75 && location.pathname.startsWith("/blog/")) {
+        trackEvent("blog_scroll_75", { reading_depth: 75, content_slug: contentSlug(location.pathname), content_type: "blog_post" });
+      }
+    }
+  });
+}, { passive: true });
+
+function eventForExplicitAnalytics(value, target) {
+  const route = routeGroup(location.pathname);
+  const plugin = pluginFromTarget(target);
+  if (value === "signup_clicked") return route === "home" ? "home_hero_cta_click" : "hero_cta_click";
+  if (value === "download_plugin_clicked") {
+    if (route === "home") return "home_download_cta_click";
+    if (plugin === "optivra_image_studio") return "image_studio_download_click";
+    return "plugin_download_click";
+  }
+  if (value === "docs_opened") return plugin === "optivra_image_studio" ? "image_studio_docs_click" : "docs_support_click";
+  if (value === "pricing_plan_clicked") return route === "home" ? "home_pricing_cta_click" : "pricing_cta_click";
+  return sanitizeAnalyticsKey(value);
+}
+
+function ctaLocation(target) {
+  if (target.closest(".site-header")) return "header";
+  if (target.closest(".site-footer")) return "footer";
+  if (target.closest(".hero")) return "hero";
+  if (target.closest(".price-card")) return "pricing_card";
+  if (target.closest(".doc-callout")) return "content_callout";
+  if (target.closest(".resource-card")) return "resource_card";
+  return routeGroup(location.pathname);
+}
+
+function downloadParamsForTarget(target) {
+  const plugin = pluginFromTarget(target);
+  return {
+    plugin_slug: plugin,
+    plugin_name: plugin === "payment_gateway_rules" ? "Payment Gateway Rules for WooCommerce" : "Optivra Image Studio",
+    plugin_version: plugin === "payment_gateway_rules" ? gatewayRulesRelease.version : pluginRelease.version,
+    download_location: ctaLocation(target),
+    download_type: "zip",
+    gated: false,
+    funnel_stage: "conversion"
+  };
+}
+
+function trackCheckoutLanding(path) {
+  if (path === "/billing/success" || path === "/billing/credits/success") {
+    const key = `${path}:${sessionEngagementId()}`;
+    if (!analyticsState.checkoutSuccesses.has(key)) {
+      analyticsState.checkoutSuccesses.add(key);
+      trackEvent("checkout_success_landing", { page_path: path, funnel_stage: "conversion" });
+    }
+  }
+  if (path === "/billing/cancel" || path === "/billing/credits/cancel") {
+    trackEvent("checkout_cancelled", { page_path: path, funnel_stage: "intent" });
+  }
+}
+
 document.addEventListener("click", (event) => {
-  const target = event.target.closest("[data-analytics], [data-download-zip], [data-plan], [data-pack]");
+  const target = event.target.closest("a, button, [data-analytics], [data-download-zip], [data-plan], [data-pack]");
   if (!target) return;
 
-  const explicitEvent = target.dataset.analytics;
-  if (explicitEvent) {
-    const plugin = pluginFromTarget(target);
-    const props = { path: location.pathname, plugin, location: location.pathname };
-    trackConversion(explicitEvent, props);
-    if (explicitEvent === "signup_clicked") {
-      trackConversion("create_account_clicked", props);
-      trackConversion("signup_started", props);
-    }
-    if (explicitEvent === "download_plugin_clicked") {
-      trackConversion(plugin === "payment_gateway_rules" ? "download_payment_rules_clicked" : "download_image_studio_clicked", props);
-    }
-    if (explicitEvent === "docs_opened") {
-      trackConversion("view_docs_clicked", props);
-      trackConversion(plugin === "payment_gateway_rules" ? "payment_rules_docs_clicked" : "image_studio_docs_clicked", props);
-    }
-    if (explicitEvent === "pricing_plan_clicked") {
-      trackConversion("pricing_clicked", props);
-    }
+  const explicitEvent = target.dataset?.analytics;
+  const href = target.getAttribute?.("href") || "";
+  const props = {
+    cta_location: ctaLocation(target),
+    cta_text: target.textContent || "",
+    page_path: location.pathname,
+    plugin_slug: pluginFromTarget(target),
+    product_slug: pluginFromTarget(target) === "optivra_image_studio" ? "optivra_image_studio" : undefined,
+    funnel_stage: "interest"
+  };
+
+  if (target.closest(".site-header")) trackEvent("nav_click", props);
+  if (target.closest(".site-footer")) trackEvent("footer_click", props);
+  if (href.startsWith("http") && !href.includes(location.hostname)) trackEvent("outbound_click", props);
+  if (href.startsWith("mailto:")) trackEvent("support_email_click", { ...props, funnel_stage: "intent" });
+
+  if (target.matches("[data-download-zip]")) {
+    const params = { ...props, ...downloadParamsForTarget(target) };
+    trackEvent("plugin_download_click", params);
+    trackEvent("plugin_download_started", params);
+    trackEvent("file_download", params);
     return;
   }
 
-  if (target.matches("[data-download-zip]")) {
-    const plugin = pluginFromTarget(target);
-    const props = { path: location.pathname, plugin, location: "downloads_page" };
-    trackConversion("download_plugin_clicked", props);
-    trackConversion(plugin === "payment_gateway_rules" ? "download_payment_rules_clicked" : "download_image_studio_clicked", props);
-  } else if (target.matches("[data-plan]")) {
-    trackConversion("pricing_clicked", { plan: target.dataset.plan, path: location.pathname });
-  } else if (target.matches("[data-pack]")) {
-    trackConversion("buy_credits_clicked", { pack: target.dataset.pack, path: location.pathname });
+  if (target.matches("[data-plan]")) {
+    trackEvent("pricing_cta_click", { ...props, plan_name: target.dataset.plan, plan_interval: "monthly", currency: "usd", funnel_stage: "intent" });
+    return;
+  }
+
+  if (target.matches("[data-pack]")) {
+    trackEvent("pricing_cta_click", { ...props, plan_name: `credits_${target.dataset.pack}`, plan_interval: "one_time", currency: "usd", funnel_stage: "intent" });
+    return;
+  }
+
+  if (explicitEvent) {
+    trackEvent(eventForExplicitAnalytics(explicitEvent, target), props);
+  }
+
+  if (location.pathname.startsWith("/blog/") && href) {
+    if (href.includes("/optivra-image-studio")) trackEvent("blog_exit_to_product", props);
+    if (href.includes("/downloads")) trackEvent("blog_exit_to_download", props);
+    if (href.includes("/pricing")) trackEvent("blog_exit_to_pricing", props);
+    if (href.includes("/blog/")) trackEvent("blog_related_post_click", props);
   }
 });
 
@@ -630,11 +981,11 @@ const authForm = document.getElementById("auth-form");
 const authMessage = document.getElementById("auth-message");
 authForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  trackConversion("login_clicked", { path: location.pathname });
+  trackConversion("hero_cta_click", { page_path: location.pathname, cta_location: "login_form", funnel_stage: "intent" });
   await submitAuth("/auth/login");
 });
 document.getElementById("register-button")?.addEventListener("click", async () => {
-  trackConversion("signup_started", { path: location.pathname });
+  trackConversion("hero_cta_click", { page_path: location.pathname, cta_location: "register_form", funnel_stage: "intent" });
   await submitAuth("/auth/register");
 });
 
@@ -654,7 +1005,7 @@ async function submitAuth(path) {
     currentUserLoaded = true;
     updateAdminVisibility();
     if (path === "/auth/register") {
-      trackConversion("signup_completed", { path: location.pathname });
+      trackConversion("hero_cta_click", { page_path: location.pathname, cta_location: "register_success", funnel_stage: "conversion" });
     }
     authMessage.textContent = "Signed in.";
     history.pushState({}, "", "/dashboard");
@@ -808,10 +1159,11 @@ async function loadAdminAnalytics() {
   try {
     ensureAdminRangeControl();
     const range = document.getElementById("admin-range")?.value || "7";
-    const [overviewBody, storesBody, eventsBody] = await Promise.all([
+    const [overviewBody, storesBody, eventsBody, siteBody] = await Promise.all([
       api(`/api/admin/plugin-analytics/overview?range=${encodeURIComponent(range)}`),
       api("/api/admin/plugin-analytics/stores"),
-      api("/api/admin/plugin-analytics/events")
+      api("/api/admin/plugin-analytics/events"),
+      api(`/api/admin/site-analytics/overview?range=${encodeURIComponent(range)}`)
     ]);
     const cards = overviewBody.overview?.cards || {};
     const emptyStates = overviewBody.overview?.empty_states || {};
@@ -831,6 +1183,7 @@ async function loadAdminAnalytics() {
 
     renderEventMix(overviewBody.event_counts_30d || []);
     renderAdminTrends(overviewBody.trends || []);
+    renderSiteAnalyticsOverview(siteBody.overview);
 
     const storeRows = document.getElementById("admin-store-rows");
     if (storeRows) {
@@ -936,6 +1289,54 @@ function renderAdminTrends(rows) {
   `).join("");
 }
 
+function renderSiteAnalyticsOverview(overview) {
+  const content = document.getElementById("admin-analytics-content");
+  if (!content || !overview) return;
+  let node = document.getElementById("site-growth-analytics");
+  if (!node) {
+    const panel = document.createElement("section");
+    panel.className = "dash-panel wide admin-table-panel";
+    panel.id = "site-growth-analytics";
+    panel.innerHTML = `
+      <h2>Website growth analytics</h2>
+      <div class="metric-grid site-growth-cards"></div>
+      <div class="dashboard-grid compact-growth-grid">
+        <div><h3>Top landing pages</h3><div data-growth-list="landing"></div></div>
+        <div><h3>Top referrers</h3><div data-growth-list="referrers"></div></div>
+        <div><h3>Top campaigns</h3><div data-growth-list="campaigns"></div></div>
+        <div><h3>Conversion by source</h3><div data-growth-list="sources"></div></div>
+      </div>
+    `;
+    content.prepend(panel);
+    node = panel;
+  }
+  const cards = overview.cards || {};
+  const cardLabels = [
+    ["Visitors", cards.total_visitors],
+    ["Landing events", cards.total_events],
+    ["Product views", cards.product_page_views],
+    ["Download clicks", cards.download_clicks],
+    ["Downloads done", cards.download_completions],
+    ["Pricing clicks", cards.pricing_cta_clicks],
+    ["Checkout starts", cards.checkout_starts],
+    ["Checkout wins", cards.checkout_successes],
+    ["Contacts", cards.contact_submits],
+    ["Shopify installs", cards.shopify_installs]
+  ];
+  node.querySelector(".site-growth-cards").innerHTML = cardLabels.map(([label, value]) => `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? 0)}</strong></div>`).join("");
+  const renderRows = (selector, rows, formatter = (row) => `${row.label || row.source || row.landing_page || "-"} - ${row.count || row.visits || 0}`) => {
+    const target = node.querySelector(`[data-growth-list="${selector}"]`);
+    if (!target) return;
+    target.innerHTML = rows?.length
+      ? `<div class="dash-list">${rows.slice(0, 6).map((row) => `<div class="dash-item">${escapeHtml(formatter(row))}</div>`).join("")}</div>`
+      : `<p>No data yet.</p>`;
+  };
+  renderRows("landing", overview.top_landing_pages);
+  renderRows("referrers", overview.top_referrers);
+  renderRows("campaigns", overview.top_utm_campaigns);
+  renderRows("sources", overview.conversion_rate_by_source, (row) => `${row.source || "-"} - ${row.conversions || 0}/${row.visits || 0} (${formatPercent(row.conversion_rate)})`);
+}
+
 document.getElementById("site-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -945,7 +1346,7 @@ document.getElementById("site-form")?.addEventListener("submit", async (event) =
       body: JSON.stringify({ domain: form.get("domain") })
     });
     document.getElementById("new-token").textContent = `New site token for ${body.site.domain}:\n${body.api_token}`;
-    trackConversion("copy_api_token_clicked", { source: "site_connect" });
+    trackConversion("docs_api_token_interest", { cta_location: "site_connect", funnel_stage: "retention" });
     await loadDashboard();
   } catch (error) {
     document.getElementById("new-token").textContent = error.message;
@@ -988,6 +1389,7 @@ function showCheckoutMessage(button, message) {
 async function checkout(payload, button) {
   if (!token()) {
     showCheckoutMessage(button, "Login or create an account before opening checkout.");
+    trackEvent("checkout_error", { page_path: location.pathname, plan_name: payload?.plan, error_category: "auth", funnel_stage: "intent" });
     history.pushState({}, "", "/login");
     routeTo("/login");
     return;
@@ -1000,13 +1402,16 @@ async function checkout(payload, button) {
       button.textContent = "Opening checkout...";
     }
     showCheckoutMessage(button, "");
+    trackEvent("checkout_started", { page_path: location.pathname, plan_name: payload?.plan, plan_interval: "monthly", currency: "usd", funnel_stage: "intent" });
     const body = await api("/api/billing/create-checkout-session", {
       method: "POST",
       body: JSON.stringify(payload)
     });
+    trackEvent("checkout_redirected", { page_path: location.pathname, plan_name: payload?.plan, plan_interval: "monthly", currency: "usd", funnel_stage: "intent" });
     location.href = body.url;
   } catch (error) {
     showCheckoutMessage(button, error.message);
+    trackEvent("checkout_error", { page_path: location.pathname, plan_name: payload?.plan, error_category: "checkout_start", funnel_stage: "intent" });
   } finally {
     if (button) {
       button.disabled = false;
@@ -1018,6 +1423,7 @@ async function checkout(payload, button) {
 async function creditCheckout(pack, button) {
   if (!token()) {
     showCheckoutMessage(button, "Login or create an account before buying credits.");
+    trackEvent("checkout_error", { page_path: location.pathname, plan_name: `credits_${pack}`, error_category: "auth", funnel_stage: "intent" });
     history.pushState({}, "", "/login");
     routeTo("/login");
     return;
@@ -1030,13 +1436,16 @@ async function creditCheckout(pack, button) {
       button.textContent = "Opening checkout...";
     }
     showCheckoutMessage(button, "");
+    trackEvent("checkout_started", { page_path: location.pathname, plan_name: `credits_${pack}`, plan_interval: "one_time", currency: "usd", funnel_stage: "intent" });
     const body = await api("/api/billing/create-credit-checkout-session", {
       method: "POST",
       body: JSON.stringify({ pack })
     });
+    trackEvent("checkout_redirected", { page_path: location.pathname, plan_name: `credits_${pack}`, plan_interval: "one_time", currency: "usd", funnel_stage: "intent" });
     location.href = body.url;
   } catch (error) {
     showCheckoutMessage(button, error.message);
+    trackEvent("checkout_error", { page_path: location.pathname, plan_name: `credits_${pack}`, error_category: "checkout_start", funnel_stage: "intent" });
   } finally {
     if (button) {
       button.disabled = false;

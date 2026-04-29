@@ -3,8 +3,10 @@ import { createReadStream, existsSync, statSync } from "fs";
 import path from "path";
 import type { Response } from "express";
 import { env } from "../config/env";
+import { sendGa4ServerEvent } from "../lib/analytics/server";
 import { HttpError } from "../utils/httpError";
 import { prisma } from "../utils/prisma";
+import { trackSiteAnalyticsEvent } from "./siteAnalyticsService";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const tokenBytes = 32;
@@ -227,7 +229,31 @@ export const streamPluginDownload = async (token: string, response: Response): P
         status: "failed",
         failedAt: new Date()
       }
-    }).catch(() => undefined);
+    }).then(() => Promise.allSettled([
+      trackSiteAnalyticsEvent({
+        eventName: "plugin_download_failed",
+        eventSource: "server",
+        params: {
+          plugin_slug: download.plugin.slug,
+          plugin_version: download.version,
+          download_type: "zip",
+          result: "failure",
+          error_category: "file_stream",
+          funnel_stage: "conversion"
+        }
+      }),
+      sendGa4ServerEvent({
+        eventName: "plugin_download_failed",
+        params: {
+          plugin_slug: download.plugin.slug,
+          plugin_version: download.version,
+          download_type: "zip",
+          result: "failure",
+          error_category: "file_stream",
+          funnel_stage: "conversion"
+        }
+      })
+    ])).catch(() => undefined);
     response.end();
   });
 
@@ -241,6 +267,19 @@ export const streamPluginDownload = async (token: string, response: Response): P
           status: "completed",
           completedAt: new Date()
         }
+      }).then(() => {
+        const params = {
+          plugin_slug: download.plugin.slug,
+          plugin_version: download.version,
+          download_type: "zip",
+          result: "success",
+          funnel_stage: "conversion",
+          event_source: "server"
+        };
+        return Promise.allSettled([
+          trackSiteAnalyticsEvent({ eventName: "server_plugin_download_completed", eventSource: "server", params }),
+          sendGa4ServerEvent({ eventName: "server_plugin_download_completed", params })
+        ]);
       }).catch(() => undefined);
     }
   });

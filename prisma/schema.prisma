@@ -132,6 +132,42 @@ model PluginEvent {
   @@map("plugin_events")
 }
 
+model AnalyticsEvent {
+  id                    String   @id @default(cuid())
+  event_name            String
+  event_source          String   @default("website")
+  route_group           String?
+  page_path             String?
+  clean_url             String?
+  session_engagement_id String?
+  visitor_type          String?
+  referrer_domain       String?
+  first_touch_source    String?
+  first_touch_medium    String?
+  first_touch_campaign  String?
+  last_touch_source     String?
+  last_touch_medium     String?
+  last_touch_campaign   String?
+  landing_page          String?
+  entry_route_group     String?
+  funnel_stage          String?
+  product_slug          String?
+  plugin_slug           String?
+  plan_name             String?
+  content_slug          String?
+  cta_location          String?
+  environment           String?
+  metadata              Json?
+  created_at            DateTime @default(now())
+
+  @@index([event_name, created_at])
+  @@index([route_group, created_at])
+  @@index([page_path, created_at])
+  @@index([session_engagement_id, created_at])
+  @@index([first_touch_source, created_at])
+  @@map("analytics_events")
+}
+
 model PluginProduct {
   id                String           @id @default(uuid()) @db.Uuid
   slug              String           @unique

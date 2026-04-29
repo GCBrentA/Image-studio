@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { Router } from "express";
 import path from "path";
+import { env } from "../config/env";
 
 const siteBaseUrl = "https://www.optivra.app";
 const indexPath = path.resolve(process.cwd(), "public", "site", "index.html");
@@ -61,8 +62,9 @@ type PageMeta = {
 
 const privateRobots = "noindex,nofollow";
 const socialImage = `${siteBaseUrl}/assets/hero-optivra-image-studio-desktop.webp`;
-const gaMeasurementId = process.env.GA_MEASUREMENT_ID || "";
-const gaEnabled = process.env.NODE_ENV === "production" && /^G-[A-Z0-9-]+$/i.test(gaMeasurementId);
+const gaEnabled = env.nodeEnv === "production" && /^G-[A-Z0-9-]+$/i.test(env.ga4MeasurementId);
+const googleTagEnabled = env.nodeEnv === "production" && /^GT-[A-Z0-9-]+$/i.test(env.googleTagId);
+const gtmEnabled = env.nodeEnv === "production" && /^GTM-[A-Z0-9-]+$/i.test(env.viteGtmId);
 
 const isPublicAnalyticsPath = (requestPath: string): boolean => {
   const normalizedPath = requestPath === "/catalogue-image-studio" ? "/optivra-image-studio" : requestPath;
@@ -71,7 +73,8 @@ const isPublicAnalyticsPath = (requestPath: string): boolean => {
     normalizedPath.startsWith("/api") ||
     normalizedPath.startsWith("/account") ||
     normalizedPath.startsWith("/dashboard") ||
-    normalizedPath.startsWith("/billing/")
+    (normalizedPath.startsWith("/billing/") &&
+      !["/billing/success", "/billing/cancel", "/billing/credits/success", "/billing/credits/cancel"].includes(normalizedPath))
   ) {
     return false;
   }
@@ -88,6 +91,10 @@ const isPublicAnalyticsPath = (requestPath: string): boolean => {
     normalizedPath === "/privacy" ||
     normalizedPath === "/terms" ||
     normalizedPath === "/refund-policy" ||
+    normalizedPath === "/billing/success" ||
+    normalizedPath === "/billing/cancel" ||
+    normalizedPath === "/billing/credits/success" ||
+    normalizedPath === "/billing/credits/cancel" ||
     normalizedPath === "/docs" ||
     normalizedPath === "/blog" ||
     normalizedPath.startsWith("/docs/") ||
@@ -467,12 +474,33 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', "&quot;");
 
 const renderAnalyticsSnippet = (requestPath: string): string => {
-  if (!gaEnabled || !isPublicAnalyticsPath(requestPath)) return "";
+  if (!isPublicAnalyticsPath(requestPath)) return "";
 
-  const measurementId = escapeHtml(gaMeasurementId);
+  const measurementId = escapeHtml(env.ga4MeasurementId);
+  const googleTagId = escapeHtml(env.googleTagId);
+  const primaryTagId = measurementId || googleTagId;
+  const gtmId = escapeHtml(env.viteGtmId);
+  const debugEnabled = env.analyticsDebug && env.nodeEnv !== "production";
+  const enabled = gaEnabled || googleTagEnabled || gtmEnabled || debugEnabled;
+  if (!enabled) {
+    return `
+    <script>
+      window.optivraAnalytics = { enabled: false, environment: "${escapeHtml(env.nodeEnv)}", debug: ${debugEnabled ? "true" : "false"}, serverEndpoint: "/api/analytics/events" };
+    </script>
+`;
+  }
+
   return `
     <script>
-      window.optivraAnalytics = { enabled: true, measurementId: "${measurementId}" };
+      window.optivraAnalytics = {
+        enabled: true,
+        measurementId: "${measurementId}",
+        googleTagId: "${googleTagId}",
+        gtmId: "${gtmId}",
+        environment: "${escapeHtml(env.nodeEnv)}",
+        debug: ${debugEnabled ? "true" : "false"},
+        serverEndpoint: "/api/analytics/events"
+      };
       window.dataLayer = window.dataLayer || [];
       function gtag(){window.dataLayer.push(arguments);}
       (function(){
@@ -481,12 +509,21 @@ const renderAnalyticsSnippet = (requestPath: string): string => {
             window.optivraAnalytics.enabled = false;
             return;
           }
+          ${gtmEnabled ? `
+          var gtm = document.createElement("script");
+          gtm.async = true;
+          gtm.src = "https://www.googletagmanager.com/gtm.js?id=${gtmId}";
+          document.head.appendChild(gtm);
+          ` : ""}
+          ${gaEnabled || googleTagEnabled ? `
           var tag = document.createElement("script");
           tag.async = true;
-          tag.src = "https://www.googletagmanager.com/gtag/js?id=${measurementId}";
+          tag.src = "https://www.googletagmanager.com/gtag/js?id=${primaryTagId}";
           document.head.appendChild(tag);
           gtag("js", new Date());
-          gtag("config", "${measurementId}", { page_path: window.location.pathname, anonymize_ip: true });
+          ${gaEnabled ? `gtag("config", "${measurementId}", { page_path: window.location.pathname, anonymize_ip: true, send_page_view: false });` : ""}
+          ` : ""}
+          ${googleTagEnabled ? `gtag("config", "${googleTagId}", { page_path: window.location.pathname, anonymize_ip: true, send_page_view: false });` : ""}
         } catch (error) {
           window.optivraAnalytics.enabled = false;
         }
@@ -505,6 +542,9 @@ const renderIndex = (requestPath: string): string => {
     .join("\n    ");
 
   const analyticsSnippet = renderAnalyticsSnippet(requestPath);
+  const verificationMeta = env.googleSiteVerification
+    ? `<meta name="google-site-verification" content="${escapeHtml(env.googleSiteVerification)}" />`
+    : "";
 
   return html
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(meta.title)}</title>`)
@@ -519,6 +559,7 @@ const renderIndex = (requestPath: string): string => {
     .replace(/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`)
     .replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`)
     .replace(/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/>/, `<meta name="twitter:image" content="${socialImage}" />`)
+    .replace(/<meta\s+name="google-site-verification"\s+content="[^"]*"\s*\/>/, verificationMeta)
     .replace("</head>", `${jsonLd ? `    ${jsonLd}\n` : ""}${analyticsSnippet}  </head>`);
 };
 

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getAdminSiteAnalyticsOverview } from "../controllers/analyticsController";
 import {
   getAdminPluginAnalyticsEvents,
   getAdminPluginAnalyticsOverview,
@@ -31,4 +32,8 @@ adminRoutes.get("/plugin-analytics/events", (request, response, next) => {
 
 adminRoutes.get("/plugin-analytics/stores/:id", (request, response, next) => {
   getAdminPluginAnalyticsStore(request, response).catch(next);
+});
+
+adminRoutes.get("/site-analytics/overview", (request, response, next) => {
+  getAdminSiteAnalyticsOverview(request, response).catch(next);
 });

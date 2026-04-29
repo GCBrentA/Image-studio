@@ -2,16 +2,19 @@ import { Router } from "express";
 import { query } from "../db/pool";
 import { markShopUninstalled } from "../services/repositories";
 import { verifyWebhook } from "../services/shopify";
+import { trackShopifyServerEvent } from "../services/tracking";
 
 export const webhookRouter = Router();
 
 webhookRouter.post("/webhooks/app/uninstalled", expressRawJson, async (req, res, next) => {
   try {
     if (!verifyWebhook(req.body, req.header("X-Shopify-Hmac-Sha256"))) return res.sendStatus(401);
+    trackShopifyServerEvent("server_webhook_received", { webhook_provider: "shopify", webhook_type: "app_uninstalled" });
     const payload = JSON.parse(req.body.toString("utf8"));
     await markShopUninstalled(payload.myshopify_domain || payload.domain);
     res.sendStatus(200);
   } catch (error) {
+    trackShopifyServerEvent("server_webhook_error", { webhook_provider: "shopify", webhook_type: "app_uninstalled", error_category: "processing" });
     next(error);
   }
 });
@@ -21,6 +24,7 @@ webhookRouter.post("/webhooks/customers/redact", expressRawJson, complianceAck);
 webhookRouter.post("/webhooks/shop/redact", expressRawJson, async (req, res, next) => {
   try {
     if (!verifyWebhook(req.body, req.header("X-Shopify-Hmac-Sha256"))) return res.sendStatus(401);
+    trackShopifyServerEvent("server_webhook_received", { webhook_provider: "shopify", webhook_type: "shop_redact" });
     const payload = JSON.parse(req.body.toString("utf8"));
     const shopDomain = payload.shop_domain || payload.myshopify_domain;
     const shop = await query("select id from shops where shop_domain=$1", [shopDomain]);
@@ -34,6 +38,7 @@ webhookRouter.post("/webhooks/shop/redact", expressRawJson, async (req, res, nex
     }
     res.sendStatus(200);
   } catch (error) {
+    trackShopifyServerEvent("server_webhook_error", { webhook_provider: "shopify", webhook_type: "shop_redact", error_category: "processing" });
     next(error);
   }
 });

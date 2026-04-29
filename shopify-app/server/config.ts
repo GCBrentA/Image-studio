@@ -21,7 +21,10 @@ export const config = {
   optivraApiUrl: (process.env.OPTIVRA_API_URL || "").replace(/\/$/, ""),
   optivraApiKey: process.env.OPTIVRA_API_KEY || "",
   encryptionSecret: process.env.ENCRYPTION_SECRET || "",
-  nodeEnv: process.env.NODE_ENV || "development"
+  nodeEnv: process.env.NODE_ENV || "development",
+  ga4MeasurementId: process.env.GA4_MEASUREMENT_ID || process.env.VITE_GA4_MEASUREMENT_ID || "",
+  ga4MeasurementProtocolSecret: process.env.GA4_MEASUREMENT_PROTOCOL_SECRET || "",
+  analyticsDebug: process.env.VITE_ANALYTICS_DEBUG === "true" || process.env.ANALYTICS_DEBUG === "true"
 };
 
 export function validateStartupConfig() {

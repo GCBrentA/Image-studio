@@ -66,6 +66,16 @@ export const env = {
   openAiApiKey: process.env.OPENAI_API_KEY ?? "",
   appUrl: process.env.APP_BASE_URL ?? process.env.APP_URL ?? "",
   apiBaseUrl: process.env.API_BASE_URL ?? "",
+  ga4MeasurementId:
+    process.env.GA4_MEASUREMENT_ID ??
+    process.env.GA_MEASUREMENT_ID ??
+    process.env.VITE_GA4_MEASUREMENT_ID ??
+    "",
+  googleTagId: process.env.GOOGLE_TAG_ID ?? "",
+  googleSiteVerification: process.env.GOOGLE_SITE_VERIFICATION ?? "",
+  ga4MeasurementProtocolSecret: process.env.GA4_MEASUREMENT_PROTOCOL_SECRET ?? "",
+  viteGtmId: process.env.VITE_GTM_ID ?? "",
+  analyticsDebug: process.env.VITE_ANALYTICS_DEBUG === "true" || process.env.ANALYTICS_DEBUG === "true",
   backgroundRemovalApiUrl: process.env.BACKGROUND_REMOVAL_API_URL ?? "",
   backgroundRemovalApiKey: process.env.BACKGROUND_REMOVAL_API_KEY ?? "",
   storageSignedUrlExpiresSeconds: Number(process.env.STORAGE_SIGNED_URL_EXPIRES_SECONDS ?? 60 * 60 * 24 * 7),
