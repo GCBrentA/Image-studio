@@ -1385,6 +1385,8 @@
 
 .optivra-admin-app .optivra-severity-badge.is-low,
 .optivra-admin-app .optivra-status-badge.is-approved,
+.optivra-admin-app .optivra-status-badge.is-available,
+.optivra-admin-app .optivra-status-badge.is-completed,
 .optivra-admin-app .optivra-status-badge.is-resolved,
 .optivra-admin-app .optivra-status-badge.is-ready {
 	background: #ecfdf3;
@@ -1392,7 +1394,8 @@
 	color: var(--optivra-success);
 }
 
-.optivra-admin-app .optivra-severity-badge.is-info {
+.optivra-admin-app .optivra-severity-badge.is-info,
+.optivra-admin-app .optivra-status-badge.is-dismissed {
 	background: #f8fafc;
 	border: 1px solid #d0d5dd;
 	color: #475467;

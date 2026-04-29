@@ -2761,8 +2761,9 @@ class Catalogue_Image_Studio_Admin {
 		$recommendations = [];
 		foreach ($rows as $index => $row) {
 			$filter = isset($row['action_filter']) && is_array($row['action_filter']) ? $row['action_filter'] : [];
-			$action_type = $this->normalize_recommendation_action_type($this->report_text($row, ['action_type'], ''));
-			if ('review_manually' === $action_type) {
+			$raw_action_type = $this->report_text($row, ['action_type'], '');
+			$action_type = $this->normalize_recommendation_action_type($raw_action_type);
+			if ('' === $raw_action_type || ('review_manually' === $action_type && 'review_manually' !== sanitize_key($raw_action_type))) {
 				$action_type = $this->infer_recommendation_action_type($row);
 			}
 
@@ -2886,6 +2887,26 @@ class Catalogue_Image_Studio_Admin {
 
 	private function normalize_recommendation_action_type(string $action_type): string {
 		$action_type = sanitize_key($action_type);
+		$aliases = [
+			'optimize_image'           => 'optimise_image',
+			'optimize_images'          => 'optimise_image',
+			'optimise_images'          => 'optimise_image',
+			'convert_to_webp'          => 'convert_webp',
+			'webp_conversion'          => 'convert_webp',
+			'resize'                   => 'resize_crop',
+			'crop'                     => 'resize_crop',
+			'crop_resize'              => 'resize_crop',
+			'background_replacement'   => 'replace_background',
+			'standardize_background'   => 'standardise_background',
+			'standardize_backgrounds'  => 'standardise_background',
+			'standardise_backgrounds'  => 'standardise_background',
+			'add_main_image_reminder'  => 'add_main_image',
+			'main_image_reminder'      => 'add_main_image',
+		];
+
+		if (isset($aliases[$action_type])) {
+			$action_type = $aliases[$action_type];
+		}
 
 		return array_key_exists($action_type, $this->get_recommendation_action_labels()) ? $action_type : 'review_manually';
 	}
