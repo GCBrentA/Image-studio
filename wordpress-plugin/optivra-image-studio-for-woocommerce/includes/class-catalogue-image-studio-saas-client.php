@@ -23,6 +23,28 @@ class Catalogue_Image_Studio_SaaSClient {
 	}
 
 	/**
+	 * Safely join the configured API base URL and an endpoint path.
+	 *
+	 * The recommended base URL is the site origin, for example https://www.optivra.app.
+	 * This helper also supports older overrides that include /api without creating /api/api.
+	 */
+	public static function build_api_url_for_base(string $api_base_url, string $endpoint): string {
+		$base = rtrim(trim($api_base_url), '/');
+		$path = '/' . ltrim(trim($endpoint), '/');
+
+		if ('' === $base) {
+			return $path;
+		}
+
+		$base_path = (string) parse_url($base, PHP_URL_PATH);
+		if ('/api' === rtrim($base_path, '/') && 0 === strpos($path, '/api/')) {
+			$path = substr($path, 4);
+		}
+
+		return $base . $path;
+	}
+
+	/**
 	 * Send an image URL to the backend for processing.
 	 *
 	 * @param string              $image_url Image URL.
@@ -37,8 +59,9 @@ class Catalogue_Image_Studio_SaaSClient {
 			);
 		}
 
+		$url = $this->build_api_url('/images/process');
 		$response = wp_remote_post(
-			$this->api_base_url . '/images/process',
+			$url,
 			[
 				'timeout' => 240,
 				'headers' => [
@@ -69,6 +92,7 @@ class Catalogue_Image_Studio_SaaSClient {
 				),
 			]
 		);
+		$this->log_http_request('POST', $url, is_wp_error($response) ? null : (int) wp_remote_retrieve_response_code($response));
 
 		if (is_wp_error($response)) {
 			$this->logger->error('Image processing API request failed.', ['message' => $response->get_error_message()]);
@@ -124,8 +148,9 @@ class Catalogue_Image_Studio_SaaSClient {
 			);
 		}
 
+		$url = $this->build_api_url('/usage');
 		$response = wp_remote_get(
-			$this->api_base_url . '/usage',
+			$url,
 			[
 				'timeout' => 20,
 				'headers' => [
@@ -134,6 +159,7 @@ class Catalogue_Image_Studio_SaaSClient {
 				] + $this->get_site_headers(),
 			]
 		);
+		$this->log_http_request('GET', $url, is_wp_error($response) ? null : (int) wp_remote_retrieve_response_code($response));
 
 		if (is_wp_error($response)) {
 			$this->logger->error('Usage API request failed.', ['message' => $response->get_error_message()]);
@@ -248,6 +274,74 @@ class Catalogue_Image_Studio_SaaSClient {
 	}
 
 	/**
+	 * Fetch paginated audit issues.
+	 *
+	 * @param string              $scan_id Remote scan ID.
+	 * @param array<string,mixed> $query Query filters.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function get_image_audit_issues(string $scan_id, array $query = []) {
+		return $this->request_json(
+			'GET',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/issues' . $this->build_query_string($query),
+			[],
+			25
+		);
+	}
+
+	/**
+	 * Fetch paginated audit items.
+	 *
+	 * @param string              $scan_id Remote scan ID.
+	 * @param array<string,mixed> $query Query filters.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function get_image_audit_items(string $scan_id, array $query = []) {
+		return $this->request_json(
+			'GET',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/items' . $this->build_query_string($query),
+			[],
+			25
+		);
+	}
+
+	/**
+	 * Ignore selected audit issues.
+	 *
+	 * @param string     $scan_id Remote scan ID.
+	 * @param array<int,string> $issue_ids Issue IDs.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function ignore_image_audit_issues(string $scan_id, array $issue_ids) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/issues/ignore',
+			[
+				'issue_ids' => array_values($issue_ids),
+			],
+			30
+		);
+	}
+
+	/**
+	 * Queue selected audit issues.
+	 *
+	 * @param string     $scan_id Remote scan ID.
+	 * @param array<int,string> $issue_ids Issue IDs.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function queue_image_audit_issues(string $scan_id, array $issue_ids) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/issues/queue',
+			[
+				'issue_ids' => array_values($issue_ids),
+			],
+			30
+		);
+	}
+
+	/**
 	 * Ask the backend to create queue jobs from an audit recommendation.
 	 *
 	 * @param string $scan_id Remote scan ID.
@@ -307,8 +401,9 @@ class Catalogue_Image_Studio_SaaSClient {
 			return;
 		}
 
+		$url = $this->build_api_url('/api/plugin/events');
 		$response = wp_remote_post(
-			$this->api_base_url . '/api/plugin/events',
+			$url,
 			[
 				'timeout'  => 5,
 				'blocking' => false,
@@ -329,6 +424,9 @@ class Catalogue_Image_Studio_SaaSClient {
 				),
 			]
 		);
+		if (! empty($settings['debug_mode'])) {
+			$this->log_http_request('POST', $url, is_wp_error($response) ? null : (int) wp_remote_retrieve_response_code($response));
+		}
 
 		if (is_wp_error($response) && ! empty($settings['debug_mode'])) {
 			$this->logger->error('Operational diagnostics event could not be sent.', ['message' => $response->get_error_message()]);
@@ -356,6 +454,48 @@ class Catalogue_Image_Studio_SaaSClient {
 		}
 
 		return $output;
+	}
+
+	private function build_api_url(string $endpoint): string {
+		return self::build_api_url_for_base($this->api_base_url, $endpoint);
+	}
+
+	/**
+	 * @param array<string,mixed> $query Query params.
+	 */
+	private function build_query_string(array $query): string {
+		$filtered = [];
+		foreach ($query as $key => $value) {
+			$key = sanitize_key((string) $key);
+			if ('' === $key || null === $value || '' === $value || is_array($value) || is_object($value)) {
+				continue;
+			}
+			$filtered[$key] = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+		}
+
+		return empty($filtered) ? '' : '?' . http_build_query($filtered, '', '&', PHP_QUERY_RFC3986);
+	}
+
+	private function debug_mode_enabled(): bool {
+		$settings = get_option('catalogue_image_studio_settings', []);
+		$settings = is_array($settings) ? $settings : [];
+
+		return ! empty($settings['debug_mode']);
+	}
+
+	private function log_http_request(string $method, string $url, ?int $status_code): void {
+		if (! $this->debug_mode_enabled()) {
+			return;
+		}
+
+		$this->logger->info(
+			'Optivra API request.',
+			[
+				'method' => strtoupper($method),
+				'url'    => $url,
+				'status' => null === $status_code ? 'network_error' : $status_code,
+			]
+		);
 	}
 
 	/**
@@ -386,13 +526,16 @@ class Catalogue_Image_Studio_SaaSClient {
 		if ('POST' === strtoupper($method)) {
 			$args['headers']['Content-Type'] = 'application/json';
 			$args['body'] = wp_json_encode($payload);
-			$response = wp_remote_post($this->api_base_url . $path, $args);
+			$url = $this->build_api_url($path);
+			$response = wp_remote_post($url, $args);
 		} else {
-			$response = wp_remote_get($this->api_base_url . $path, $args);
+			$url = $this->build_api_url($path);
+			$response = wp_remote_get($url, $args);
 		}
+		$this->log_http_request(strtoupper($method), $url, is_wp_error($response) ? null : (int) wp_remote_retrieve_response_code($response));
 
 		if (is_wp_error($response)) {
-			$this->logger->error('Optivra API request failed.', ['path' => $path, 'message' => $response->get_error_message()]);
+			$this->logger->error('Optivra API request failed.', ['url' => $url, 'message' => $response->get_error_message()]);
 			return $response;
 		}
 
