@@ -4,7 +4,14 @@ import path from "path";
 import sharp from "sharp";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
-import { removeImageBackground, removeImageBackgroundWithSpecialistModel } from "./backgroundRemovalService";
+import {
+  ecommercePreservePromptVersion,
+  openAiImageEditModel,
+  openAiImageEditQuality,
+  openAiImageEditSize,
+  removeImageBackground,
+  removeImageBackgroundWithSpecialistModel
+} from "./backgroundRemovalService";
 import {
   createStorageSignedUrl,
   storageBuckets,
@@ -42,6 +49,7 @@ export type ProcessedImageResult = {
   creditDeductionRequired: boolean;
   seoMetadata: SuggestedSeoMetadata;
   preserveDebug?: PreserveDebugInfo;
+  outputValidation?: OutputQualityValidation;
 };
 
 export type SuggestedSeoMetadata = {
@@ -55,10 +63,56 @@ export type SuggestedSeoMetadata = {
 };
 
 const maxImageBytes = 15 * 1024 * 1024;
-const outputSize = 2000;
-const defaultScalePercent = 94;
+const outputSize = 1024;
+const defaultScalePercent = 86;
 const signedUrlExpirySeconds = env.storageSignedUrlExpiresSeconds;
 const defaultBackgroundImagePath = path.resolve(process.cwd(), "public/site/assets/optivra-default-background.png");
+
+type ValidationStatus = "Passed" | "Needs Review" | "Failed";
+type ProductOrientation = "horizontal" | "square" | "tall";
+
+type ProductBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  width: number;
+  height: number;
+};
+
+type ProductCoverageTarget = {
+  orientation: ProductOrientation;
+  primaryAxis: "width" | "height";
+  target: number;
+  min: number;
+  max: number;
+  autoFixBelow: number;
+};
+
+export type OutputQualityValidation = {
+  status: ValidationStatus;
+  promptVersion: string;
+  processingMode: string;
+  retryCount: number;
+  productCoveragePercent: number;
+  productCoverageWidthPercent: number;
+  productCoverageHeightPercent: number;
+  targetCoverageMinPercent: number;
+  targetCoverageMaxPercent: number;
+  productOrientation: ProductOrientation;
+  autoFixedFraming: boolean;
+  checks: {
+    productPreservation: ValidationStatus;
+    framing: ValidationStatus | "Auto-fixed";
+    background: ValidationStatus;
+    detailPreservation: ValidationStatus;
+    interiorDropout: ValidationStatus;
+    edgeQuality: ValidationStatus;
+    shadow: ValidationStatus;
+  };
+  warnings: string[];
+  failureReasons: string[];
+};
 
 type DownloadedImage = {
   buffer: Buffer;
@@ -76,6 +130,9 @@ type CutoutResult = {
     foregroundMeanDelta: number;
   };
   debugAlphaMask?: Buffer;
+  debugInteriorDropoutOverlay?: Buffer;
+  debugRestoredRegionOverlay?: Buffer;
+  debugFinalRepairedCutout?: Buffer;
   preserveDebug?: PreserveDebugInfo;
 };
 
@@ -88,11 +145,48 @@ type PreserveRgbIntegrity = {
 };
 
 export type PreserveDebugAsset = {
-  kind: "original_source" | "ai_cutout" | "alpha_mask" | "preserved_cutout" | "final_composite" | "background_only_comparison";
+  kind:
+    | "original_source"
+    | "ai_cutout"
+    | "alpha_mask"
+    | "interior_dropout_overlay"
+    | "restored_region_overlay"
+    | "final_repaired_cutout"
+    | "preserved_cutout"
+    | "final_composite"
+    | "background_only_comparison";
   bucket: string;
   path: string;
   url: string | null;
   contentType: string;
+};
+
+export type InteriorDropoutCandidate = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pixels: number;
+  secondOpinionForegroundPercent: number;
+  productLikePercent: number;
+  backgroundLikePercent: number;
+  meanBoundaryGradient: number;
+  componentDensityPercent: number;
+  bridgesForeground: boolean;
+  classification: "restored" | "true_hole" | "needs_review" | "ignored";
+  reason: string;
+};
+
+export type InteriorDropoutDiagnostics = {
+  candidateCount: number;
+  restoredRegionCount: number;
+  restoredPixelCount: number;
+  trueHoleCount: number;
+  unresolvedRegionCount: number;
+  unresolvedPixelCount: number;
+  needsReview: boolean;
+  failureReasons: string[];
+  candidates: InteriorDropoutCandidate[];
 };
 
 export type PreserveMaskDiagnostics = {
@@ -118,6 +212,8 @@ export type PreserveMaskDiagnostics = {
 
 export type PreserveDebugInfo = {
   preserveMode: true;
+  promptVersion: string;
+  processingMode: string;
   fallbackMode: PreserveModeFallback;
   finalStatus: "masking" | "refining_edges" | "compositing" | "validating_foreground_integrity" | "completed" | "failed";
   maskSource: PreserveMaskSource;
@@ -139,6 +235,8 @@ export type PreserveDebugInfo = {
   mask: PreserveMaskDiagnostics | null;
   backgroundOnlyBlockerTriggered: boolean;
   rgbIntegrity: PreserveRgbIntegrity;
+  interiorDropout: InteriorDropoutDiagnostics | null;
+  outputValidation?: OutputQualityValidation;
   assets: PreserveDebugAsset[];
 };
 
@@ -290,7 +388,7 @@ const getSuggestedSeoMetadata = (imageUrl: string, imageHash: string): Suggested
     title: `${productName} | ${siteName}`,
     alt_text: `${productName} on a clean branded ecommerce background`,
     caption: `${productName} product image`,
-    description: `Optimized 2000x2000 WebP product image for ${siteName}.`,
+    description: `Optimized ${outputSize}x${outputSize} WebP product image for ${siteName}.`,
     file_name: `${slug}-${shortHash}.webp`,
     keywords: Array.from(new Set([...tokens, "product", "ecommerce", "webp"])).slice(0, 10)
   };
@@ -464,6 +562,8 @@ const processImagePreserveMode = async (
   const workingDimensions = await getImageDimensions(preservedOriginalBuffer);
   const debug: PreserveDebugInfo = {
     preserveMode: true,
+    promptVersion: ecommercePreservePromptVersion,
+    processingMode: "seo_product_feed_safe_preserve_background_replacement",
     fallbackMode: context.fallbackMode,
     finalStatus: "masking",
     maskSource: "failed",
@@ -480,6 +580,7 @@ const processImagePreserveMode = async (
       foregroundMeanDelta: null,
       alphaCoverage: null
     },
+    interiorDropout: null,
     assets: []
   };
   await addExistingPreserveDebugAsset(debug, "original_source", storageBuckets.originalImages, context.originalStoragePath, context.originalContentType);
@@ -545,17 +646,49 @@ const processImagePreserveMode = async (
       {
         allowLocalAssist: false,
         maskSource: "ai_mask",
-        prevalidatedMask: maskDiagnostics
+        prevalidatedMask: maskDiagnostics,
+        removeBackgroundRemnants: errors.some((message) => message.includes("background logo or watermark"))
       }
     );
     debug.finalStatus = "validating_foreground_integrity";
     debug.maskSource = "ai_mask";
     debug.mask = result.preserveDebug?.mask ?? maskDiagnostics;
+    debug.interiorDropout = result.preserveDebug?.interiorDropout ?? null;
     debug.rgbIntegrity = {
       passed: true,
       foregroundMeanDelta: result.validation.foregroundMeanDelta,
       alphaCoverage: result.validation.alphaCoverage
     };
+    if (result.debugInteriorDropoutOverlay) {
+      await uploadPreserveDebugAsset(
+        context,
+        debug,
+        "interior_dropout_overlay",
+        `attempt-${attempt}-interior-dropout-overlay-${randomUUID()}.png`,
+        result.debugInteriorDropoutOverlay,
+        "image/png"
+      );
+    }
+    if (result.debugRestoredRegionOverlay) {
+      await uploadPreserveDebugAsset(
+        context,
+        debug,
+        "restored_region_overlay",
+        `attempt-${attempt}-restored-region-overlay-${randomUUID()}.png`,
+        result.debugRestoredRegionOverlay,
+        "image/png"
+      );
+    }
+    if (result.debugFinalRepairedCutout) {
+      await uploadPreserveDebugAsset(
+        context,
+        debug,
+        "final_repaired_cutout",
+        `attempt-${attempt}-final-repaired-cutout-${randomUUID()}.png`,
+        result.debugFinalRepairedCutout,
+        "image/png"
+      );
+    }
     await uploadPreserveDebugAsset(
       context,
       debug,
@@ -675,6 +808,7 @@ const processImagePreserveMode = async (
         finalStatus: "validating_foreground_integrity",
         maskSource: "local_fallback",
         mask: localMask,
+        interiorDropout: fallback.preserveDebug?.interiorDropout ?? null,
         rgbIntegrity: {
           passed: true,
           foregroundMeanDelta: fallback.validation.foregroundMeanDelta,
@@ -771,6 +905,7 @@ const buildPreservedProductCutoutFromAlpha = async (
     allowLocalAssist: boolean;
     maskSource: PreserveMaskSource;
     prevalidatedMask?: PreserveMaskDiagnostics;
+    removeBackgroundRemnants?: boolean;
   }
 ): Promise<CutoutResult> => {
   const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
@@ -785,11 +920,22 @@ const buildPreservedProductCutoutFromAlpha = async (
   const originalRgba = await originalImage.clone().raw().toBuffer();
   const originalRaw = rgbaToRgb(originalRgba);
   const localAlpha = options.allowLocalAssist ? buildLocalForegroundAlpha(originalRgba, width, height) : null;
-  const alpha = localAlpha ? chooseBaseProductAlpha(candidateAlpha, localAlpha) : candidateAlpha;
-  const initialMaskDiagnostics = options.prevalidatedMask ?? analyzeAlphaMask(alpha, width, height);
+  const secondOpinionAlpha = localAlpha ?? buildLocalForegroundAlpha(originalRgba, width, height);
+  const structurallyCleanAlpha = removeLikelyBackgroundMarkComponents(originalRgba, candidateAlpha, width, height);
+  const chosenAlpha = localAlpha ? chooseBaseProductAlpha(structurallyCleanAlpha, localAlpha) : structurallyCleanAlpha;
+  const alpha = options.removeBackgroundRemnants
+    ? removePaleBackgroundEdgeRemnants(originalRgba, chosenAlpha, width, height)
+    : chosenAlpha;
+  const initialMaskDiagnostics = analyzeAlphaMask(alpha, width, height);
 
   if (!initialMaskDiagnostics.passed) {
     throw new Error(`Preserve mode rejected ${options.maskSource}: ${initialMaskDiagnostics.failureReasons.join("; ")}`);
+  }
+
+  const backgroundMarkSuspicion = getBackgroundMarkSuspicion(originalRgba, alpha, width, height);
+
+  if (backgroundMarkSuspicion.suspicious) {
+    throw new Error(`Preserve mode rejected ${options.maskSource}: ${backgroundMarkSuspicion.reason}`);
   }
 
   const assistedAlpha = options.allowLocalAssist
@@ -807,8 +953,27 @@ const buildPreservedProductCutoutFromAlpha = async (
   }
 
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
-  const productRgba = removeEdgeMatte(originalRaw, safeAlpha, width, height, backgroundPalette);
-  const visualValidation = getCutoutVisualPresence(productRgba, safeAlpha);
+  const interiorRepair = await repairInteriorProductDropouts(
+    originalRaw,
+    originalRgba,
+    safeAlpha,
+    secondOpinionAlpha,
+    width,
+    height,
+    backgroundPalette
+  );
+  const repairedMaskDiagnostics = analyzeAlphaMask(interiorRepair.alpha, width, height);
+
+  if (!repairedMaskDiagnostics.passed) {
+    throw new Error(`Preserve mode rejected the repaired product mask: ${repairedMaskDiagnostics.failureReasons.join("; ")}`);
+  }
+
+  if (interiorRepair.diagnostics.needsReview) {
+    throw new Error(`Preserve mode detected unresolved interior product dropout: ${interiorRepair.diagnostics.failureReasons.join("; ")}`);
+  }
+
+  const productRgba = removeEdgeMatte(originalRaw, interiorRepair.alpha, width, height, backgroundPalette);
+  const visualValidation = getCutoutVisualPresence(productRgba, interiorRepair.alpha);
 
   if (!visualValidation.isVisible) {
     throw new Error("Preserve mode rejected the cutout because the detected foreground is visually indistinguishable from the source background.");
@@ -831,9 +996,14 @@ const buildPreservedProductCutoutFromAlpha = async (
     provider,
     attempts,
     validation,
-    debugAlphaMask: await buildAlphaMaskPreview(safeAlpha, width, height),
+    debugAlphaMask: await buildAlphaMaskPreview(interiorRepair.alpha, width, height),
+    debugInteriorDropoutOverlay: interiorRepair.debugSuspiciousOverlay,
+    debugRestoredRegionOverlay: interiorRepair.debugRestoredOverlay,
+    debugFinalRepairedCutout: cutout,
     preserveDebug: {
       preserveMode: true,
+      promptVersion: ecommercePreservePromptVersion,
+      processingMode: "seo_product_feed_safe_preserve_background_replacement",
       fallbackMode: options.allowLocalAssist ? "local_experimental" : "fail_safe",
       finalStatus: "validating_foreground_integrity",
       maskSource: options.maskSource,
@@ -849,13 +1019,14 @@ const buildPreservedProductCutoutFromAlpha = async (
         height
       },
       aiResultDimensions: null,
-      mask: finalMaskDiagnostics,
+      mask: repairedMaskDiagnostics,
       backgroundOnlyBlockerTriggered: false,
       rgbIntegrity: {
         passed: true,
         foregroundMeanDelta: validation.foregroundMeanDelta,
         alphaCoverage: validation.alphaCoverage
       },
+      interiorDropout: interiorRepair.diagnostics,
       assets: []
     }
   };
@@ -1465,6 +1636,198 @@ const keepMainAlphaComponents = (alpha: Buffer, width: number, height: number): 
   return kept;
 };
 
+const removeLikelyBackgroundMarkComponents = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const components = getConnectedMaskComponents(thresholdAlphaMask(alpha, 24), width, height);
+
+  if (components.length < 2) {
+    return alpha;
+  }
+
+  const metrics = components.map((pixels) => {
+    const bounds = getPixelComponentBounds(pixels, width, height);
+    const boundsArea = Math.max(1, (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1));
+    let totalSaturation = 0;
+    let totalLuminance = 0;
+    let totalGradient = 0;
+
+    for (const pixel of pixels) {
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      totalSaturation += getRgbSaturation(r, g, b);
+      totalLuminance += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      totalGradient += getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    }
+
+    const density = pixels.length / boundsArea;
+    const meanSaturation = totalSaturation / Math.max(1, pixels.length);
+    const meanLuminance = totalLuminance / Math.max(1, pixels.length);
+    const meanGradient = totalGradient / Math.max(1, pixels.length);
+    const darkStructureBonus = meanLuminance < 105 ? 1 : 0;
+    const componentScore = pixels.length * Math.max(0.2, density) * (1 + meanSaturation * 4 + Math.min(meanGradient, 40) / 20 + darkStructureBonus);
+
+    return {
+      pixels,
+      bounds,
+      density,
+      meanSaturation,
+      meanLuminance,
+      meanGradient,
+      componentScore
+    };
+  });
+  const bestScore = Math.max(...metrics.map((metric) => metric.componentScore));
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (const metric of metrics) {
+    const sparsePaleMark =
+      metric.pixels.length >= 500 &&
+      metric.density < 0.34 &&
+      metric.meanSaturation < 0.13 &&
+      metric.meanLuminance > 105 &&
+      metric.meanGradient < 24 &&
+      metric.componentScore < bestScore * 0.72;
+
+    if (!sparsePaleMark) {
+      continue;
+    }
+
+    for (const pixel of metric.pixels) {
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+  }
+
+  if (removedPixels <= 0 || getAlphaCoverage(cleaned) < getAlphaCoverage(alpha) * 0.45) {
+    return alpha;
+  }
+
+  return cleaned;
+};
+
+const getBackgroundMarkSuspicion = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): { suspicious: boolean; reason: string } => {
+  const alphaCoverage = getAlphaCoverage(alpha);
+
+  if (alphaCoverage <= 0) {
+    return { suspicious: false, reason: "" };
+  }
+
+  const neutralMask = Buffer.alloc(alpha.length);
+  let neutralPixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const paleNeutralMark = luminance > 105 && luminance < 235 && saturation < 0.09 && channelSpread < 22;
+
+    if (paleNeutralMark) {
+      neutralMask[pixel] = 255;
+      neutralPixels += 1;
+    }
+  }
+
+  if (neutralPixels < Math.max(3500, alphaCoverage * 0.18)) {
+    return { suspicious: false, reason: "" };
+  }
+
+  const components = getConnectedMaskComponents(neutralMask, width, height)
+    .map((pixels) => {
+      const bounds = getPixelComponentBounds(pixels, width, height);
+      const boundsArea = (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1);
+
+      return {
+        pixels: pixels.length,
+        boundsArea,
+        density: pixels.length / Math.max(1, boundsArea),
+        width: bounds.maxX - bounds.minX + 1,
+        height: bounds.maxY - bounds.minY + 1
+      };
+    })
+    .sort((a, b) => b.pixels - a.pixels);
+  const largest = components[0];
+
+  if (!largest) {
+    return { suspicious: false, reason: "" };
+  }
+
+  const neutralPercent = (neutralPixels / alphaCoverage) * 100;
+  const largestShare = largest.pixels / alphaCoverage;
+  const largeBackdropBounds = largest.width > width * 0.35 && largest.height > height * 0.22;
+  const sparseBackdropShape = largest.density < 0.42;
+
+  if (neutralPercent >= 32 && largestShare >= 0.22 && largeBackdropBounds && sparseBackdropShape) {
+    return {
+      suspicious: true,
+      reason: `foreground mask appears to include a pale background logo or watermark (${neutralPercent.toFixed(1)}% neutral masked pixels).`
+    };
+  }
+
+  return { suspicious: false, reason: "" };
+};
+
+const removePaleBackgroundEdgeRemnants = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) < 24 || !hasTransparentNeighbor(alpha, width, height, x, y, 2)) {
+        continue;
+      }
+
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const paleNeutralEdge = luminance > 108 && luminance < 240 && saturation < 0.1 && channelSpread < 24;
+
+      if (!paleNeutralEdge) {
+        continue;
+      }
+
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+  }
+
+  if (removedPixels <= 0 || getAlphaCoverage(cleaned) < getAlphaCoverage(alpha) * 0.75) {
+    return alpha;
+  }
+
+  return cleaned;
+};
+
 const dilateAlphaMask = (alpha: Buffer, width: number, height: number, radius: number): Buffer => {
   const dilated = Buffer.from(alpha);
 
@@ -1590,6 +1953,476 @@ const getSafeAlphaMask = (fallbackAlpha: Buffer, candidateAlpha: Buffer, minCove
   }
 
   return candidateAlpha;
+};
+
+const repairInteriorProductDropouts = async (
+  originalRgb: Buffer,
+  originalRgba: Buffer,
+  alpha: Buffer,
+  secondOpinionAlpha: Buffer,
+  width: number,
+  height: number,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>
+): Promise<{
+  alpha: Buffer;
+  diagnostics: InteriorDropoutDiagnostics;
+  debugSuspiciousOverlay?: Buffer;
+  debugRestoredOverlay?: Buffer;
+}> => {
+  const productBounds = getAlphaBounds(alpha, width, height, 24);
+  const repairedAlpha = Buffer.from(alpha);
+  const suspiciousMask = Buffer.alloc(alpha.length);
+  const restoredMask = Buffer.alloc(alpha.length);
+  const emptyDiagnostics: InteriorDropoutDiagnostics = {
+    candidateCount: 0,
+    restoredRegionCount: 0,
+    restoredPixelCount: 0,
+    trueHoleCount: 0,
+    unresolvedRegionCount: 0,
+    unresolvedPixelCount: 0,
+    needsReview: false,
+    failureReasons: [],
+    candidates: []
+  };
+
+  if (!productBounds || backgroundPalette.length === 0) {
+    return {
+      alpha: repairedAlpha,
+      diagnostics: emptyDiagnostics
+    };
+  }
+
+  const candidateSeed = Buffer.alloc(alpha.length);
+  const insetX = Math.max(3, Math.round(productBounds.width * 0.006));
+  const insetY = Math.max(3, Math.round(productBounds.height * 0.006));
+  const minX = Math.max(0, productBounds.minX + insetX);
+  const maxX = Math.min(width - 1, productBounds.maxX - insetX);
+  const minY = Math.max(0, productBounds.minY + insetY);
+  const maxY = Math.min(height - 1, productBounds.maxY - insetY);
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) >= 24 || !hasMaskedNeighbor(alpha, width, height, x, y, 10)) {
+        continue;
+      }
+
+      const productEvidence = getInteriorPixelEvidence(
+        originalRgb,
+        originalRgba,
+        secondOpinionAlpha,
+        backgroundPalette,
+        width,
+        height,
+        pixel
+      );
+
+      if (!productEvidence.strongBackgroundEvidence && productEvidence.productLike) {
+        candidateSeed[pixel] = 255;
+        suspiciousMask[pixel] = 255;
+      }
+    }
+  }
+
+  const components = getConnectedMaskComponents(candidateSeed, width, height);
+  const minComponentPixels = Math.max(18, Math.round(width * height * 0.000015));
+  const diagnostics: InteriorDropoutDiagnostics = {
+    ...emptyDiagnostics,
+    candidateCount: components.length
+  };
+
+  for (const component of components) {
+    const bounds = getPixelComponentBounds(component, width, height);
+    const metrics = getInteriorDropoutMetrics(
+      component,
+      bounds,
+      alpha,
+      secondOpinionAlpha,
+      originalRgb,
+      originalRgba,
+      backgroundPalette,
+      width,
+      height
+    );
+
+    let classification: InteriorDropoutCandidate["classification"] = "ignored";
+    let reason = "region was too small or unsupported to change safely";
+
+    if (component.length >= minComponentPixels) {
+      const trueHoleEvidence =
+        metrics.backgroundLikePercent >= 72 &&
+        metrics.secondOpinionForegroundPercent <= 18 &&
+        metrics.meanBoundaryGradient >= 10;
+      const largeSparseBackgroundShape =
+        metrics.componentDensityPercent < 16 &&
+        (bounds.maxX - bounds.minX + 1 > width * 0.12 || bounds.maxY - bounds.minY + 1 > height * 0.08) &&
+        metrics.meanBoundaryGradient < 24;
+      const strongSecondOpinion = metrics.secondOpinionForegroundPercent >= 38;
+      const productBridge = metrics.bridgesForeground && metrics.productLikePercent >= 58 && metrics.backgroundLikePercent < 52;
+      const productTexture = metrics.productLikePercent >= 72 && metrics.backgroundLikePercent < 42;
+
+      if (largeSparseBackgroundShape) {
+        classification = "ignored";
+        reason = "large sparse transparent structure looks like background/logo material rather than solid missing product";
+      } else if (trueHoleEvidence) {
+        classification = "true_hole";
+        reason = "transparent region has background-colour evidence, hard product boundary evidence, and weak second-opinion foreground support";
+      } else if (strongSecondOpinion || productBridge || productTexture) {
+        classification = "restored";
+        reason = strongSecondOpinion
+          ? "second-opinion mask supports foreground inside the primary preserve mask"
+          : "region bridges foreground structure and matches product colour or texture";
+      } else if (metrics.bridgesForeground && metrics.productLikePercent >= 35 && metrics.backgroundLikePercent < 68) {
+        classification = "needs_review";
+        reason = "internal missing region is ambiguous after structural and second-opinion checks";
+      }
+    }
+
+    const candidate: InteriorDropoutCandidate = {
+      x: bounds.minX,
+      y: bounds.minY,
+      width: bounds.maxX - bounds.minX + 1,
+      height: bounds.maxY - bounds.minY + 1,
+      pixels: component.length,
+      secondOpinionForegroundPercent: Number(metrics.secondOpinionForegroundPercent.toFixed(2)),
+      productLikePercent: Number(metrics.productLikePercent.toFixed(2)),
+      backgroundLikePercent: Number(metrics.backgroundLikePercent.toFixed(2)),
+      meanBoundaryGradient: Number(metrics.meanBoundaryGradient.toFixed(2)),
+      componentDensityPercent: Number(metrics.componentDensityPercent.toFixed(2)),
+      bridgesForeground: metrics.bridgesForeground,
+      classification,
+      reason
+    };
+    diagnostics.candidates.push(candidate);
+
+    if (classification === "true_hole") {
+      diagnostics.trueHoleCount += 1;
+      continue;
+    }
+
+    if (classification === "needs_review") {
+      diagnostics.unresolvedRegionCount += 1;
+      diagnostics.unresolvedPixelCount += component.length;
+      continue;
+    }
+
+    if (classification !== "restored") {
+      continue;
+    }
+
+    diagnostics.restoredRegionCount += 1;
+    for (const pixel of component) {
+      repairedAlpha[pixel] = 255;
+      restoredMask[pixel] = 255;
+      diagnostics.restoredPixelCount += 1;
+    }
+  }
+
+  growRestoredDropoutPixels(
+    repairedAlpha,
+    restoredMask,
+    alpha,
+    secondOpinionAlpha,
+    originalRgb,
+    originalRgba,
+    backgroundPalette,
+    width,
+    height,
+    productBounds
+  );
+
+  diagnostics.restoredPixelCount = getAlphaCoverage(restoredMask);
+  diagnostics.needsReview = diagnostics.unresolvedRegionCount > 0;
+
+  if (diagnostics.needsReview) {
+    diagnostics.failureReasons.push(
+      `Interior product dropout remains after repair (${diagnostics.unresolvedRegionCount} region${diagnostics.unresolvedRegionCount === 1 ? "" : "s"}, ${diagnostics.unresolvedPixelCount} px).`
+    );
+  }
+
+  const debugSuspiciousOverlay = diagnostics.candidates.length > 0
+    ? await buildMaskOverlayPreview(originalRgb, suspiciousMask, width, height, { r: 255, g: 56, b: 56 })
+    : undefined;
+  const debugRestoredOverlay = diagnostics.restoredPixelCount > 0
+    ? await buildMaskOverlayPreview(originalRgb, restoredMask, width, height, { r: 40, g: 180, b: 100 })
+    : undefined;
+
+  return {
+    alpha: repairedAlpha,
+    diagnostics,
+    debugSuspiciousOverlay,
+    debugRestoredOverlay
+  };
+};
+
+const getInteriorPixelEvidence = (
+  originalRgb: Buffer,
+  originalRgba: Buffer,
+  secondOpinionAlpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number,
+  pixel: number
+): {
+  productLike: boolean;
+  strongBackgroundEvidence: boolean;
+  secondOpinionForeground: boolean;
+  boundaryGradient: number;
+} => {
+  const rgbIndex = pixel * 3;
+  const r = originalRgb[rgbIndex] ?? 0;
+  const g = originalRgb[rgbIndex + 1] ?? 0;
+  const b = originalRgb[rgbIndex + 2] ?? 0;
+  const distance = closestPaletteDistance(r, g, b, backgroundPalette);
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const saturation = getRgbSaturation(r, g, b);
+  const boundaryGradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+  const secondOpinionForeground = (secondOpinionAlpha[pixel] ?? 0) >= 128;
+  const darkProductMaterial = luminance < 96 && distance > 10 && boundaryGradient > 4;
+  const productTexture = distance > 30 && (saturation > 0.08 || boundaryGradient > 8 || luminance < 135);
+  const fineProductStructure = distance > 16 && boundaryGradient > 18;
+  const strongBackgroundEvidence = distance < 22 && saturation < 0.18 && boundaryGradient < 16 && !secondOpinionForeground;
+
+  return {
+    productLike: secondOpinionForeground || darkProductMaterial || productTexture || fineProductStructure,
+    strongBackgroundEvidence,
+    secondOpinionForeground,
+    boundaryGradient
+  };
+};
+
+const getConnectedMaskComponents = (mask: Buffer, width: number, height: number): number[][] => {
+  const visited = new Uint8Array(mask.length);
+  const components: number[][] = [];
+
+  for (let start = 0; start < mask.length; start += 1) {
+    if (visited[start] || (mask[start] ?? 0) < 24) {
+      continue;
+    }
+
+    const stack = [start];
+    const component: number[] = [];
+    visited[start] = 1;
+
+    while (stack.length > 0) {
+      const pixel = stack.pop() as number;
+      component.push(pixel);
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const neighbours = [
+        x > 0 ? pixel - 1 : -1,
+        x < width - 1 ? pixel + 1 : -1,
+        y > 0 ? pixel - width : -1,
+        y < height - 1 ? pixel + width : -1
+      ];
+
+      for (const next of neighbours) {
+        if (next < 0 || visited[next] || (mask[next] ?? 0) < 24) {
+          continue;
+        }
+
+        visited[next] = 1;
+        stack.push(next);
+      }
+    }
+
+    components.push(component);
+  }
+
+  return components;
+};
+
+const getPixelComponentBounds = (
+  pixels: number[],
+  width: number,
+  height: number
+): { minX: number; maxX: number; minY: number; maxY: number } => {
+  let minX = width;
+  let maxX = 0;
+  let minY = height;
+  let maxY = 0;
+
+  for (const pixel of pixels) {
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+
+  return { minX, maxX, minY, maxY };
+};
+
+const getInteriorDropoutMetrics = (
+  pixels: number[],
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  alpha: Buffer,
+  secondOpinionAlpha: Buffer,
+  originalRgb: Buffer,
+  originalRgba: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number
+): {
+  secondOpinionForegroundPercent: number;
+  productLikePercent: number;
+  backgroundLikePercent: number;
+  meanBoundaryGradient: number;
+  componentDensityPercent: number;
+  bridgesForeground: boolean;
+} => {
+  let secondOpinionForegroundPixels = 0;
+  let productLikePixels = 0;
+  let backgroundLikePixels = 0;
+  let totalGradient = 0;
+
+  for (const pixel of pixels) {
+    const evidence = getInteriorPixelEvidence(
+      originalRgb,
+      originalRgba,
+      secondOpinionAlpha,
+      backgroundPalette,
+      width,
+      height,
+      pixel
+    );
+
+    if (evidence.secondOpinionForeground) {
+      secondOpinionForegroundPixels += 1;
+    }
+    if (evidence.productLike) {
+      productLikePixels += 1;
+    }
+    if (evidence.strongBackgroundEvidence) {
+      backgroundLikePixels += 1;
+    }
+    totalGradient += evidence.boundaryGradient;
+  }
+
+  return {
+    secondOpinionForegroundPercent: pixels.length > 0 ? (secondOpinionForegroundPixels / pixels.length) * 100 : 0,
+    productLikePercent: pixels.length > 0 ? (productLikePixels / pixels.length) * 100 : 0,
+    backgroundLikePercent: pixels.length > 0 ? (backgroundLikePixels / pixels.length) * 100 : 0,
+    meanBoundaryGradient: pixels.length > 0 ? totalGradient / pixels.length : 0,
+    componentDensityPercent: pixels.length > 0
+      ? (pixels.length / Math.max(1, (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1))) * 100
+      : 0,
+    bridgesForeground: hasForegroundBridgeAroundBounds(alpha, width, height, bounds)
+  };
+};
+
+const hasForegroundBridgeAroundBounds = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number }
+): boolean => {
+  const radius = Math.max(4, Math.round(Math.min(width, height) * 0.012));
+  let left = 0;
+  let right = 0;
+  let top = 0;
+  let bottom = 0;
+
+  for (let y = Math.max(0, bounds.minY - radius); y <= Math.min(height - 1, bounds.maxY + radius); y += 1) {
+    for (let x = Math.max(0, bounds.minX - radius); x < bounds.minX; x += 1) {
+      if ((alpha[y * width + x] ?? 0) >= 24) left += 1;
+    }
+    for (let x = bounds.maxX + 1; x <= Math.min(width - 1, bounds.maxX + radius); x += 1) {
+      if ((alpha[y * width + x] ?? 0) >= 24) right += 1;
+    }
+  }
+
+  for (let x = Math.max(0, bounds.minX - radius); x <= Math.min(width - 1, bounds.maxX + radius); x += 1) {
+    for (let y = Math.max(0, bounds.minY - radius); y < bounds.minY; y += 1) {
+      if ((alpha[y * width + x] ?? 0) >= 24) top += 1;
+    }
+    for (let y = bounds.maxY + 1; y <= Math.min(height - 1, bounds.maxY + radius); y += 1) {
+      if ((alpha[y * width + x] ?? 0) >= 24) bottom += 1;
+    }
+  }
+
+  return (left > 0 && right > 0) || (top > 0 && bottom > 0);
+};
+
+const growRestoredDropoutPixels = (
+  repairedAlpha: Buffer,
+  restoredMask: Buffer,
+  originalAlpha: Buffer,
+  secondOpinionAlpha: Buffer,
+  originalRgb: Buffer,
+  originalRgba: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number,
+  bounds: ProductBounds
+): void => {
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = Buffer.from(repairedAlpha);
+
+    for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+        const pixel = y * width + x;
+
+        if ((originalAlpha[pixel] ?? 0) >= 24 || (repairedAlpha[pixel] ?? 0) >= 24) {
+          continue;
+        }
+
+        if (!hasMaskedNeighbor(restoredMask, width, height, x, y, 1) || !hasMaskedNeighbor(repairedAlpha, width, height, x, y, 2)) {
+          continue;
+        }
+
+        const evidence = getInteriorPixelEvidence(
+          originalRgb,
+          originalRgba,
+          secondOpinionAlpha,
+          backgroundPalette,
+          width,
+          height,
+          pixel
+        );
+
+        if (!evidence.strongBackgroundEvidence && (evidence.secondOpinionForeground || evidence.productLike)) {
+          next[pixel] = 255;
+          restoredMask[pixel] = 255;
+        }
+      }
+    }
+
+    next.copy(repairedAlpha);
+  }
+};
+
+const buildMaskOverlayPreview = async (
+  originalRgb: Buffer,
+  mask: Buffer,
+  width: number,
+  height: number,
+  color: { r: number; g: number; b: number }
+): Promise<Buffer> => {
+  const rgba = Buffer.alloc(width * height * 4);
+
+  for (let pixel = 0; pixel < mask.length; pixel += 1) {
+    const sourceIndex = pixel * 3;
+    const targetIndex = pixel * 4;
+    const selected = (mask[pixel] ?? 0) >= 24;
+    const blend = selected ? 0.58 : 0;
+    rgba[targetIndex] = Math.round((originalRgb[sourceIndex] ?? 0) * (1 - blend) + color.r * blend);
+    rgba[targetIndex + 1] = Math.round((originalRgb[sourceIndex + 1] ?? 0) * (1 - blend) + color.g * blend);
+    rgba[targetIndex + 2] = Math.round((originalRgb[sourceIndex + 2] ?? 0) * (1 - blend) + color.b * blend);
+    rgba[targetIndex + 3] = 255;
+  }
+
+  return sharp(rgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
 };
 
 const getAlphaCoverage = (alpha: Buffer): number => {
@@ -1809,6 +2642,201 @@ const getMaskBounds = (
   return { minX, maxX, minY, maxY };
 };
 
+const getAlphaBounds = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  threshold = 16
+): ProductBounds | null => {
+  let minX = width;
+  let maxX = -1;
+  let minY = height;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((alpha[y * width + x] ?? 0) < threshold) {
+        continue;
+      }
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return null;
+  }
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  };
+};
+
+const getImageAlphaBounds = async (imageBuffer: Buffer, threshold = 16): Promise<ProductBounds | null> => {
+  const metadata = await sharp(imageBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return null;
+  }
+
+  const alpha = await sharp(imageBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .raw()
+    .toBuffer();
+
+  return getAlphaBounds(alpha, metadata.width, metadata.height, threshold);
+};
+
+const classifyProductOrientation = (bounds: ProductBounds): ProductOrientation => {
+  const aspectRatio = bounds.width / Math.max(1, bounds.height);
+
+  if (aspectRatio >= 1.25) {
+    return "horizontal";
+  }
+
+  if (aspectRatio <= 0.8) {
+    return "tall";
+  }
+
+  return "square";
+};
+
+const getProductCoverageTarget = (
+  bounds: ProductBounds,
+  scaleMode: string,
+  requestedScalePercent?: number
+): ProductCoverageTarget => {
+  const orientation = classifyProductOrientation(bounds);
+  const base: Record<ProductOrientation, ProductCoverageTarget> = {
+    horizontal: {
+      orientation: "horizontal",
+      primaryAxis: "width",
+      target: 0.86,
+      min: 0.82,
+      max: 0.9,
+      autoFixBelow: 0.75
+    },
+    square: {
+      orientation: "square",
+      primaryAxis: "width",
+      target: 0.78,
+      min: 0.7,
+      max: 0.84,
+      autoFixBelow: 0.66
+    },
+    tall: {
+      orientation: "tall",
+      primaryAxis: "height",
+      target: 0.82,
+      min: 0.76,
+      max: 0.88,
+      autoFixBelow: 0.7
+    }
+  };
+  const target = { ...base[orientation] };
+
+  if (requestedScalePercent && Number.isFinite(requestedScalePercent)) {
+    target.target = Math.min(target.max, Math.max(target.min, requestedScalePercent / 100));
+    return target;
+  }
+
+  if (["tight", "close-up"].includes(scaleMode)) {
+    target.target = target.max - 0.01;
+  } else if (["generous", "loose", "wide"].includes(scaleMode)) {
+    target.target = target.min + 0.01;
+  } else if (scaleMode === "balanced") {
+    target.target = orientation === "horizontal" ? 0.84 : 0.78;
+  } else if (scaleMode === "tall" && orientation === "tall") {
+    target.target = 0.86;
+  }
+
+  return target;
+};
+
+const trimProductCutoutToAlphaBounds = async (cutout: Buffer): Promise<Buffer> => {
+  const metadata = await sharp(cutout).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Product cutout could not be read before framing.");
+  }
+
+  const alpha = await sharp(cutout)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .raw()
+    .toBuffer();
+  const bounds = getAlphaBounds(alpha, metadata.width, metadata.height, 8);
+
+  if (!bounds) {
+    throw new Error("Product cutout was empty after background removal. No image was replaced; reprocess this image with preserve product enabled.");
+  }
+
+  const transparentEdgePad = Math.max(1, Math.round(Math.min(metadata.width, metadata.height) * 0.002));
+  const left = Math.max(0, bounds.minX - transparentEdgePad);
+  const top = Math.max(0, bounds.minY - transparentEdgePad);
+  const right = Math.min(metadata.width - 1, bounds.maxX + transparentEdgePad);
+  const bottom = Math.min(metadata.height - 1, bounds.maxY + transparentEdgePad);
+
+  return sharp(cutout)
+    .rotate()
+    .ensureAlpha()
+    .extract({
+      left,
+      top,
+      width: right - left + 1,
+      height: bottom - top + 1
+    })
+    .png()
+    .toBuffer();
+};
+
+const reframeProductCutout = async (
+  cutout: Buffer,
+  scaleMode: string,
+  requestedScalePercent: number | undefined,
+  edgeResizeWidth: number,
+  edgeResizeHeight: number
+): Promise<{ productBuffer: Buffer; target: ProductCoverageTarget; autoFixedFraming: boolean }> => {
+  const trimmedCutout = await trimProductCutoutToAlphaBounds(cutout);
+  const bounds = await getImageAlphaBounds(trimmedCutout, 8);
+
+  if (!bounds) {
+    throw new Error("Product cutout was empty after deterministic framing.");
+  }
+
+  const target = getProductCoverageTarget(bounds, scaleMode, requestedScalePercent);
+  const primaryPixels = Math.round(outputSize * target.target);
+  const resizeOptions = target.primaryAxis === "width"
+    ? { width: Math.min(primaryPixels, edgeResizeWidth), height: edgeResizeHeight }
+    : { width: edgeResizeWidth, height: Math.min(primaryPixels, edgeResizeHeight) };
+  const initialCoverage = target.primaryAxis === "width"
+    ? bounds.width / outputSize
+    : bounds.height / outputSize;
+  const productBuffer = await sharp(trimmedCutout)
+    .resize({
+      ...resizeOptions,
+      fit: "inside",
+      withoutEnlargement: false
+    })
+    .png()
+    .toBuffer();
+
+  return {
+    productBuffer,
+    target,
+    autoFixedFraming: initialCoverage < target.autoFixBelow
+  };
+};
+
 const hasMaskedNeighbor = (
   alpha: Buffer,
   width: number,
@@ -1825,6 +2853,30 @@ const hasMaskedNeighbor = (
   for (let ny = minY; ny <= maxY; ny += 1) {
     for (let nx = minX; nx <= maxX; nx += 1) {
       if ((alpha[ny * width + nx] ?? 0) >= 24) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+const hasTransparentNeighbor = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  radius: number
+): boolean => {
+  const minX = Math.max(0, x - radius);
+  const maxX = Math.min(width - 1, x + radius);
+  const minY = Math.max(0, y - radius);
+  const maxY = Math.min(height - 1, y + radius);
+
+  for (let ny = minY; ny <= maxY; ny += 1) {
+    for (let nx = minX; nx <= maxX; nx += 1) {
+      if ((alpha[ny * width + nx] ?? 0) < 24) {
         return true;
       }
     }
@@ -1899,7 +2951,7 @@ const normalizeScalePercent = (scalePercent?: number): number => {
     return defaultScalePercent;
   }
 
-  return Math.min(Math.max(scalePercent, 75), 88);
+  return Math.min(Math.max(scalePercent, 70), 90);
 };
 
 const getObject = (value: unknown): Record<string, unknown> =>
@@ -2141,6 +3193,154 @@ const assertCompositeContainsProduct = async (
   }
 };
 
+const buildOutputQualityValidation = async (
+  productBuffer: Buffer,
+  productLeft: number,
+  productTop: number,
+  target: ProductCoverageTarget,
+  cutoutResult: CutoutResult,
+  preserveProductExactly: boolean,
+  shadowEnabled: boolean,
+  autoFixedFraming: boolean
+): Promise<OutputQualityValidation> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Product cutout could not be read for output validation.");
+  }
+
+  const alpha = await sharp(productBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .raw()
+    .toBuffer();
+  const bounds = getAlphaBounds(alpha, metadata.width, metadata.height, 16);
+
+  if (!bounds) {
+    throw new Error("Output validation failed because no product foreground was detected.");
+  }
+
+  const finalBounds = {
+    minX: productLeft + bounds.minX,
+    maxX: productLeft + bounds.maxX,
+    minY: productTop + bounds.minY,
+    maxY: productTop + bounds.maxY,
+    width: bounds.width,
+    height: bounds.height
+  };
+  const coverageWidth = finalBounds.width / outputSize;
+  const coverageHeight = finalBounds.height / outputSize;
+  const primaryCoverage = target.primaryAxis === "width" ? coverageWidth : coverageHeight;
+  const boundaryMargin = Math.round(outputSize * 0.025);
+  const warnings: string[] = [];
+  const failureReasons: string[] = [];
+  let framing: OutputQualityValidation["checks"]["framing"] = autoFixedFraming ? "Auto-fixed" : "Passed";
+  let edgeQuality: ValidationStatus = "Passed";
+  let interiorDropout: ValidationStatus = "Passed";
+
+  if (primaryCoverage < target.min) {
+    const message = `Product coverage ${(primaryCoverage * 100).toFixed(1)}% is below the ${Math.round(target.min * 100)}-${Math.round(target.max * 100)}% target for ${target.orientation} products.`;
+    if (primaryCoverage < target.autoFixBelow) {
+      failureReasons.push(message);
+      framing = "Failed";
+    } else {
+      warnings.push(message);
+      framing = "Needs Review";
+    }
+  }
+
+  if (primaryCoverage > target.max + 0.02) {
+    failureReasons.push(`Product coverage ${(primaryCoverage * 100).toFixed(1)}% is above the safe ${Math.round(target.max * 100)}% maximum.`);
+    framing = "Failed";
+  } else if (primaryCoverage > target.max) {
+    warnings.push(`Product coverage ${(primaryCoverage * 100).toFixed(1)}% is slightly above the preferred maximum.`);
+    framing = framing === "Auto-fixed" ? "Auto-fixed" : "Needs Review";
+  }
+
+  if (
+    finalBounds.minX <= boundaryMargin ||
+    finalBounds.minY <= boundaryMargin ||
+    finalBounds.maxX >= outputSize - boundaryMargin ||
+    finalBounds.maxY >= outputSize - boundaryMargin
+  ) {
+    failureReasons.push("Product foreground touches the canvas safe boundary and may be cropped.");
+    framing = "Failed";
+  }
+
+  const mask = cutoutResult.preserveDebug?.mask;
+  if (mask && (!mask.passed || mask.connectedComponentCount > 200 || mask.largestComponentSharePercent < 70)) {
+    warnings.push("Foreground edge confidence is low; review for background remnants or jagged thin parts.");
+    edgeQuality = "Needs Review";
+  }
+
+  const interiorDropoutDiagnostics = cutoutResult.preserveDebug?.interiorDropout;
+  if (interiorDropoutDiagnostics && (interiorDropoutDiagnostics.needsReview || interiorDropoutDiagnostics.unresolvedRegionCount > 0)) {
+    failureReasons.push(
+      interiorDropoutDiagnostics.failureReasons.join("; ") ||
+      "Interior product dropout remains after preserve-mode repair."
+    );
+    interiorDropout = "Failed";
+  } else if ((interiorDropoutDiagnostics?.restoredRegionCount ?? 0) > 0) {
+    warnings.push("Interior product dropout was detected and repaired from original source pixels.");
+  }
+
+  const productPreservation: ValidationStatus = preserveProductExactly && !Number.isFinite(cutoutResult.validation.foregroundMeanDelta)
+    ? "Needs Review"
+    : preserveProductExactly && cutoutResult.validation.foregroundMeanDelta > 3
+      ? "Failed"
+      : "Passed";
+
+  if (productPreservation === "Failed") {
+    failureReasons.push("Product pixel drift exceeded the preserve-mode threshold.");
+  } else if (productPreservation === "Needs Review") {
+    warnings.push("Product preservation could not be fully verified.");
+  }
+
+  const detailPreservation: ValidationStatus = preserveProductExactly ? productPreservation : "Needs Review";
+  if (!preserveProductExactly) {
+    warnings.push("Standard mode may adjust product presentation; review before applying to main product images.");
+  }
+
+  const shadow: ValidationStatus = shadowEnabled ? "Passed" : "Needs Review";
+  if (!shadowEnabled) {
+    warnings.push("No contact shadow was added, so the product may appear less grounded.");
+  }
+
+  const checks = {
+    productPreservation,
+    framing,
+    background: "Passed" as ValidationStatus,
+    detailPreservation,
+    interiorDropout,
+    edgeQuality,
+    shadow
+  };
+  const status: ValidationStatus = failureReasons.length > 0
+    ? "Failed"
+    : Object.values(checks).some((check) => check === "Needs Review")
+      ? "Needs Review"
+      : "Passed";
+
+  return {
+    status,
+    promptVersion: ecommercePreservePromptVersion,
+    processingMode: preserveProductExactly
+      ? "seo_product_feed_safe_preserve_background_replacement"
+      : "standard_background_replacement",
+    retryCount: Math.max(0, cutoutResult.attempts - 1),
+    productCoveragePercent: Number((primaryCoverage * 100).toFixed(2)),
+    productCoverageWidthPercent: Number((coverageWidth * 100).toFixed(2)),
+    productCoverageHeightPercent: Number((coverageHeight * 100).toFixed(2)),
+    targetCoverageMinPercent: Number((target.min * 100).toFixed(2)),
+    targetCoverageMaxPercent: Number((target.max * 100).toFixed(2)),
+    productOrientation: target.orientation,
+    autoFixedFraming,
+    checks,
+    warnings,
+    failureReasons
+  };
+};
+
 const buildBrandedBackground = async (background: string): Promise<Buffer> => {
   if (background === "transparent") {
     return sharp({
@@ -2172,25 +3372,25 @@ const buildBrandedBackground = async (background: string): Promise<Buffer> => {
 
   const presetColors: Record<string, string> = {
     white: "#ffffff",
-    "soft-white": "#ffffff",
-    "cool-studio": "#eef4ff",
-    "warm-studio": "#fff5ec",
-    "optivra-default": "#f4f6f8"
+    "soft-white": "#f8f8f5",
+    "light-grey": "#f3f4f4",
+    "cool-studio": "#f4f7fb",
+    "warm-studio": "#faf7f2",
+    "optivra-default": "#f7f7f4"
   };
   const backgroundColor = presetColors[background] ?? background;
-  const safeBackground = /^#[0-9a-f]{6}$/i.test(background) ? background : "#ffffff";
+  const safeBackground = /^#[0-9a-f]{6}$/i.test(background) ? background : "#f7f7f4";
   const safeColor = /^#[0-9a-f]{6}$/i.test(backgroundColor) ? backgroundColor : safeBackground;
   const backgroundSvg = `
     <svg width="${outputSize}" height="${outputSize}" viewBox="0 0 ${outputSize} ${outputSize}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#ffffff"/>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fbfbfa"/>
           <stop offset="0.55" stop-color="${safeColor}"/>
-          <stop offset="1" stop-color="#f4f6f8"/>
+          <stop offset="1" stop-color="#f1f2f0"/>
         </linearGradient>
       </defs>
-      <rect width="2000" height="2000" fill="url(#bg)"/>
-      <rect x="80" y="80" width="1840" height="1840" rx="120" fill="none" stroke="rgba(0,0,0,0.035)" stroke-width="4"/>
+      <rect width="${outputSize}" height="${outputSize}" fill="url(#bg)"/>
     </svg>
   `;
 
@@ -2221,7 +3421,7 @@ export const processImageForProduct = async ({
   imageJobId,
   userId,
   imageUrl,
-  background = "#ffffff",
+  background = "#f7f7f4",
   scalePercent,
   backgroundImageUrl,
   imageBuffer,
@@ -2256,7 +3456,7 @@ export const processImageForProduct = async ({
     backgroundImageUrl !== undefined ||
     backgroundImageBuffer !== undefined ||
     scalePercent !== undefined ||
-    background !== "#ffffff";
+    background !== "#f7f7f4";
   const originalImage = imageBuffer
     ? getUploadedImage(imageBuffer, imageContentType ?? "application/octet-stream")
     : await downloadImage(imageUrl);
@@ -2343,8 +3543,11 @@ export const processImageForProduct = async ({
   const debugCutoutUploadedAt = new Date();
 
   const framingMode = getString(framingSettings.mode, "auto");
+  const targetCoverageOverride = framingSettings.useTargetCoverage === true && typeof framingSettings.targetCoverage === "number"
+    ? getNumber(framingSettings.targetCoverage, defaultScalePercent, 70, 90)
+    : undefined;
   const paddingPercent = getNumber(framingSettings.padding, 8, 0, 30);
-  const autoPaddingPercent = framingMode === "auto" && !scalePercent ? Math.min(paddingPercent, 2) : paddingPercent;
+  const autoPaddingPercent = framingMode === "auto" && !scalePercent ? Math.min(paddingPercent, 3) : paddingPercent;
   const margin = edgeEnabled ? Math.round(outputSize * (Math.min(autoPaddingPercent, 1) / 100)) : Math.round(outputSize * (autoPaddingPercent / 100));
   const horizontalLimit = outputSize - (edgeLeft ? 0 : margin) - (edgeRight ? 0 : margin);
   const verticalLimit = outputSize - (edgeTop ? 0 : margin) - (edgeBottom ? 0 : margin);
@@ -2353,26 +3556,14 @@ export const processImageForProduct = async ({
   const resizeHeight = Math.max(1, Math.min(targetProductSize, verticalLimit));
   const edgeResizeWidth = edgeLeft && edgeRight ? horizontalLimit : resizeWidth;
   const edgeResizeHeight = edgeTop && edgeBottom ? verticalLimit : resizeHeight;
-  let productBuffer = await sharp(cutout)
-    .rotate()
-    .ensureAlpha()
-    .trim({
-      background: {
-        r: 0,
-        g: 0,
-        b: 0,
-        alpha: 0
-      },
-      threshold: 8
-    })
-    .resize({
-      width: edgeResizeWidth,
-      height: edgeResizeHeight,
-      fit: "inside",
-      withoutEnlargement: false
-    })
-    .png()
-    .toBuffer();
+  const reframedProduct = await reframeProductCutout(
+    cutout,
+    framingMode,
+    typeof scalePercent === "number" ? normalizeScalePercent(scalePercent) : targetCoverageOverride,
+    edgeResizeWidth,
+    edgeResizeHeight
+  );
+  let productBuffer = reframedProduct.productBuffer;
 
   let productMetadata = await sharp(productBuffer).metadata();
   if ((productMetadata.width ?? 0) > outputSize || (productMetadata.height ?? 0) > outputSize) {
@@ -2395,7 +3586,8 @@ export const processImageForProduct = async ({
   const productWidth = Math.min(outputSize, productMetadata.width ?? targetProductSize);
   const productHeight = Math.min(outputSize, productMetadata.height ?? targetProductSize);
   let left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), edgeLeft ? 0 : margin), outputSize - productWidth - (edgeRight ? 0 : margin));
-  let top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2), edgeTop ? 0 : margin), outputSize - productHeight - (edgeBottom ? 0 : margin));
+  const verticalPresentationOffset = shadowSettings.mode === "off" ? 0 : -Math.round(outputSize * 0.015);
+  let top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2) + verticalPresentationOffset, edgeTop ? 0 : margin), outputSize - productHeight - (edgeBottom ? 0 : margin));
 
   if (edgeLeft && !edgeRight) left = 0;
   if (edgeRight && !edgeLeft) left = outputSize - productWidth;
@@ -2403,6 +3595,46 @@ export const processImageForProduct = async ({
   if (edgeBottom && !edgeTop) top = outputSize - productHeight;
 
   const shadow = await buildShadow(outputSize, outputSize, productBuffer, productWidth, productHeight, left, top, shadowSettings);
+  const outputValidation = await buildOutputQualityValidation(
+    productBuffer,
+    left,
+    top,
+    reframedProduct.target,
+    cutoutResult,
+    preserveProductExactly,
+    Boolean(shadow),
+    reframedProduct.autoFixedFraming
+  );
+
+  if (preserveProductExactly && cutoutResult.preserveDebug) {
+    cutoutResult.preserveDebug.outputValidation = outputValidation;
+  }
+
+  console.info("Image processing output validation", {
+    imageJobId,
+    productId: getString(getObject(jobOverrides).productId, ""),
+    imageId: getString(getObject(jobOverrides).imageId, ""),
+    mode: outputValidation.processingMode,
+    promptVersion: ecommercePreservePromptVersion,
+    model: openAiImageEditModel,
+    quality: openAiImageEditQuality,
+    size: openAiImageEditSize,
+    attempt: cutoutResult.attempts,
+    validationResult: outputValidation.status,
+    failureReason: outputValidation.failureReasons.join("; ") || null,
+    productCoveragePercent: outputValidation.productCoveragePercent
+  });
+
+  if (outputValidation.status === "Failed") {
+    const failureReason = outputValidation.failureReasons.join("; ") || "Output failed product image validation.";
+    if (preserveProductExactly && cutoutResult.preserveDebug) {
+      cutoutResult.preserveDebug.finalStatus = "failed";
+      cutoutResult.preserveDebug.failureReason = failureReason;
+      throw new PreserveModeProcessingError(failureReason, cutoutResult.preserveDebug);
+    }
+
+    throw new Error(failureReason);
+  }
 
   if (requiresCustomBackground && !effectiveBackgroundImageUrl && !backgroundImageBuffer) {
     throw new Error("Custom background is selected but no custom background image was received. Save the background setting and reprocess this image.");
@@ -2508,6 +3740,7 @@ export const processImageForProduct = async ({
     duplicateOfJobId: null,
     creditDeductionRequired: true,
     seoMetadata,
-    preserveDebug: cutoutResult.preserveDebug
+    preserveDebug: cutoutResult.preserveDebug,
+    outputValidation
   };
 };

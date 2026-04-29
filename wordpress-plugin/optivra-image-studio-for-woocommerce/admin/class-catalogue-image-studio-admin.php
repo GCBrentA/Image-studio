@@ -328,10 +328,15 @@ class Catalogue_Image_Studio_Admin {
 		$settings['process_gallery_images']  = ! empty($input['process_gallery_images']);
 		$settings['process_category_images'] = ! empty($input['process_category_images']);
 		$settings['preserve_product_exactly'] = ! empty($input['preserve_product_exactly']);
+		$settings['processing_mode']         = $this->sanitize_processing_mode($input['processing_mode'] ?? $settings['processing_mode']);
+		$settings['product_fit']             = $this->sanitize_product_fit($input['product_fit'] ?? $settings['product_fit']);
 		$settings['smart_scaling']           = ! empty($input['smart_scaling']);
 		$settings['smart_scaling_enabled']   = $settings['smart_scaling'];
 		$settings['apply_shadow']            = ! empty($input['apply_shadow']);
 		$settings['shadow_enabled']          = $settings['apply_shadow'];
+		$settings['auto_fail_product_altered'] = ! empty($input['auto_fail_product_altered']);
+		$settings['auto_fix_crop_spacing']   = ! empty($input['auto_fix_crop_spacing']);
+		$settings['preserve_dark_detail']    = ! empty($input['preserve_dark_detail']);
 		$settings['duplicate_detection']     = ! empty($input['duplicate_detection']);
 		$settings['generate_seo_filename']   = ! empty($input['generate_seo_filename']);
 		$settings['enable_filename_seo']     = $settings['generate_seo_filename'];
@@ -377,6 +382,10 @@ class Catalogue_Image_Studio_Admin {
 		$settings['shadow_lift']             = ! empty($input['shadow_lift']);
 		$settings['neutralize_tint']         = ! empty($input['neutralize_tint']);
 		$settings['lighting_strength']       = $this->sanitize_lighting_strength($input['lighting_strength'] ?? $settings['lighting_strength']);
+		$settings['target_product_coverage'] = $this->sanitize_int_range($input['target_product_coverage'] ?? $settings['target_product_coverage'], 70, 90, 86);
+		$settings['max_retries']             = $this->sanitize_int_range($input['max_retries'] ?? $settings['max_retries'], 1, 2, 2);
+		$settings['output_size']             = $this->sanitize_int_range($input['output_size'] ?? $settings['output_size'], 512, 2048, 1024);
+		$settings['output_aspect_ratio']     = $this->sanitize_output_aspect_ratio($input['output_aspect_ratio'] ?? $settings['output_aspect_ratio']);
 		$settings['background_preset']       = $this->sanitize_background_preset($input['background_preset'] ?? $settings['background_preset']);
 		$settings['background']              = $settings['background_preset'];
 		$settings['default_scale_mode']      = $this->sanitize_scale_mode($input['default_scale_mode'] ?? $settings['default_scale_mode']);
@@ -1235,7 +1244,11 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_toggle_setting('process_featured_images', __('Include featured/product images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue main product images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_featured_images'])); ?>
 					<?php $this->render_toggle_setting('process_gallery_images', __('Include gallery images', 'optivra-image-studio-for-woocommerce'), __('Scan and queue WooCommerce gallery images by default.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_gallery_images'])); ?>
 					<?php $this->render_toggle_setting('process_category_images', __('Include category thumbnail images', 'optivra-image-studio-for-woocommerce'), __('Allow scans to include product category thumbnails when selected.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['process_category_images'])); ?>
+					<?php $this->render_select_setting('processing_mode', __('Default processing mode', 'optivra-image-studio-for-woocommerce'), __('SEO/Product Feed Safe Mode with product preservation is recommended for main WooCommerce images.', 'optivra-image-studio-for-woocommerce'), $this->get_processing_modes(), (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve')); ?>
 					<?php $this->render_toggle_setting('preserve_product_exactly', __('Preserve product exactly', 'optivra-image-studio-for-woocommerce'), __('Prevents AI from regenerating or changing the product. Uses expert background removal and preserves the original product pixels while replacing only the background.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_product_exactly'])); ?>
+					<?php $this->render_toggle_setting('auto_fail_product_altered', __('Auto-fail if product appears altered', 'optivra-image-studio-for-woocommerce'), __('Failed preservation checks stop the image before it can be applied.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_fail_product_altered'])); ?>
+					<?php $this->render_toggle_setting('auto_fix_crop_spacing', __('Auto-fix crop and spacing', 'optivra-image-studio-for-woocommerce'), __('Optivra deterministically improves excessive whitespace after background replacement.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_fix_crop_spacing'])); ?>
+					<?php $this->render_toggle_setting('preserve_dark_detail', __('Preserve dark product detail', 'optivra-image-studio-for-woocommerce'), __('Avoid crushed blacks and heavy contrast changes on dark product parts.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_dark_detail'])); ?>
 					<?php $this->render_toggle_setting('duplicate_detection', __('Duplicate detection', 'optivra-image-studio-for-woocommerce'), __('Reuse previous processed results when the same source image is encountered.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['duplicate_detection'])); ?>
 					<?php $this->render_toggle_setting('pause_on_low_credits', __('Pause processing when credits are low', 'optivra-image-studio-for-woocommerce'), __('Stop larger queue batches before credits are exhausted.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['pause_on_low_credits'])); ?>
 					<?php $this->render_toggle_setting('retry_failed_jobs', __('Retry failed jobs automatically', 'optivra-image-studio-for-woocommerce'), __('Keep failed jobs ready for a quick retry pass.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['retry_failed_jobs'])); ?>
@@ -1245,8 +1258,8 @@ class Catalogue_Image_Studio_Admin {
 
 				<section class="optivra-card">
 					<div class="optivra-card-header"><h3><?php echo esc_html__('Background', 'optivra-image-studio-for-woocommerce'); ?></h3><p><?php echo esc_html__('Choose an Optivra preset or upload a brand background from the Media Library.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
-					<?php $this->render_select_setting('background_source', __('Background source', 'optivra-image-studio-for-woocommerce'), __('Use an Optivra preset or your own uploaded background image.', 'optivra-image-studio-for-woocommerce'), ['preset' => __('Optivra preset', 'optivra-image-studio-for-woocommerce'), 'custom' => __('Custom uploaded background', 'optivra-image-studio-for-woocommerce')], (string) ($settings['background_source'] ?? 'preset')); ?>
-					<?php $this->render_select_setting('background_preset', __('Background preset', 'optivra-image-studio-for-woocommerce'), __('Default background style when using Optivra presets.', 'optivra-image-studio-for-woocommerce'), $this->get_background_presets(), (string) ($settings['background_preset'] ?? 'optivra-default')); ?>
+					<?php $this->render_select_setting('background_source', __('Default background', 'optivra-image-studio-for-woocommerce'), __('Use a clean preset or your own uploaded background image.', 'optivra-image-studio-for-woocommerce'), ['preset' => __('Preset background', 'optivra-image-studio-for-woocommerce'), 'custom' => __('Custom uploaded background', 'optivra-image-studio-for-woocommerce')], (string) ($settings['background_source'] ?? 'preset')); ?>
+					<?php $this->render_select_setting('background_preset', __('Background preset', 'optivra-image-studio-for-woocommerce'), __('Default background style when using presets.', 'optivra-image-studio-for-woocommerce'), $this->get_background_presets(), (string) ($settings['background_preset'] ?? 'optivra-default')); ?>
 					<div class="optivra-setting-row">
 						<div><strong class="optivra-setting-label"><?php echo esc_html__('Custom background upload', 'optivra-image-studio-for-woocommerce'); ?></strong><p class="optivra-setting-description"><?php echo esc_html__('Preview stays contained here; the full image is never rendered in the admin screen.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
 						<div class="optivra-setting-control">
@@ -1262,6 +1275,7 @@ class Catalogue_Image_Studio_Admin {
 
 				<section class="optivra-card">
 					<div class="optivra-card-header"><h3><?php echo esc_html__('Framing', 'optivra-image-studio-for-woocommerce'); ?></h3><p><?php echo esc_html__('Global framing defaults. Image-to-edge is controlled per queued image.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
+					<?php $this->render_select_setting('product_fit', __('Default product fit', 'optivra-image-studio-for-woocommerce'), __('Auto chooses the right coverage for horizontal, square, and tall products.', 'optivra-image-studio-for-woocommerce'), $this->get_product_fit_modes(), (string) ($settings['product_fit'] ?? 'auto')); ?>
 					<?php $this->render_select_setting('default_scale_mode', __('Default image framing', 'optivra-image-studio-for-woocommerce'), __('Choose the default amount of space around the product.', 'optivra-image-studio-for-woocommerce'), $this->get_scale_modes(), (string) ($settings['default_scale_mode'] ?? 'auto')); ?>
 					<?php $this->render_toggle_setting('smart_scaling', __('Smart product framing', 'optivra-image-studio-for-woocommerce'), __('Let Optivra keep products comfortably framed without clipping.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['smart_scaling'])); ?>
 					<?php $this->render_number_setting('framing_padding', __('Product padding / safe margin', 'optivra-image-studio-for-woocommerce'), __('Default safe margin around products, expressed as a percentage.', 'optivra-image-studio-for-woocommerce'), (int) ($settings['framing_padding'] ?? 8), 0, 30); ?>
@@ -1451,6 +1465,10 @@ class Catalogue_Image_Studio_Admin {
 			<summary><?php echo esc_html__('Advanced (for support / development only)', 'optivra-image-studio-for-woocommerce'); ?></summary>
 			<p class="catalogue-image-studio-warning"><?php echo esc_html__('These settings are for development/support use only. Most users should not change them.', 'optivra-image-studio-for-woocommerce'); ?></p>
 			<?php $this->render_text_setting('api_base_url_override', __('API Base URL override', 'optivra-image-studio-for-woocommerce'), __('Only change this when support asks you to point the plugin at a different Optivra API.', 'optivra-image-studio-for-woocommerce'), (string) ($settings['api_base_url_override'] ?? ''), 'url'); ?>
+			<?php $this->render_number_setting('target_product_coverage', __('Target product coverage', 'optivra-image-studio-for-woocommerce'), __('Default target coverage percentage for long horizontal products.', 'optivra-image-studio-for-woocommerce'), (int) ($settings['target_product_coverage'] ?? 86), 70, 90); ?>
+			<?php $this->render_number_setting('max_retries', __('Max retries', 'optivra-image-studio-for-woocommerce'), __('Preserve mode is capped at 2 attempts; standard mode is capped at 1 attempt.', 'optivra-image-studio-for-woocommerce'), (int) ($settings['max_retries'] ?? 2), 1, 2); ?>
+			<?php $this->render_number_setting('output_size', __('Output size', 'optivra-image-studio-for-woocommerce'), __('Default square output size in pixels.', 'optivra-image-studio-for-woocommerce'), (int) ($settings['output_size'] ?? 1024), 512, 2048); ?>
+			<?php $this->render_select_setting('output_aspect_ratio', __('Output aspect ratio', 'optivra-image-studio-for-woocommerce'), __('Default is square for WooCommerce and product feeds.', 'optivra-image-studio-for-woocommerce'), ['1:1' => __('Square 1:1', 'optivra-image-studio-for-woocommerce')], (string) ($settings['output_aspect_ratio'] ?? '1:1')); ?>
 			<?php $this->render_toggle_setting('debug_mode', __('Debug mode', 'optivra-image-studio-for-woocommerce'), __('Enable detailed logging for support and troubleshooting.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['debug_mode'])); ?>
 			<div class="optivra-button-row">
 				<button type="submit" name="clear_local_cache" value="1" class="button"><?php echo esc_html__('Clear local cache', 'optivra-image-studio-for-woocommerce'); ?></button>
@@ -1881,12 +1899,30 @@ class Catalogue_Image_Studio_Admin {
 
 	private function get_background_presets(): array {
 		return [
-			'optivra-default' => __('Optivra Default', 'optivra-image-studio-for-woocommerce'),
-			'white'           => __('White', 'optivra-image-studio-for-woocommerce'),
+			'optivra-default' => __('Off-white studio', 'optivra-image-studio-for-woocommerce'),
+			'white'           => __('Pure white', 'optivra-image-studio-for-woocommerce'),
+			'light-grey'      => __('Light grey', 'optivra-image-studio-for-woocommerce'),
 			'transparent'     => __('Transparent', 'optivra-image-studio-for-woocommerce'),
-			'soft-white'      => __('Soft White', 'optivra-image-studio-for-woocommerce'),
-			'cool-studio'     => __('Cool Studio', 'optivra-image-studio-for-woocommerce'),
-			'warm-studio'     => __('Warm Studio', 'optivra-image-studio-for-woocommerce'),
+			'soft-white'      => __('Soft white', 'optivra-image-studio-for-woocommerce'),
+			'cool-studio'     => __('Cool light grey', 'optivra-image-studio-for-woocommerce'),
+			'warm-studio'     => __('Warm light grey', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_processing_modes(): array {
+		return [
+			'seo_product_feed_preserve' => __('Preserve product + clean background', 'optivra-image-studio-for-woocommerce'),
+			'standard_ecommerce_cleanup' => __('Standard ecommerce cleanup', 'optivra-image-studio-for-woocommerce'),
+			'premium_studio_background' => __('Premium studio background', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_product_fit_modes(): array {
+		return [
+			'auto'     => __('Auto', 'optivra-image-studio-for-woocommerce'),
+			'tight'    => __('Tight', 'optivra-image-studio-for-woocommerce'),
+			'balanced' => __('Balanced', 'optivra-image-studio-for-woocommerce'),
+			'generous' => __('Generous', 'optivra-image-studio-for-woocommerce'),
 		];
 	}
 
@@ -1895,7 +1931,7 @@ class Catalogue_Image_Studio_Admin {
 			'auto'     => __('Auto', 'optivra-image-studio-for-woocommerce'),
 			'tight'    => __('Tight', 'optivra-image-studio-for-woocommerce'),
 			'balanced' => __('Balanced', 'optivra-image-studio-for-woocommerce'),
-			'loose'    => __('Loose', 'optivra-image-studio-for-woocommerce'),
+			'loose'    => __('Generous', 'optivra-image-studio-for-woocommerce'),
 			'close-up' => __('Close-up', 'optivra-image-studio-for-woocommerce'),
 			'wide'     => __('Wide', 'optivra-image-studio-for-woocommerce'),
 			'tall'     => __('Tall', 'optivra-image-studio-for-woocommerce'),
@@ -1940,6 +1976,21 @@ class Catalogue_Image_Studio_Admin {
 	private function sanitize_background_preset($preset): string {
 		$preset = sanitize_key((string) $preset);
 		return array_key_exists($preset, $this->get_background_presets()) ? $preset : 'optivra-default';
+	}
+
+	private function sanitize_processing_mode($mode): string {
+		$mode = sanitize_key((string) $mode);
+		return array_key_exists($mode, $this->get_processing_modes()) ? $mode : 'seo_product_feed_preserve';
+	}
+
+	private function sanitize_product_fit($mode): string {
+		$mode = sanitize_key((string) $mode);
+		return array_key_exists($mode, $this->get_product_fit_modes()) ? $mode : 'auto';
+	}
+
+	private function sanitize_output_aspect_ratio($ratio): string {
+		$ratio = (string) $ratio;
+		return '1:1' === $ratio ? '1:1' : '1:1';
 	}
 
 	private function sanitize_background_source($source): string {
@@ -1995,7 +2046,7 @@ class Catalogue_Image_Studio_Admin {
 		$job = $this->plugin->jobs()->find($job_id);
 		$settings = $this->plugin->get_settings();
 		$background_preset = (string) ($settings['background_preset'] ?? 'optivra-default');
-		$scale_mode = (string) ($settings['default_scale_mode'] ?? $settings['scale_mode'] ?? 'auto');
+		$scale_mode = (string) ($settings['product_fit'] ?? $settings['default_scale_mode'] ?? $settings['scale_mode'] ?? 'auto');
 		$background_source = (string) ($settings['background_source'] ?? 'preset');
 
 		$options = [];
@@ -2019,6 +2070,16 @@ class Catalogue_Image_Studio_Admin {
 
 		$options['settings'] = [
 			'preserveProductExactly' => ! empty($settings['preserve_product_exactly']),
+			'processingMode' => (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve'),
+			'promptVersion' => 'ecommerce_preserve_v2',
+			'autoFailIfProductAltered' => ! empty($settings['auto_fail_product_altered']),
+			'autoFixCropSpacing' => ! empty($settings['auto_fix_crop_spacing']),
+			'preserveDarkDetail' => ! empty($settings['preserve_dark_detail']),
+			'maxRetries' => (int) ($settings['max_retries'] ?? 2),
+			'output' => [
+				'size' => (int) ($settings['output_size'] ?? 1024),
+				'aspectRatio' => (string) ($settings['output_aspect_ratio'] ?? '1:1'),
+			],
 			'background' => [
 				'source'              => $background_source,
 				'preset'              => $background_preset,
@@ -2029,6 +2090,8 @@ class Catalogue_Image_Studio_Admin {
 				'mode'                     => $scale_mode,
 				'smartScaling'             => ! empty($settings['smart_scaling']),
 				'padding'                  => (int) ($settings['framing_padding'] ?? 8),
+				'targetCoverage'           => (int) ($settings['target_product_coverage'] ?? 86),
+				'useTargetCoverage'        => 86 !== (int) ($settings['target_product_coverage'] ?? 86),
 				'preserveTransparentEdges' => ! empty($settings['preserve_transparent_edges']),
 			],
 			'shadow' => [
@@ -2081,10 +2144,11 @@ class Catalogue_Image_Studio_Admin {
 		$map = [
 			'optivra-default' => 'optivra-default',
 			'white'           => 'white',
+			'light-grey'      => 'light-grey',
 			'transparent'     => 'transparent',
-			'soft-white'      => '#ffffff',
-			'cool-studio'     => '#eef4ff',
-			'warm-studio'     => '#fff5ec',
+			'soft-white'      => '#f8f8f5',
+			'cool-studio'     => '#f4f7fb',
+			'warm-studio'     => '#faf7f2',
 		];
 
 		return $map[$preset] ?? 'optivra-default';
@@ -2243,6 +2307,7 @@ class Catalogue_Image_Studio_Admin {
 				<?php if (in_array((string) ($job['status'] ?? ''), ['queued', 'processing', 'failed', 'completed', 'rejected'], true)) : ?>
 					<?php $this->render_job_edge_controls($job); ?>
 				<?php endif; ?>
+				<?php $this->render_output_validation_summary($job); ?>
 				<?php $this->render_job_diagnostics($job); ?>
 			</td>
 			<td><?php $this->render_seo_fields($job); ?></td>
@@ -2441,6 +2506,42 @@ class Catalogue_Image_Studio_Admin {
 	/**
 	 * @param array<string,mixed> $job Job.
 	 */
+	private function render_output_validation_summary(array $job): void {
+		$validation = $this->get_output_validation($job);
+
+		if (empty($validation)) {
+			return;
+		}
+
+		$status = (string) ($validation['status'] ?? '');
+		$checks = isset($validation['checks']) && is_array($validation['checks']) ? $validation['checks'] : [];
+		?>
+		<div class="optivra-validation-summary">
+			<strong><?php echo esc_html__('Product Preservation:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['productPreservation'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Framing:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['framing'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Background:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['background'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Detail Preservation:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['detailPreservation'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Interior Product Dropout:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['interiorDropout'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Coverage:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html(isset($validation['productCoveragePercent']) ? sprintf('%.2f%%', (float) $validation['productCoveragePercent']) : __('Not stored', 'optivra-image-studio-for-woocommerce')); ?><br />
+			<strong><?php echo esc_html__('Prompt:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['promptVersion'] ?? '')); ?><br />
+			<strong><?php echo esc_html__('Mode:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['processingMode'] ?? '')); ?><br />
+			<strong><?php echo esc_html__('Retry count:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['retryCount'] ?? '0')); ?>
+			<?php if (! empty($validation['autoFixedFraming'])) : ?>
+				<p class="catalogue-image-studio-help"><?php echo esc_html__('Optivra automatically improved the crop so the product fills the frame more professionally.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+			<?php if (in_array((string) ($checks['productPreservation'] ?? ''), ['Failed', 'Needs Review'], true)) : ?>
+				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Needs Review: Optivra detected possible product changes. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+			<?php if (in_array((string) ($checks['interiorDropout'] ?? ''), ['Failed', 'Needs Review'], true)) : ?>
+				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Needs Review: Optivra detected possible missing product material inside the object. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 */
 	private function render_preserve_diagnostics(array $job): void {
 		$diagnostics = $this->get_preserve_diagnostics($job);
 
@@ -2451,7 +2552,11 @@ class Catalogue_Image_Studio_Admin {
 		$mask = isset($diagnostics['mask']) && is_array($diagnostics['mask']) ? $diagnostics['mask'] : [];
 		$bbox = isset($mask['bbox']) && is_array($mask['bbox']) ? $mask['bbox'] : [];
 		$rgb  = isset($diagnostics['rgbIntegrity']) && is_array($diagnostics['rgbIntegrity']) ? $diagnostics['rgbIntegrity'] : [];
+		$interior_dropout = isset($diagnostics['interiorDropout']) && is_array($diagnostics['interiorDropout']) ? $diagnostics['interiorDropout'] : [];
+		$validation = $this->get_output_validation($job);
 		$rows = [
+			__('Prompt version', 'optivra-image-studio-for-woocommerce')          => (string) ($diagnostics['promptVersion'] ?? $validation['promptVersion'] ?? ''),
+			__('Processing mode', 'optivra-image-studio-for-woocommerce')         => (string) ($diagnostics['processingMode'] ?? $validation['processingMode'] ?? ''),
 			__('Preserve failure reason', 'optivra-image-studio-for-woocommerce') => (string) ($diagnostics['failureReason'] ?? ''),
 			__('Preserve final status', 'optivra-image-studio-for-woocommerce')  => (string) ($diagnostics['finalStatus'] ?? ''),
 			__('Mask source', 'optivra-image-studio-for-woocommerce')            => (string) ($diagnostics['maskSource'] ?? ''),
@@ -2463,6 +2568,9 @@ class Catalogue_Image_Studio_Admin {
 			__('Connected components', 'optivra-image-studio-for-woocommerce')   => (string) ($mask['connectedComponentCount'] ?? ''),
 			__('Background-only blocker', 'optivra-image-studio-for-woocommerce') => ! empty($diagnostics['backgroundOnlyBlockerTriggered']) ? __('Triggered', 'optivra-image-studio-for-woocommerce') : __('Not triggered', 'optivra-image-studio-for-woocommerce'),
 			__('RGB integrity', 'optivra-image-studio-for-woocommerce')          => ! empty($rgb['passed']) ? __('Passed', 'optivra-image-studio-for-woocommerce') : __('Failed or not reached', 'optivra-image-studio-for-woocommerce'),
+			__('Interior dropout restored', 'optivra-image-studio-for-woocommerce') => (string) ($interior_dropout['restoredRegionCount'] ?? '0'),
+			__('Interior dropout unresolved', 'optivra-image-studio-for-woocommerce') => (string) ($interior_dropout['unresolvedRegionCount'] ?? '0'),
+			__('Output validation', 'optivra-image-studio-for-woocommerce')       => (string) ($validation['status'] ?? ''),
 		];
 		?>
 		<h4><?php echo esc_html__('Preserve-mode diagnostics', 'optivra-image-studio-for-woocommerce'); ?></h4>
@@ -2508,6 +2616,24 @@ class Catalogue_Image_Studio_Admin {
 		$decoded = json_decode($raw, true);
 
 		return is_array($decoded) ? $decoded : [];
+	}
+
+	/**
+	 * @param array<string,mixed> $job Job.
+	 * @return array<string,mixed>
+	 */
+	private function get_output_validation(array $job): array {
+		$diagnostics = $this->get_preserve_diagnostics($job);
+
+		if (isset($diagnostics['output_validation']) && is_array($diagnostics['output_validation'])) {
+			return $diagnostics['output_validation'];
+		}
+
+		if (isset($diagnostics['outputValidation']) && is_array($diagnostics['outputValidation'])) {
+			return $diagnostics['outputValidation'];
+		}
+
+		return [];
 	}
 
 	private function format_status(string $status): string {

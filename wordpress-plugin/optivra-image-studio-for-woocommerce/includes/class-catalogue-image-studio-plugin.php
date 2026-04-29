@@ -231,6 +231,8 @@ class Catalogue_Image_Studio_Plugin {
 			'process_category_images' => false,
 			'duplicate_detection'     => true,
 			'preserve_product_exactly' => true,
+			'processing_mode'         => 'seo_product_feed_preserve',
+			'product_fit'             => 'auto',
 			'background_source'       => 'preset',
 			'custom_background_attachment_id' => 0,
 			'background_preset'       => 'optivra-default',
@@ -244,6 +246,9 @@ class Catalogue_Image_Studio_Plugin {
 			'smart_scaling_enabled'   => true,
 			'apply_shadow'            => true,
 			'shadow_enabled'          => true,
+			'auto_fail_product_altered' => true,
+			'auto_fix_crop_spacing'   => true,
+			'preserve_dark_detail'    => true,
 			'shadow_mode'             => 'under',
 			'shadow_strength'         => 'medium',
 			'shadow_opacity'          => 23,
@@ -261,6 +266,10 @@ class Catalogue_Image_Studio_Plugin {
 			'shadow_lift'             => true,
 			'neutralize_tint'         => true,
 			'lighting_strength'       => 'medium',
+			'target_product_coverage' => 86,
+			'max_retries'             => 2,
+			'output_size'             => 1024,
+			'output_aspect_ratio'     => '1:1',
 			'generate_seo_filename'   => true,
 			'enable_filename_seo'     => true,
 			'generate_alt_text'       => true,
@@ -334,6 +343,11 @@ class Catalogue_Image_Studio_Plugin {
 		$settings['show_failed_alerts']    = array_key_exists('show_failed_alerts', $settings) ? (bool) $settings['show_failed_alerts'] : (bool) ($settings['show_failed_job_alerts'] ?? true);
 		$settings['show_failed_job_alerts'] = $settings['show_failed_alerts'];
 		$settings['preserve_product_exactly'] = array_key_exists('preserve_product_exactly', $settings) ? (bool) $settings['preserve_product_exactly'] : true;
+		$settings['processing_mode']      = isset($settings['processing_mode']) ? (string) $settings['processing_mode'] : 'seo_product_feed_preserve';
+		$settings['product_fit']          = isset($settings['product_fit']) ? (string) $settings['product_fit'] : (string) ($settings['default_scale_mode'] ?? 'auto');
+		$settings['auto_fail_product_altered'] = array_key_exists('auto_fail_product_altered', $settings) ? (bool) $settings['auto_fail_product_altered'] : true;
+		$settings['auto_fix_crop_spacing'] = array_key_exists('auto_fix_crop_spacing', $settings) ? (bool) $settings['auto_fix_crop_spacing'] : true;
+		$settings['preserve_dark_detail'] = array_key_exists('preserve_dark_detail', $settings) ? (bool) $settings['preserve_dark_detail'] : true;
 
 		return $settings;
 	}

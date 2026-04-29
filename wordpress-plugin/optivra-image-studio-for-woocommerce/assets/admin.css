@@ -628,6 +628,16 @@
 	position: static;
 }
 
+.catalogue-image-studio-admin .optivra-validation-summary {
+	margin-top: 8px;
+	padding: 8px;
+	background: #fbfcfe;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	font-size: 12px;
+	line-height: 1.45;
+}
+
 .catalogue-image-studio-admin .optivra-job-diagnostics summary {
 	cursor: pointer;
 	color: var(--cis-muted);

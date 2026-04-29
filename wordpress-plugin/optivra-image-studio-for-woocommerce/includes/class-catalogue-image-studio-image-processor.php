@@ -202,8 +202,17 @@ class Catalogue_Image_Studio_ImageProcessor {
 	 * @param array<string,mixed> $processed API response.
 	 */
 	private function get_processing_diagnostics_json(array $processed): ?string {
+		$diagnostics = [];
 		if (isset($processed['preserve_debug']) && is_array($processed['preserve_debug'])) {
-			$json = wp_json_encode($processed['preserve_debug']);
+			$diagnostics = $processed['preserve_debug'];
+		}
+
+		if (isset($processed['output_validation']) && is_array($processed['output_validation'])) {
+			$diagnostics['output_validation'] = $processed['output_validation'];
+		}
+
+		if (! empty($diagnostics)) {
+			$json = wp_json_encode($diagnostics);
 			return is_string($json) ? $json : null;
 		}
 

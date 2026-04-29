@@ -14,7 +14,8 @@
     "prisma:status": "prisma migrate status",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "test:preserve-debug": "node scripts/check-preserve-debug.js"
+    "test:preserve-debug": "node scripts/check-preserve-debug.js",
+    "test:image-pipeline": "node scripts/check-image-pipeline-rules.js"
   },
   "keywords": [
     "optivra",

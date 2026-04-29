@@ -152,9 +152,15 @@ export const processImage = async (
         seo_metadata: result.preserveDebug
           ? {
               ...result.seoMetadata,
-              preserve_debug: result.preserveDebug
+              preserve_debug: result.preserveDebug,
+              output_validation: result.outputValidation
             }
-          : result.seoMetadata,
+          : result.outputValidation
+            ? {
+                ...result.seoMetadata,
+                output_validation: result.outputValidation
+              }
+            : result.seoMetadata,
         status: ImageJobStatus.completed
       }
     });
@@ -170,7 +176,8 @@ export const processImage = async (
         credits_remaining: credits.credits_remaining,
         low_credit_thresholds: credits.low_credit_thresholds,
         seo_metadata: result.seoMetadata,
-        preserve_debug: result.preserveDebug
+        preserve_debug: result.preserveDebug,
+        output_validation: result.outputValidation
       });
       return;
     }
@@ -199,7 +206,8 @@ export const processImage = async (
       credits_remaining: deduction.credits_remaining,
       low_credit_thresholds: deduction.low_credit_thresholds,
       seo_metadata: result.seoMetadata,
-      preserve_debug: result.preserveDebug
+      preserve_debug: result.preserveDebug,
+      output_validation: result.outputValidation
     });
   } catch (error) {
     const preserveDebug = getPreserveDebugFromError(error);
