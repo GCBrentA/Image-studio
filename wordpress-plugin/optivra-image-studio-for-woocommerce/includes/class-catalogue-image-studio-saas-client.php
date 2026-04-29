@@ -29,7 +29,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * This helper also supports older overrides that include /api without creating /api/api.
 	 */
 	public static function normalize_api_base_url(string $api_base_url): string {
-		$base = trim(esc_url_raw($api_base_url));
+		$base = self::strip_trailing_api_segment(trim(esc_url_raw($api_base_url)));
 
 		if ('' === $base) {
 			return '';
@@ -61,73 +61,144 @@ class Catalogue_Image_Studio_SaaSClient {
 	public static function build_api_url_for_base(string $api_base_url, string $endpoint): string {
 		$base = self::normalize_api_base_url($api_base_url);
 		$base = untrailingslashit(trim($base));
-		$endpoint = trim($endpoint);
 
+		$endpoint = trim((string) $endpoint);
 		$endpoint_parts = wp_parse_url($endpoint);
-		$endpoint_path  = isset($endpoint_parts['path']) ? (string) $endpoint_parts['path'] : '';
-		$endpoint_path  = '/' . ltrim($endpoint_path, '/');
-		while (preg_match('#^/api(?:/|$)#', $endpoint_path)) {
-			$endpoint_path = '/' . ltrim((string) preg_replace('#^/api(?:/|$)#', '', $endpoint_path), '/');
-		}
-		if ('/' === $endpoint_path) {
-			$endpoint_path = '';
-		}
-		$endpoint_path = preg_replace('#/+#', '/', $endpoint_path);
-		if (is_string($endpoint_path)) {
-			$endpoint_path = '/' . ltrim($endpoint_path, '/');
-		}
-
+		$endpoint_path = isset($endpoint_parts['path']) ? (string) $endpoint_parts['path'] : '';
 		$query = isset($endpoint_parts['query']) ? '?' . trim((string) $endpoint_parts['query']) : '';
 		$fragment = isset($endpoint_parts['fragment']) ? '#' . trim((string) $endpoint_parts['fragment']) : '';
-		$final_path = '/api' . $endpoint_path . $query . $fragment;
-		$endpoint_path = self::collapse_duplicate_api_prefix($final_path);
-		$final_path   = $endpoint_path;
+
+		$normalized_endpoint_path = self::normalize_api_endpoint_path($endpoint_path);
+		$final_path = '/api' . $normalized_endpoint_path . $query . $fragment;
 
 		if ('' === $base) {
 			return $final_path;
 		}
 
-		$url = $base . $final_path;
-
-		return $url;
-	}
-
-	private static function collapse_duplicate_api_prefix(string $path): string {
-		if ('' === $path) {
-			return '/api';
-		}
-
-		while (false !== strpos($path, '/api/api')) {
-			$path = preg_replace('#/api/api#', '/api', $path);
-		}
-
-		$path = preg_replace('#/+#', '/', $path);
-		return $path;
+		return $base . $final_path;
 	}
 
 	private function normalize_request_url(string $path, string $method): string {
 		$url = $this->build_api_url($path);
-		if (false === strpos($url, '/api/api/') && ! preg_match('#/api/api$#', $url)) {
+		if (! self::has_duplicate_api_segment($url)) {
 			return $url;
 		}
 
 		$before = $url;
-		while (preg_match('#/api/api(?=/|$)#', $url)) {
-			$url = preg_replace('#/api/api(?=/|$)#', '/api', $url);
+		$url = self::normalize_api_url_string($url);
+		if (self::has_duplicate_api_segment($url)) {
+			$this->logger->error(
+				'Optivra API URL normalisation could not remove duplicate /api segment.',
+				[
+					'method'        => strtoupper($method),
+					'endpoint_path' => $path,
+					'original_url'  => $before,
+				]
+			);
+			return $before;
 		}
-		$url = preg_replace('#/+#', '/', $url);
 
 		$this->logger->warning(
 			'Optivra API URL normalized to remove duplicate /api segment.',
 			[
-				'method'        => strtoupper($method),
-				'endpoint_path' => $path,
-				'original_url'  => $before,
-				'normalized_url'=> $url,
+				'method'           => strtoupper($method),
+				'endpoint_path'    => $path,
+				'base_url'         => $this->api_base_url,
+				'original_url'     => $before,
+				'normalized_url'   => $url,
+				'auth_token_present' => '' !== $this->api_token,
 			]
 		);
 
 		return $url;
+	}
+
+	private static function has_duplicate_api_segment(string $url): bool {
+		$parts = wp_parse_url($url);
+		if (! is_array($parts) || empty($parts['path'])) {
+			return false;
+		}
+
+		$path = (string) $parts['path'];
+		$segments = array_values(array_filter(explode('/', strtolower(trim((string) $path, '/'))), 'strlen'));
+		if (count($segments) < 2) {
+			return false;
+		}
+
+		return 'api' === $segments[0] && 'api' === $segments[1];
+	}
+
+	private static function normalize_api_endpoint_path(string $endpoint_path): string {
+		$endpoint_path = preg_replace('#/+#', '/', '/' . ltrim((string) $endpoint_path, '/'));
+		$segments = array_values(array_filter(explode('/', trim((string) $endpoint_path, '/')), 'strlen'));
+		while (! empty($segments) && 'api' === strtolower((string) $segments[0])) {
+			array_shift($segments);
+		}
+		if (empty($segments)) {
+			return '';
+		}
+
+		return '/' . implode('/', $segments);
+	}
+
+	private static function normalize_api_url_string(string $url): string {
+		$parts = wp_parse_url($url);
+		if (! is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+			return str_replace('/api/api/', '/api/', preg_replace('#/api/api$#', '/api', $url));
+		}
+
+		$path = isset($parts['path']) ? (string) $parts['path'] : '';
+		$path = self::normalize_api_base_path_and_api_segment($path);
+
+		$normalized = $parts['scheme'] . '://' . $parts['host'];
+		if (isset($parts['port']) && '' !== (string) $parts['port']) {
+			$normalized .= ':' . (string) $parts['port'];
+		}
+		$normalized .= $path;
+		if (isset($parts['query']) && '' !== (string) $parts['query']) {
+			$normalized .= '?' . (string) $parts['query'];
+		}
+		if (isset($parts['fragment']) && '' !== (string) $parts['fragment']) {
+			$normalized .= '#' . (string) $parts['fragment'];
+		}
+
+		return preg_replace('#/+#', '/', $normalized);
+	}
+
+	private static function normalize_api_base_path_and_api_segment(string $path): string {
+		$path = self::strip_double_slashes((string) $path);
+		$segments = array_values(array_filter(explode('/', trim((string) $path, '/')), 'strlen'));
+		if (empty($segments)) {
+			return '/api';
+		}
+
+		// Ensure we keep non-API base path segments while collapsing duplicated API prefixes.
+		if ('api' === strtolower((string) $segments[0])) {
+			while (! empty($segments) && 'api' === strtolower((string) $segments[0])) {
+				array_shift($segments);
+			}
+			array_unshift($segments, 'api');
+		}
+
+		return '/' . implode('/', $segments);
+	}
+
+	private static function strip_double_slashes(string $path): string {
+		return (string) preg_replace('#/+#', '/', '/' . ltrim((string) $path, '/'));
+	}
+
+	private static function strip_trailing_api_segment(string $value): string {
+		$value = untrailingslashit(trim($value));
+		if ('' === $value) {
+			return '';
+		}
+
+		while ('/api' === strtolower(substr($value, -4))) {
+			$value = substr($value, 0, -4);
+			$value = untrailingslashit($value);
+		}
+
+		return $value;
 	}
 
 	/**
