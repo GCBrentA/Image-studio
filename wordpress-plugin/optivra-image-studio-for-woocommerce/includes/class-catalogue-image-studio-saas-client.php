@@ -233,6 +233,39 @@ class Catalogue_Image_Studio_SaaSClient {
 	}
 
 	/**
+	 * Fetch a full Product Image Health Report.
+	 *
+	 * @param string $scan_id Remote scan ID.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function get_image_audit(string $scan_id) {
+		return $this->request_json(
+			'GET',
+			'/api/image-studio/audits/' . rawurlencode($scan_id),
+			[],
+			25
+		);
+	}
+
+	/**
+	 * Ask the backend to create queue jobs from an audit recommendation.
+	 *
+	 * @param string $scan_id Remote scan ID.
+	 * @param string $recommendation_id Remote recommendation ID.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function queue_audit_recommendation(string $scan_id, string $recommendation_id) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audits/' . rawurlencode($scan_id) . '/queue-recommendation',
+			[
+				'recommendation_id' => $recommendation_id,
+			],
+			30
+		);
+	}
+
+	/**
 	 * Send a small operational event after the store is connected.
 	 *
 	 * @param string              $event_type Event type.
