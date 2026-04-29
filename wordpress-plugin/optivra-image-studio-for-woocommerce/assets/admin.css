@@ -1217,21 +1217,31 @@
 	display: grid;
 	place-items: center;
 	flex: 0 0 auto;
-	width: 118px;
+	width: 52px;
 	height: 52px;
-	border-radius: 0;
-	background: transparent;
+	border-radius: 16px;
+	background: #050814;
 	color: inherit;
-	box-shadow: none;
-	overflow: visible;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 12px 28px rgba(36, 92, 255, 0.16);
+	overflow: hidden;
 }
 
 .optivra-admin-app .optivra-brand-mark img {
 	display: block;
-	width: 118px;
-	height: 52px;
-	object-fit: contain;
+	width: 42px !important;
+	height: 42px !important;
+	max-width: 42px !important;
+	max-height: 42px !important;
+	object-fit: contain !important;
 	background: transparent;
+}
+
+#adminmenu .toplevel_page_optivra-image-studio .wp-menu-image img {
+	width: 20px !important;
+	height: 20px !important;
+	max-width: 20px !important;
+	max-height: 20px !important;
+	object-fit: contain !important;
 }
 
 .optivra-admin-app .optivra-kicker {
@@ -1503,6 +1513,155 @@
 	max-width: 240px;
 	max-height: 160px;
 	object-fit: cover;
+}
+
+.optivra-admin-app .optivra-brand-presets-page {
+	display: grid;
+	gap: 18px;
+}
+
+.optivra-admin-app .optivra-brand-current-grid,
+.optivra-admin-app .optivra-brand-preset-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 14px;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-brand-preset-card {
+	display: grid;
+	gap: 14px;
+	padding: 18px;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-brand-preset-card.is-active {
+	border-color: rgba(36, 92, 255, 0.42);
+	box-shadow: 0 18px 44px rgba(36, 92, 255, 0.14);
+}
+
+.optivra-admin-app .optivra-style-preview {
+	position: relative;
+	display: grid;
+	place-items: center;
+	width: 100%;
+	aspect-ratio: 1 / 1;
+	max-height: 220px;
+	overflow: hidden;
+	border: 1px solid var(--optivra-line);
+	border-radius: 14px;
+	background: #f8fafc;
+}
+
+.optivra-admin-app .optivra-style-preview.is-white {
+	background: #fff;
+}
+
+.optivra-admin-app .optivra-style-preview.is-soft-grey {
+	background: #eef2f7;
+}
+
+.optivra-admin-app .optivra-style-preview.is-optivra-light {
+	background: linear-gradient(180deg, #fbfcff 0%, #eef4ff 100%);
+}
+
+.optivra-admin-app .optivra-style-preview.is-transparent {
+	background-color: #fff;
+	background-image:
+		linear-gradient(45deg, #eef2f7 25%, transparent 25%),
+		linear-gradient(-45deg, #eef2f7 25%, transparent 25%),
+		linear-gradient(45deg, transparent 75%, #eef2f7 75%),
+		linear-gradient(-45deg, transparent 75%, #eef2f7 75%);
+	background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+	background-size: 20px 20px;
+}
+
+.optivra-admin-app .optivra-style-background-thumb {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.optivra-admin-app .optivra-style-sample-product {
+	position: relative;
+	width: 64%;
+	height: 28%;
+	border-radius: 999px 999px 32px 32px;
+	background: linear-gradient(135deg, #1f2937, #111827 54%, #475569);
+	box-shadow: 0 18px 32px rgba(15, 23, 42, 0.18);
+}
+
+.optivra-admin-app .optivra-style-sample-product::after {
+	content: "";
+	position: absolute;
+	left: 12%;
+	right: 12%;
+	bottom: -18px;
+	height: 14px;
+	border-radius: 50%;
+	background: rgba(15, 23, 42, 0.16);
+	filter: blur(7px);
+}
+
+.optivra-admin-app .optivra-brand-preset-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-brand-preset-meta span {
+	display: inline-flex;
+	align-items: center;
+	padding: 5px 8px;
+	border-radius: 999px;
+	background: #f8fafc;
+	border: 1px solid var(--optivra-line);
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 750;
+}
+
+.optivra-admin-app .optivra-warning-list {
+	display: grid;
+	gap: 8px;
+	padding: 12px;
+	border: 1px solid rgba(217, 119, 6, 0.22);
+	border-radius: 12px;
+	background: #fffbeb;
+	color: #92400e;
+}
+
+.optivra-admin-app .optivra-warning-list p {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.optivra-admin-app .optivra-brand-preset-actions,
+.optivra-admin-app .optivra-brand-form-grid {
+	display: grid;
+	gap: 12px;
+}
+
+.optivra-admin-app .optivra-brand-preset-actions {
+	grid-template-columns: repeat(auto-fit, minmax(130px, max-content));
+	align-items: center;
+}
+
+.optivra-admin-app .optivra-brand-form-grid {
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.optivra-admin-app .optivra-category-multiselect {
+	width: 100%;
+	max-width: 420px;
+	min-height: 130px;
 }
 
 .optivra-admin-app .optivra-scan-wizard {

@@ -84,7 +84,7 @@ class Catalogue_Image_Studio_Admin {
 			self::CAPABILITY,
 			self::MENU_SLUG,
 			[$this, 'render_page'],
-			esc_url(CIS_URL . 'assets/optivra-logo.png'),
+			'dashicons-format-image',
 			56
 		);
 		$this->page_hooks[] = $this->page_hook;
@@ -515,6 +515,7 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		$this->plugin->client()->send_event('settings_saved', [], $settings);
+		$this->plugin->sync_audit_schedule($settings);
 
 		if (isset($_POST['clear_local_cache'])) {
 			$this->plugin->jobs()->delete_all();
@@ -640,6 +641,11 @@ class Catalogue_Image_Studio_Admin {
 		$settings['batch_size']              = isset($input['batch_size']) ? max(1, min(50, absint($input['batch_size']))) : (int) $defaults['batch_size'];
 		$settings['email_batch_complete']    = ! empty($input['email_batch_complete']);
 		$settings['email_job_failed']        = ! empty($input['email_job_failed']);
+		$settings['audit_schedule_frequency'] = $this->sanitize_schedule_frequency($input['audit_schedule_frequency'] ?? $settings['audit_schedule_frequency'] ?? 'off');
+		$settings['audit_schedule_scan_mode'] = $this->sanitize_schedule_scan_mode($input['audit_schedule_scan_mode'] ?? $settings['audit_schedule_scan_mode'] ?? 'updated');
+		$settings['audit_schedule_email_report'] = ! empty($input['audit_schedule_email_report']);
+		$settings['audit_monthly_report_enabled'] = ! empty($input['audit_monthly_report_enabled']);
+		$settings['audit_schedule_next_run_at'] = isset($settings['audit_schedule_next_run_at']) ? sanitize_text_field((string) $settings['audit_schedule_next_run_at']) : '';
 		$settings['notification_email']      = isset($input['notification_email']) ? sanitize_email((string) $input['notification_email']) : '';
 		$settings['send_operational_diagnostics'] = ! empty($input['send_operational_diagnostics']);
 
@@ -647,6 +653,45 @@ class Catalogue_Image_Studio_Admin {
 			$settings['overwrite_existing_metadata'] = false;
 			$settings['overwrite_existing_meta'] = false;
 		}
+
+		$brand_style_presets = $this->sanitize_brand_style_presets($settings['brand_style_presets'] ?? $defaults['brand_style_presets'] ?? []);
+
+		if (isset($input['save_brand_style_preset'])) {
+			$preset_name = isset($input['brand_preset_name']) ? sanitize_text_field((string) $input['brand_preset_name']) : '';
+			$preset_key  = isset($input['brand_preset_key']) ? sanitize_key((string) $input['brand_preset_key']) : '';
+			if ('' === $preset_key && '' !== $preset_name) {
+				$preset_key = sanitize_key(sanitize_title($preset_name));
+			}
+			if ('' === $preset_key) {
+				$preset_key = 'brand-style-' . time();
+			}
+
+			$brand_style_presets[$preset_key] = $this->sanitize_brand_style_preset(
+				[
+					'name'                            => '' !== $preset_name ? $preset_name : __('Untitled preset', 'optivra-image-studio-for-woocommerce'),
+					'background_type'                 => $input['brand_background_type'] ?? 'optivra-light',
+					'custom_background_attachment_id' => $input['brand_custom_background_attachment_id'] ?? 0,
+					'aspect_ratio'                    => $input['brand_aspect_ratio'] ?? '1:1',
+					'product_padding'                 => $input['brand_product_padding'] ?? 'balanced',
+					'shadow'                          => $input['brand_shadow'] ?? 'subtle',
+					'output_format'                   => $input['brand_output_format'] ?? 'original',
+					'apply_scope'                     => $input['brand_apply_scope'] ?? 'all',
+					'category_ids'                    => $input['brand_category_ids'] ?? [],
+				]
+			);
+			$settings['active_brand_style_preset'] = $preset_key;
+		}
+
+		if (isset($input['remove_brand_style_preset'])) {
+			$remove_key = sanitize_key((string) ($input['remove_brand_style_preset'] ?? ''));
+			if (isset($brand_style_presets[$remove_key]) && count($brand_style_presets) > 1) {
+				unset($brand_style_presets[$remove_key]);
+			}
+		}
+
+		$active_brand_preset = isset($input['active_brand_style_preset']) ? sanitize_key((string) $input['active_brand_style_preset']) : sanitize_key((string) ($settings['active_brand_style_preset'] ?? 'optivra-light'));
+		$settings['brand_style_presets'] = $brand_style_presets;
+		$settings['active_brand_style_preset'] = isset($brand_style_presets[$active_brand_preset]) ? $active_brand_preset : (string) array_key_first($brand_style_presets);
 
 		$presets = isset($settings['category_presets']) && is_array($settings['category_presets']) ? $settings['category_presets'] : [];
 
@@ -1996,7 +2041,7 @@ class Catalogue_Image_Studio_Admin {
 		?>
 		<header class="optivra-app-header">
 			<div class="optivra-brand-block">
-				<div class="optivra-brand-mark" aria-hidden="true"><img src="<?php echo esc_url(CIS_URL . 'assets/optivra-logo.png?ver=' . CIS_VERSION); ?>" alt="" /></div>
+				<div class="optivra-brand-mark" aria-hidden="true"><img src="<?php echo esc_url(CIS_URL . 'assets/optivra-logo.png?ver=' . CIS_VERSION); ?>" alt="" width="42" height="42" style="width:42px;height:42px;max-width:42px;max-height:42px;object-fit:contain;" /></div>
 				<div>
 					<p class="optivra-kicker"><?php echo esc_html__('Optivra Image Studio', 'optivra-image-studio-for-woocommerce'); ?></p>
 					<h1><?php echo esc_html($page_meta['title']); ?></h1>
@@ -3511,19 +3556,167 @@ class Catalogue_Image_Studio_Admin {
 	private function render_backgrounds_tab(array $settings): void {
 		$background = (string) ($settings['background_preset'] ?? 'optivra-default');
 		$source     = (string) ($settings['background_source'] ?? 'preset');
+		$brand_presets = $this->sanitize_brand_style_presets($settings['brand_style_presets'] ?? []);
+		$active_preset = (string) ($settings['active_brand_style_preset'] ?? array_key_first($brand_presets));
+		$categories = get_terms(
+			[
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => false,
+			]
+		);
+		$categories = is_wp_error($categories) ? [] : $categories;
 		?>
-		<div class="catalogue-image-studio-panel">
-			<h2><?php echo esc_html__('Backgrounds', 'optivra-image-studio-for-woocommerce'); ?></h2>
-			<?php $this->render_settings_section(__('Background defaults', 'optivra-image-studio-for-woocommerce'), __('Manage clean product background defaults used by Optivra processing jobs.', 'optivra-image-studio-for-woocommerce')); ?>
-			<p><strong><?php echo esc_html__('Current preset:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html($background); ?></p>
-			<p><strong><?php echo esc_html__('Current source:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html($source); ?></p>
-			<p><strong><?php echo esc_html__('Custom background:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo ! empty($settings['custom_background_attachment_id']) ? esc_html__('Configured', 'optivra-image-studio-for-woocommerce') : esc_html__('Not configured', 'optivra-image-studio-for-woocommerce'); ?></p>
-			<?php if (! empty($settings['debug_mode'])) : ?>
-				<p class="catalogue-image-studio-help"><strong><?php echo esc_html__('Debug attachment ID:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) (int) ($settings['custom_background_attachment_id'] ?? 0)); ?></p>
-			<?php endif; ?>
-			<a class="button button-primary" href="<?php echo esc_url($this->get_admin_page_url('settings')); ?>"><?php echo esc_html__('Edit Background Settings', 'optivra-image-studio-for-woocommerce'); ?></a>
+		<div class="catalogue-image-studio-panel optivra-brand-presets-page">
+			<div class="optivra-card-header">
+				<h2><?php echo esc_html__('Brand Style Presets', 'optivra-image-studio-for-woocommerce'); ?></h2>
+				<p><?php echo esc_html__('Define reusable background, framing, shadow and output defaults so product categories keep a consistent catalogue style.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			</div>
+
+			<div class="optivra-brand-current-grid">
+				<?php $this->render_summary_card(__('Default background', 'optivra-image-studio-for-woocommerce'), $this->get_background_presets()[$background] ?? $background); ?>
+				<?php $this->render_summary_card(__('Source', 'optivra-image-studio-for-woocommerce'), 'custom' === $source ? __('Custom upload', 'optivra-image-studio-for-woocommerce') : __('Preset', 'optivra-image-studio-for-woocommerce')); ?>
+				<?php $this->render_summary_card(__('Custom background', 'optivra-image-studio-for-woocommerce'), ! empty($settings['custom_background_attachment_id']) ? __('Configured', 'optivra-image-studio-for-woocommerce') : __('Not configured', 'optivra-image-studio-for-woocommerce')); ?>
+				<?php $this->render_summary_card(__('Active style preset', 'optivra-image-studio-for-woocommerce'), (string) ($brand_presets[$active_preset]['name'] ?? __('Optivra light studio', 'optivra-image-studio-for-woocommerce'))); ?>
+			</div>
+
+			<div class="optivra-brand-preset-grid">
+				<?php foreach ($brand_presets as $preset_key => $preset) : ?>
+					<?php $warnings = $this->get_brand_background_warnings($preset); ?>
+					<article class="optivra-brand-preset-card <?php echo $preset_key === $active_preset ? 'is-active' : ''; ?>">
+						<div class="optivra-card-topline">
+							<div>
+								<h3><?php echo esc_html((string) ($preset['name'] ?? __('Untitled preset', 'optivra-image-studio-for-woocommerce'))); ?></h3>
+								<p><?php echo esc_html($this->get_brand_apply_label($preset)); ?></p>
+							</div>
+							<?php $this->render_status_badge($preset_key === $active_preset ? __('Active', 'optivra-image-studio-for-woocommerce') : __('Ready', 'optivra-image-studio-for-woocommerce'), $preset_key === $active_preset ? 'approved' : 'ready'); ?>
+						</div>
+						<div class="optivra-style-preview <?php echo esc_attr('is-' . sanitize_html_class((string) ($preset['background_type'] ?? 'optivra-light'))); ?>">
+							<?php echo $this->get_brand_preview_background_image($preset); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<div class="optivra-style-sample-product"></div>
+						</div>
+						<div class="optivra-brand-preset-meta">
+							<span><?php echo esc_html($this->get_brand_background_types()[(string) ($preset['background_type'] ?? 'optivra-light')] ?? ''); ?></span>
+							<span><?php echo esc_html($this->get_brand_aspect_ratios()[(string) ($preset['aspect_ratio'] ?? '1:1')] ?? ''); ?></span>
+							<span><?php echo esc_html($this->get_brand_padding_modes()[(string) ($preset['product_padding'] ?? 'balanced')] ?? ''); ?></span>
+							<span><?php echo esc_html($this->get_brand_shadow_modes()[(string) ($preset['shadow'] ?? 'subtle')] ?? ''); ?></span>
+							<span><?php echo esc_html(strtoupper((string) ($preset['output_format'] ?? 'original'))); ?></span>
+						</div>
+						<?php if (! empty($warnings)) : ?>
+							<div class="optivra-warning-list">
+								<?php foreach ($warnings as $warning) : ?>
+									<p><?php echo esc_html($warning); ?></p>
+								<?php endforeach; ?>
+							</div>
+						<?php endif; ?>
+						<form method="post" action="" class="optivra-brand-preset-actions">
+							<?php settings_fields('catalogue_image_studio_settings_group'); ?>
+							<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
+							<input type="hidden" name="active_brand_style_preset" value="<?php echo esc_attr($preset_key); ?>" />
+							<button type="submit" class="button button-primary"><?php echo esc_html__('Use as default', 'optivra-image-studio-for-woocommerce'); ?></button>
+							<?php if (count($brand_presets) > 1) : ?>
+								<button type="submit" name="remove_brand_style_preset" value="<?php echo esc_attr($preset_key); ?>" class="button"><?php echo esc_html__('Delete', 'optivra-image-studio-for-woocommerce'); ?></button>
+							<?php endif; ?>
+						</form>
+					</article>
+				<?php endforeach; ?>
+			</div>
+
+			<form method="post" action="" class="optivra-card optivra-brand-preset-form">
+				<?php settings_fields('catalogue_image_studio_settings_group'); ?>
+				<?php wp_nonce_field('catalogue_image_studio_save_settings', 'catalogue_image_studio_settings_nonce'); ?>
+				<input type="hidden" name="save_brand_style_preset" value="1" />
+				<input type="hidden" name="brand_custom_background_attachment_id" value="<?php echo esc_attr((string) (int) ($settings['custom_background_attachment_id'] ?? 0)); ?>" />
+				<div class="optivra-card-header">
+					<h3><?php echo esc_html__('Create or update a brand style preset', 'optivra-image-studio-for-woocommerce'); ?></h3>
+					<p><?php echo esc_html__('Category-specific assignment is saved now and will be used as queue/report integration expands. Custom preset backgrounds use the uploaded background configured in Settings.', 'optivra-image-studio-for-woocommerce'); ?></p>
+				</div>
+				<div class="optivra-brand-form-grid">
+					<?php $this->render_text_setting('brand_preset_name', __('Preset name', 'optivra-image-studio-for-woocommerce'), __('Example: Main catalogue, Apparel portraits, Marketplace-safe white.', 'optivra-image-studio-for-woocommerce'), ''); ?>
+					<?php $this->render_select_setting('brand_background_type', __('Background type', 'optivra-image-studio-for-woocommerce'), __('Choose a clean feed-safe background or a constrained custom uploaded image.', 'optivra-image-studio-for-woocommerce'), $this->get_brand_background_types(), 'optivra-light'); ?>
+					<?php $this->render_select_setting('brand_aspect_ratio', __('Preferred aspect ratio', 'optivra-image-studio-for-woocommerce'), __('Used for future queue recommendations and category style consistency checks.', 'optivra-image-studio-for-woocommerce'), $this->get_brand_aspect_ratios(), '1:1'); ?>
+					<?php $this->render_select_setting('brand_product_padding', __('Product padding', 'optivra-image-studio-for-woocommerce'), __('How tightly products should fill the canvas.', 'optivra-image-studio-for-woocommerce'), $this->get_brand_padding_modes(), 'balanced'); ?>
+					<?php $this->render_select_setting('brand_shadow', __('Shadow', 'optivra-image-studio-for-woocommerce'), __('Subtle contact shadows are usually safest for ecommerce catalogues.', 'optivra-image-studio-for-woocommerce'), $this->get_brand_shadow_modes(), 'subtle'); ?>
+					<?php $this->render_select_setting('brand_output_format', __('Output format', 'optivra-image-studio-for-woocommerce'), __('WebP is listed when supported by your hosting/media workflow.', 'optivra-image-studio-for-woocommerce'), $this->get_brand_output_formats(), 'original'); ?>
+					<?php $this->render_select_setting('brand_apply_scope', __('Apply to', 'optivra-image-studio-for-woocommerce'), __('Use one style for the whole catalogue or assign it to selected categories.', 'optivra-image-studio-for-woocommerce'), $this->get_brand_apply_scopes(), 'all'); ?>
+					<div class="optivra-setting-row">
+						<div><strong class="optivra-setting-label"><?php echo esc_html__('Selected categories', 'optivra-image-studio-for-woocommerce'); ?></strong><p class="optivra-setting-description"><?php echo esc_html__('Optional. Hold Ctrl/Cmd to select multiple categories.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
+						<div class="optivra-setting-control">
+							<select name="brand_category_ids[]" multiple size="5" class="optivra-category-multiselect">
+								<?php foreach ($categories as $category) : ?>
+									<option value="<?php echo esc_attr((string) $category->term_id); ?>"><?php echo esc_html($category->name); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+					</div>
+				</div>
+				<div class="optivra-info-callout">
+					<strong><?php echo esc_html__('Background contrast warning', 'optivra-image-studio-for-woocommerce'); ?></strong>
+					<p><?php echo esc_html__('Custom, dark, textured or transparent backgrounds may reduce product contrast for some products and may not be suitable for product-feed style images. Optivra will warn conservatively until full visual analysis is available.', 'optivra-image-studio-for-woocommerce'); ?></p>
+				</div>
+				<div class="optivra-save-bar"><button type="submit" class="button button-primary"><?php echo esc_html__('Save Brand Style Preset', 'optivra-image-studio-for-woocommerce'); ?></button><a class="button" href="<?php echo esc_url($this->get_admin_page_url('settings')); ?>"><?php echo esc_html__('Edit processing defaults', 'optivra-image-studio-for-woocommerce'); ?></a></div>
+			</form>
 		</div>
 		<?php
+	}
+
+	private function get_brand_apply_label(array $preset): string {
+		if ('categories' !== (string) ($preset['apply_scope'] ?? 'all')) {
+			return __('Applies to all products', 'optivra-image-studio-for-woocommerce');
+		}
+
+		$category_ids = isset($preset['category_ids']) && is_array($preset['category_ids']) ? array_map('absint', $preset['category_ids']) : [];
+		if (empty($category_ids)) {
+			return __('Selected categories pending', 'optivra-image-studio-for-woocommerce');
+		}
+
+		$names = [];
+		foreach ($category_ids as $category_id) {
+			$term = get_term($category_id, 'product_cat');
+			if ($term && ! is_wp_error($term)) {
+				$names[] = $term->name;
+			}
+		}
+
+		return ! empty($names)
+			? sprintf(
+				/* translators: %s: comma-separated category names. */
+				__('Applies to %s', 'optivra-image-studio-for-woocommerce'),
+				implode(', ', array_slice($names, 0, 3))
+			)
+			: __('Selected categories', 'optivra-image-studio-for-woocommerce');
+	}
+
+	private function get_brand_background_warnings(array $preset): array {
+		$type = (string) ($preset['background_type'] ?? 'optivra-light');
+		$warnings = [];
+
+		if ('custom' === $type) {
+			$warnings[] = __('This background may reduce product contrast for some products.', 'optivra-image-studio-for-woocommerce');
+			$warnings[] = __('Custom backgrounds should be checked for busy texture, dark areas, text, logos or product-feed suitability before bulk use.', 'optivra-image-studio-for-woocommerce');
+		}
+
+		if ('transparent' === $type) {
+			$warnings[] = __('Transparent outputs can be useful for design workflows but may not be suitable for every product-feed image slot.', 'optivra-image-studio-for-woocommerce');
+		}
+
+		if ('soft-grey' === $type) {
+			$warnings[] = __('Soft grey is usually safe, but dark products should still be reviewed for edge contrast.', 'optivra-image-studio-for-woocommerce');
+		}
+
+		return $warnings;
+	}
+
+	private function get_brand_preview_background_image(array $preset): string {
+		if ('custom' !== (string) ($preset['background_type'] ?? '') || empty($preset['custom_background_attachment_id'])) {
+			return '';
+		}
+
+		$url = wp_get_attachment_image_url((int) $preset['custom_background_attachment_id'], 'medium');
+		if (! $url) {
+			return '';
+		}
+
+		return '<img class="optivra-style-background-thumb" src="' . esc_url($url) . '" alt="" />';
 	}
 
 	private function render_seo_tools_tab(array $settings): void {
@@ -3741,6 +3934,18 @@ class Catalogue_Image_Studio_Admin {
 					<?php $this->render_toggle_setting('retry_failed_jobs', __('Retry failed jobs automatically', 'optivra-image-studio-for-woocommerce'), __('Keep failed jobs ready for a quick retry pass.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['retry_failed_jobs'])); ?>
 					<?php $this->render_toggle_setting('auto_refresh_job_status', __('Auto-refresh job status', 'optivra-image-studio-for-woocommerce'), __('Refresh queue status while jobs are active.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_refresh_job_status'])); ?>
 					<?php $this->render_number_setting('batch_size', __('Batch size', 'optivra-image-studio-for-woocommerce'), __('How many queued images to process at once.', 'optivra-image-studio-for-woocommerce'), (int) ($settings['batch_size'] ?? 10), 1, 50); ?>
+				</section>
+
+				<section class="optivra-card">
+					<div class="optivra-card-header"><h3><?php echo esc_html__('Scan Defaults & Schedule', 'optivra-image-studio-for-woocommerce'); ?></h3><p><?php echo esc_html__('Schedule recurring Product Image Health scans. WooCommerce runs the scan via WP-Cron because the plugin has direct product and media access.', 'optivra-image-studio-for-woocommerce'); ?></p></div>
+					<?php $this->render_select_setting('audit_schedule_frequency', __('Scheduled scan frequency', 'optivra-image-studio-for-woocommerce'), __('Off disables recurring scans. Weekly or monthly scans run from this WordPress site when WP-Cron is available.', 'optivra-image-studio-for-woocommerce'), $this->get_schedule_frequencies(), (string) ($settings['audit_schedule_frequency'] ?? 'off')); ?>
+					<?php $this->render_select_setting('audit_schedule_scan_mode', __('Scheduled scan scope', 'optivra-image-studio-for-woocommerce'), __('Choose whether recurring scans look only at products updated since the previous scan or the full catalogue.', 'optivra-image-studio-for-woocommerce'), $this->get_schedule_scan_modes(), (string) ($settings['audit_schedule_scan_mode'] ?? 'updated')); ?>
+					<?php $this->render_toggle_setting('audit_schedule_email_report', __('Email report on completion', 'optivra-image-studio-for-woocommerce'), __('Email delivery is prepared as a stub. Reports are stored locally and in the Optivra portal when the scan completes.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['audit_schedule_email_report'])); ?>
+					<?php $this->render_toggle_setting('audit_monthly_report_enabled', __('Prepare monthly report summary', 'optivra-image-studio-for-woocommerce'), __('Track previous score, current score, issues found, estimated time saved and remaining opportunities.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['audit_monthly_report_enabled'])); ?>
+					<div class="optivra-info-callout">
+						<strong><?php echo esc_html__('Next scheduled run', 'optivra-image-studio-for-woocommerce'); ?></strong>
+						<p><?php echo esc_html(! empty($settings['audit_schedule_next_run_at']) ? (string) $settings['audit_schedule_next_run_at'] : __('Not scheduled yet. Save settings to calculate the next run.', 'optivra-image-studio-for-woocommerce')); ?></p>
+					</div>
 				</section>
 
 				<section class="optivra-card">
@@ -4363,6 +4568,132 @@ class Catalogue_Image_Studio_Admin {
 			'cool-studio'     => __('Cool light grey', 'optivra-image-studio-for-woocommerce'),
 			'warm-studio'     => __('Warm light grey', 'optivra-image-studio-for-woocommerce'),
 		];
+	}
+
+	private function get_brand_background_types(): array {
+		return [
+			'optivra-light' => __('Default Optivra light', 'optivra-image-studio-for-woocommerce'),
+			'white'         => __('White', 'optivra-image-studio-for-woocommerce'),
+			'soft-grey'     => __('Soft grey', 'optivra-image-studio-for-woocommerce'),
+			'custom'        => __('Custom uploaded image', 'optivra-image-studio-for-woocommerce'),
+			'transparent'   => __('Transparent', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_brand_aspect_ratios(): array {
+		return [
+			'1:1'      => __('Square 1:1', 'optivra-image-studio-for-woocommerce'),
+			'4:5'      => __('Portrait 4:5', 'optivra-image-studio-for-woocommerce'),
+			'3:4'      => __('Portrait 3:4', 'optivra-image-studio-for-woocommerce'),
+			'original' => __('Original', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_brand_padding_modes(): array {
+		return [
+			'tight'    => __('Tight', 'optivra-image-studio-for-woocommerce'),
+			'balanced' => __('Balanced', 'optivra-image-studio-for-woocommerce'),
+			'generous' => __('Generous', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_brand_shadow_modes(): array {
+		return [
+			'none'   => __('None', 'optivra-image-studio-for-woocommerce'),
+			'subtle' => __('Subtle', 'optivra-image-studio-for-woocommerce'),
+			'medium' => __('Medium', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_brand_output_formats(): array {
+		return [
+			'original' => __('Original', 'optivra-image-studio-for-woocommerce'),
+			'jpg'      => __('JPG', 'optivra-image-studio-for-woocommerce'),
+			'png'      => __('PNG', 'optivra-image-studio-for-woocommerce'),
+			'webp'     => __('WebP', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_brand_apply_scopes(): array {
+		return [
+			'all'        => __('All products', 'optivra-image-studio-for-woocommerce'),
+			'categories' => __('Selected categories', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_schedule_frequencies(): array {
+		return [
+			'off'     => __('Off', 'optivra-image-studio-for-woocommerce'),
+			'weekly'  => __('Weekly', 'optivra-image-studio-for-woocommerce'),
+			'monthly' => __('Monthly', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_schedule_scan_modes(): array {
+		return [
+			'updated' => __('Scan new/updated products only', 'optivra-image-studio-for-woocommerce'),
+			'full'    => __('Full catalogue scan', 'optivra-image-studio-for-woocommerce'),
+		];
+	}
+
+	private function get_default_brand_style_presets(): array {
+		return [
+			'optivra-light' => [
+				'name'                            => __('Optivra light studio', 'optivra-image-studio-for-woocommerce'),
+				'background_type'                 => 'optivra-light',
+				'custom_background_attachment_id' => 0,
+				'aspect_ratio'                    => '1:1',
+				'product_padding'                 => 'balanced',
+				'shadow'                          => 'subtle',
+				'output_format'                   => 'original',
+				'apply_scope'                     => 'all',
+				'category_ids'                    => [],
+			],
+		];
+	}
+
+	private function sanitize_brand_style_presets($presets): array {
+		$presets = is_array($presets) ? $presets : [];
+		$clean = [];
+		foreach ($presets as $key => $preset) {
+			$key = sanitize_key((string) $key);
+			if ('' === $key || ! is_array($preset)) {
+				continue;
+			}
+			$clean[$key] = $this->sanitize_brand_style_preset($preset);
+		}
+
+		return ! empty($clean) ? $clean : $this->get_default_brand_style_presets();
+	}
+
+	private function sanitize_brand_style_preset(array $preset): array {
+		$category_ids = $preset['category_ids'] ?? [];
+		$category_ids = is_array($category_ids) ? array_values(array_filter(array_map('absint', $category_ids))) : [];
+
+		return [
+			'name'                            => sanitize_text_field((string) ($preset['name'] ?? __('Untitled preset', 'optivra-image-studio-for-woocommerce'))),
+			'background_type'                 => $this->sanitize_key_choice((string) ($preset['background_type'] ?? 'optivra-light'), $this->get_brand_background_types(), 'optivra-light'),
+			'custom_background_attachment_id' => absint($preset['custom_background_attachment_id'] ?? 0),
+			'aspect_ratio'                    => $this->sanitize_key_choice((string) ($preset['aspect_ratio'] ?? '1:1'), $this->get_brand_aspect_ratios(), '1:1'),
+			'product_padding'                 => $this->sanitize_key_choice((string) ($preset['product_padding'] ?? 'balanced'), $this->get_brand_padding_modes(), 'balanced'),
+			'shadow'                          => $this->sanitize_key_choice((string) ($preset['shadow'] ?? 'subtle'), $this->get_brand_shadow_modes(), 'subtle'),
+			'output_format'                   => $this->sanitize_key_choice((string) ($preset['output_format'] ?? 'original'), $this->get_brand_output_formats(), 'original'),
+			'apply_scope'                     => $this->sanitize_key_choice((string) ($preset['apply_scope'] ?? 'all'), $this->get_brand_apply_scopes(), 'all'),
+			'category_ids'                    => $category_ids,
+		];
+	}
+
+	private function sanitize_key_choice(string $value, array $choices, string $fallback): string {
+		$value = sanitize_key($value);
+		return array_key_exists($value, $choices) ? $value : $fallback;
+	}
+
+	private function sanitize_schedule_frequency($frequency): string {
+		return $this->sanitize_key_choice((string) $frequency, $this->get_schedule_frequencies(), 'off');
+	}
+
+	private function sanitize_schedule_scan_mode($mode): string {
+		return $this->sanitize_key_choice((string) $mode, $this->get_schedule_scan_modes(), 'updated');
 	}
 
 	private function get_processing_modes(): array {

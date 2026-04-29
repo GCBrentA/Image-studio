@@ -1,8 +1,11 @@
 import { Router } from "express";
 import {
   addImageAuditItems,
+  acknowledgeImageAuditSchedule,
   completeImageAudit,
   getImageAuditReport,
+  getImageAuditMonthlyReport,
+  getImageAuditSchedule,
   getLatestImageAudit,
   ignoreImageAuditIssues,
   listImageAudits,
@@ -11,6 +14,7 @@ import {
   listImageAuditQueueJobs,
   queueImageAuditIssues,
   queueImageAuditRecommendation,
+  saveImageAuditSchedule,
   startImageAudit
 } from "../controllers/imageAuditController";
 import { imageStudioAuth } from "../middleware/imageStudioAuth";
@@ -32,6 +36,10 @@ imageAuditRoutes.get("/health", (_request, response) => {
       "GET /api/image-studio/audits/:scanId/items",
       "GET /api/image-studio/audits/:scanId/queue-jobs",
       "GET /api/image-studio/audit-queue",
+      "GET /api/image-studio/audit-schedule",
+      "PUT /api/image-studio/audit-schedule",
+      "POST /api/image-studio/audit-schedule/ack",
+      "GET /api/image-studio/monthly-report/latest",
       "POST /api/image-studio/audits/:scanId/issues/queue",
       "POST /api/image-studio/audits/:scanId/queue-recommendation"
     ]
@@ -54,6 +62,22 @@ imageAuditRoutes.get("/audits", (request, response, next) => {
 
 imageAuditRoutes.get("/audit-queue", (request, response, next) => {
   listImageAuditQueueJobs(request, response).catch(next);
+});
+
+imageAuditRoutes.get("/audit-schedule", (request, response, next) => {
+  getImageAuditSchedule(request, response).catch(next);
+});
+
+imageAuditRoutes.put("/audit-schedule", (request, response, next) => {
+  saveImageAuditSchedule(request, response).catch(next);
+});
+
+imageAuditRoutes.post("/audit-schedule/ack", (request, response, next) => {
+  acknowledgeImageAuditSchedule(request, response).catch(next);
+});
+
+imageAuditRoutes.get("/monthly-report/latest", (request, response, next) => {
+  getImageAuditMonthlyReport(request, response).catch(next);
 });
 
 imageAuditRoutes.post("/audits/:scan_id/items", (request, response, next) => {

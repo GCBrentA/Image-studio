@@ -1429,6 +1429,30 @@ export const generateRecommendations = (
     });
   }
 
+  const brandStyleIssueTypes: AuditIssueType[] = [
+    "inconsistent_background",
+    "cluttered_background",
+    "inconsistent_aspect_ratio",
+    "inconsistent_product_scale",
+    "inconsistent_padding",
+    "poor_centering",
+    "too_small_in_frame",
+    "too_tightly_cropped"
+  ];
+  const brandStyleAffected = affected(brandStyleIssueTypes);
+  if (brandStyleAffected > 0 || metrics.catalogue_consistency_score < 85) {
+    add({
+      title: "Standardise images to your selected brand style",
+      description: "Use a consistent background, aspect ratio, padding and shadow preset for product families. This is based on deterministic consistency signals where available.",
+      priority: metrics.catalogue_consistency_score < 65 ? "high" : "medium",
+      action_type: "standard_background_replace",
+      estimated_images_affected: brandStyleAffected,
+      estimated_minutes_saved_low: brandStyleAffected * 2,
+      estimated_minutes_saved_high: brandStyleAffected * 4,
+      action_filter: { issue_type: brandStyleIssueTypes }
+    });
+  }
+
   if (affected(["missing_main_image"]) > 0) {
     add({
       title: "Review products missing main images",

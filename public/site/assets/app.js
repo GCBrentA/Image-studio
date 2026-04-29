@@ -271,7 +271,13 @@ function routeTo(path) {
   if (normalized === "/queue") {
     loadAuditQueuePage();
   }
-  if (["/backgrounds", "/seo-tools", "/settings"].includes(normalized)) {
+  if (normalized === "/backgrounds") {
+    loadBackgroundsPage();
+  }
+  if (normalized === "/settings") {
+    loadSettingsPage();
+  }
+  if (["/seo-tools"].includes(normalized)) {
     renderPortalPlaceholder(normalized);
   }
   if (normalized === "/account/billing" || normalized === "/billing/success" || normalized === "/billing/credits/success") {
@@ -2191,6 +2197,236 @@ function formatBytes(value) {
   return `${size.toLocaleString(undefined, { maximumFractionDigits: unit === 0 ? 0 : 1 })} ${units[unit]}`;
 }
 
+const brandPresetStorageKey = "optivra_brand_style_presets_v1";
+
+function defaultBrandStylePresets() {
+  return [
+    {
+      id: "optivra-light",
+      name: "Optivra light studio",
+      backgroundType: "optivra-light",
+      aspectRatio: "1:1",
+      productPadding: "balanced",
+      shadow: "subtle",
+      outputFormat: "original",
+      applyScope: "all",
+      categories: []
+    },
+    {
+      id: "feed-white",
+      name: "Feed-safe white",
+      backgroundType: "white",
+      aspectRatio: "1:1",
+      productPadding: "balanced",
+      shadow: "none",
+      outputFormat: "webp",
+      applyScope: "all",
+      categories: []
+    }
+  ];
+}
+
+function getBrandStylePresets() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(brandPresetStorageKey) || "[]");
+    return Array.isArray(parsed) && parsed.length ? parsed : defaultBrandStylePresets();
+  } catch {
+    return defaultBrandStylePresets();
+  }
+}
+
+function saveBrandStylePresets(presets) {
+  localStorage.setItem(brandPresetStorageKey, JSON.stringify(presets));
+}
+
+function brandPresetWarnings(preset) {
+  const warnings = [];
+  if (preset.backgroundType === "custom") {
+    warnings.push("This background may reduce product contrast for some products.");
+    warnings.push("Review custom backgrounds for dark areas, busy texture, text, logos, or product-feed suitability before using them in bulk.");
+  }
+  if (preset.backgroundType === "transparent") {
+    warnings.push("Transparent output is useful for design workflows but may not be suitable for every product-feed style image.");
+  }
+  if (preset.backgroundType === "soft-grey") {
+    warnings.push("Soft grey is usually safe, but dark products should still be reviewed for edge contrast.");
+  }
+  return warnings;
+}
+
+function brandBackgroundLabel(value) {
+  return {
+    "optivra-light": "Default Optivra light",
+    white: "White",
+    "soft-grey": "Soft grey",
+    custom: "Custom uploaded image",
+    transparent: "Transparent"
+  }[value] || "Default Optivra light";
+}
+
+function loadBackgroundsPage() {
+  const root = document.getElementById("backgrounds-root");
+  if (!root) return;
+  const presets = getBrandStylePresets();
+  root.innerHTML = portalShell("Brand Style Presets", "Keep product image backgrounds, padding, ratios and shadows consistent by store or product category.", "backgrounds", `
+    <section class="portal-report-hero brand-style-hero">
+      <div>
+        <p class="eyebrow">Backgrounds</p>
+        <h2>Brand style presets for cleaner catalogue consistency</h2>
+        <p>Define feed-safe image styles, preview them with a sample product, and save category assignments for future processing and report recommendations.</p>
+      </div>
+      <div class="hero-score-card">
+        <span>Saved presets</span>
+        <strong>${escapeHtml(presets.length)}</strong>
+        <small>Local workspace settings</small>
+      </div>
+    </section>
+    <section class="brand-preset-grid">
+      ${presets.map(renderBrandPresetCard).join("")}
+    </section>
+    <section class="portal-card brand-preset-builder">
+      <div class="section-heading"><h2>Create Brand Style Preset</h2><p>Use conservative ecommerce defaults. Custom upload analysis is intentionally cautious until full visual scoring is available.</p></div>
+      <form id="brand-style-form" class="brand-style-form">
+        <input type="hidden" name="id" value="" />
+        <label>Preset name<input name="name" required placeholder="Main catalogue style" /></label>
+        <label>Background type<select name="backgroundType">
+          <option value="optivra-light">Default Optivra light</option>
+          <option value="white">White</option>
+          <option value="soft-grey">Soft grey</option>
+          <option value="custom">Custom uploaded image</option>
+          <option value="transparent">Transparent</option>
+        </select></label>
+        <label>Preferred aspect ratio<select name="aspectRatio">
+          <option value="1:1">Square 1:1</option>
+          <option value="4:5">Portrait 4:5</option>
+          <option value="3:4">Portrait 3:4</option>
+          <option value="original">Original</option>
+        </select></label>
+        <label>Product padding<select name="productPadding">
+          <option value="tight">Tight</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="generous">Generous</option>
+        </select></label>
+        <label>Shadow<select name="shadow">
+          <option value="none">None</option>
+          <option value="subtle" selected>Subtle</option>
+          <option value="medium">Medium</option>
+        </select></label>
+        <label>Output format<select name="outputFormat">
+          <option value="original">Original</option>
+          <option value="jpg">JPG</option>
+          <option value="png">PNG</option>
+          <option value="webp">WebP if supported</option>
+        </select></label>
+        <label>Apply to<select name="applyScope">
+          <option value="all">All products</option>
+          <option value="categories">Selected categories</option>
+        </select></label>
+        <label>Selected categories<input name="categories" placeholder="Shoes, Bags, Accessories" /></label>
+        <div class="brand-warning-panel" data-brand-warning>Choose a clean light background for best product-feed readiness.</div>
+        <div class="dashboard-actions"><button class="button primary" type="submit">Save Preset</button><button class="button ghost" type="button" data-brand-reset>Reset demo presets</button></div>
+      </form>
+    </section>
+  `);
+}
+
+function renderBrandPresetCard(preset) {
+  const warnings = brandPresetWarnings(preset);
+  const categories = preset.applyScope === "categories" && preset.categories?.length ? preset.categories.join(", ") : "All products";
+  return `
+    <article class="portal-card brand-preset-card">
+      <div class="card-topline"><div><h3>${escapeHtml(preset.name)}</h3><p>${escapeHtml(categories)}</p></div><span class="status-badge ready">Ready</span></div>
+      <div class="brand-style-preview is-${escapeHtml(preset.backgroundType)}"><div class="sample-product"></div></div>
+      <div class="brand-preset-meta">
+        <span>${escapeHtml(brandBackgroundLabel(preset.backgroundType))}</span>
+        <span>${escapeHtml(preset.aspectRatio)}</span>
+        <span>${escapeHtml(preset.productPadding)}</span>
+        <span>${escapeHtml(preset.shadow)}</span>
+        <span>${escapeHtml(preset.outputFormat)}</span>
+      </div>
+      ${warnings.length ? `<div class="brand-warning-list">${warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}</div>` : ""}
+      <div class="dashboard-actions"><button class="button ghost" data-brand-edit="${escapeHtml(preset.id)}">Edit</button><button class="button ghost" data-brand-delete="${escapeHtml(preset.id)}">Delete</button></div>
+    </article>
+  `;
+}
+
+async function loadSettingsPage() {
+  const root = document.getElementById("settings-root") || document.querySelector('[data-page="/settings"] .portal-placeholder-root');
+  if (!root) return;
+  if (!token()) {
+    root.innerHTML = portalShell("Image Studio Settings", "Log in to manage scan scheduling and recurring report settings.", "settings", `
+      <section class="portal-empty-state"><h2>Login required</h2><p>Scheduled scans are connected to your Optivra account and WooCommerce stores.</p><a class="button primary" href="/login" data-link>Login</a></section>
+    `);
+    return;
+  }
+
+  root.innerHTML = portalShell("Image Studio Settings", "Manage recurring Product Image Health scans and monthly report groundwork.", "settings", renderPortalLoading("Loading settings..."));
+  try {
+    const account = await api("/account/dashboard");
+    const sites = Array.isArray(account.connected_sites) ? account.connected_sites : [];
+    const store = sites[0] || null;
+    let schedule = null;
+    let monthly = null;
+    if (store?.id) {
+      const [schedulePayload, monthlyPayload] = await Promise.all([
+        api(`/api/image-studio/audit-schedule?store_id=${encodeURIComponent(store.id)}`).catch(() => ({ schedule: null })),
+        api(`/api/image-studio/monthly-report/latest?store_id=${encodeURIComponent(store.id)}`).catch(() => ({ monthly_report: null, summary: null }))
+      ]);
+      schedule = schedulePayload.schedule || null;
+      monthly = monthlyPayload.monthly_report || monthlyPayload.summary || null;
+    }
+
+    root.innerHTML = portalShell("Image Studio Settings", "Manage recurring Product Image Health scans and monthly report groundwork.", "settings", `
+      ${store ? "" : renderStoreConnectionPanel(account)}
+      <section class="portal-card">
+        <div class="portal-section-head"><div><h2>Scheduled Product Image Health scans</h2><p>The backend stores schedule intent. The WooCommerce plugin executes the scan via WP-Cron because it has direct product and media access.</p></div><span class="status-badge ${schedule?.frequency && schedule.frequency !== "off" ? "ready" : "needs-review"}">${escapeHtml(schedule?.frequency || "off")}</span></div>
+        ${store ? `
+          <form id="audit-schedule-form" class="brand-style-form">
+            <input type="hidden" name="store_id" value="${escapeHtml(store.id)}" />
+            <label>Store<input value="${escapeHtml(store.domain || store.id)}" disabled /></label>
+            <label>Frequency<select name="frequency">
+              <option value="off" ${schedule?.frequency === "off" || !schedule ? "selected" : ""}>Off</option>
+              <option value="weekly" ${schedule?.frequency === "weekly" ? "selected" : ""}>Weekly</option>
+              <option value="monthly" ${schedule?.frequency === "monthly" ? "selected" : ""}>Monthly</option>
+            </select></label>
+            <label>Scan mode<select name="scan_mode">
+              <option value="updated" ${schedule?.scan_mode !== "full" ? "selected" : ""}>Scan new/updated products only</option>
+              <option value="full" ${schedule?.scan_mode === "full" ? "selected" : ""}>Full catalogue scan</option>
+            </select></label>
+            <label>Email report<select name="email_report">
+              <option value="false" ${schedule?.email_report ? "" : "selected"}>No</option>
+              <option value="true" ${schedule?.email_report ? "selected" : ""}>Yes</option>
+            </select></label>
+            <label>Monthly report summary<select name="monthly_report_enabled">
+              <option value="true" ${schedule?.monthly_report_enabled !== false ? "selected" : ""}>Enabled</option>
+              <option value="false" ${schedule?.monthly_report_enabled === false ? "selected" : ""}>Disabled</option>
+            </select></label>
+            <div class="brand-warning-panel">Plugin support required: recurring scans run from WooCommerce admin load or WP-Cron. The backend will not try to scrape private product data.</div>
+            <div class="dashboard-actions"><button class="button primary" type="submit">Save Schedule</button><a class="button ghost" href="/reports" data-link>View Reports</a></div>
+          </form>
+        ` : `<section class="portal-empty-state"><h2>Connect a store first</h2><p>Generate a Site API Token and connect the WooCommerce plugin before enabling scheduled scans.</p></section>`}
+      </section>
+      <section class="portal-card">
+        <div class="portal-section-head"><div><h2>Monthly report groundwork</h2><p>Prepared summary fields for recurring value reporting. Email delivery can be connected later without changing scan data.</p></div></div>
+        ${monthly ? `
+          <div class="metric-card-grid">
+            ${metricTile("Previous score", monthly.previous_health_score ?? monthly.previous_score ?? "-")}
+            ${metricTile("Current score", monthly.current_health_score ?? monthly.current_score ?? "-")}
+            ${metricTile("Score improvement", monthly.score_improvement ?? 0)}
+            ${metricTile("Issues found", monthly.issues_found ?? 0)}
+            ${metricTile("Issues resolved", monthly.issues_resolved ?? 0)}
+            ${metricTile("Images processed", monthly.images_processed ?? 0)}
+          </div>
+        ` : `<p class="muted-note">Monthly summaries will appear after completed scheduled scans.</p>`}
+      </section>
+    `);
+  } catch (error) {
+    root.innerHTML = portalShell("Image Studio Settings", "Manage recurring Product Image Health scans and monthly report groundwork.", "settings", `
+      <section class="portal-empty-state"><h2>Settings could not load</h2><p>${escapeHtml(error.message)}</p></section>
+    `);
+  }
+}
+
 function renderPortalPlaceholder(path) {
   const titles = {
     "/recommendations": "Recommendations",
@@ -2768,6 +3004,68 @@ function renderPluginDownloadAdmin(summary, events, feedback) {
 }
 
 document.addEventListener("submit", async (event) => {
+  const scheduleForm = event.target.closest?.("#audit-schedule-form");
+  if (scheduleForm) {
+    event.preventDefault();
+    const form = new FormData(scheduleForm);
+    const button = scheduleForm.querySelector("button[type='submit']");
+    const original = button?.textContent || "Save Schedule";
+    try {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Saving...";
+      }
+      await api("/api/image-studio/audit-schedule", {
+        method: "PUT",
+        body: JSON.stringify({
+          store_id: form.get("store_id"),
+          frequency: form.get("frequency"),
+          scan_mode: form.get("scan_mode"),
+          email_report: form.get("email_report") === "true",
+          monthly_report_enabled: form.get("monthly_report_enabled") !== "false",
+          scan_options: {
+            source: "portal_settings",
+            plugin_executes_scan: true
+          }
+        })
+      });
+      trackEvent("image_studio_feature_click", { cta_location: "scheduled_scan_save", funnel_stage: "retention" });
+      await loadSettingsPage();
+    } catch (error) {
+      if (button) button.textContent = error.message;
+      window.setTimeout(() => {
+        if (button) button.textContent = original;
+      }, 2500);
+    } finally {
+      if (button) button.disabled = false;
+    }
+    return;
+  }
+
+  const brandForm = event.target.closest?.("#brand-style-form");
+  if (brandForm) {
+    event.preventDefault();
+    const form = new FormData(brandForm);
+    const preset = {
+      id: String(form.get("id") || form.get("name") || `preset-${Date.now()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `preset-${Date.now()}`,
+      name: String(form.get("name") || "Untitled preset").trim(),
+      backgroundType: String(form.get("backgroundType") || "optivra-light"),
+      aspectRatio: String(form.get("aspectRatio") || "1:1"),
+      productPadding: String(form.get("productPadding") || "balanced"),
+      shadow: String(form.get("shadow") || "subtle"),
+      outputFormat: String(form.get("outputFormat") || "original"),
+      applyScope: String(form.get("applyScope") || "all"),
+      categories: String(form.get("categories") || "").split(",").map((item) => item.trim()).filter(Boolean)
+    };
+    const presets = getBrandStylePresets();
+    const next = presets.filter((item) => item.id !== preset.id);
+    next.push(preset);
+    saveBrandStylePresets(next);
+    trackEvent("image_studio_feature_click", { cta_location: "brand_style_preset_save", funnel_stage: "retention" });
+    loadBackgroundsPage();
+    return;
+  }
+
   const formNode = event.target.closest?.("#site-form");
   if (!formNode) return;
   event.preventDefault();
@@ -2798,6 +3096,43 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const brandEdit = event.target.closest("[data-brand-edit]");
+  if (brandEdit) {
+    event.preventDefault();
+    const preset = getBrandStylePresets().find((item) => item.id === brandEdit.getAttribute("data-brand-edit"));
+    const form = document.getElementById("brand-style-form");
+    if (preset && form) {
+      form.elements.id.value = preset.id;
+      form.elements.name.value = preset.name;
+      form.elements.backgroundType.value = preset.backgroundType;
+      form.elements.aspectRatio.value = preset.aspectRatio;
+      form.elements.productPadding.value = preset.productPadding;
+      form.elements.shadow.value = preset.shadow;
+      form.elements.outputFormat.value = preset.outputFormat;
+      form.elements.applyScope.value = preset.applyScope;
+      form.elements.categories.value = (preset.categories || []).join(", ");
+      form.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return;
+  }
+
+  const brandDelete = event.target.closest("[data-brand-delete]");
+  if (brandDelete) {
+    event.preventDefault();
+    const id = brandDelete.getAttribute("data-brand-delete");
+    const next = getBrandStylePresets().filter((item) => item.id !== id);
+    saveBrandStylePresets(next.length ? next : defaultBrandStylePresets());
+    loadBackgroundsPage();
+    return;
+  }
+
+  if (event.target.closest("[data-brand-reset]")) {
+    event.preventDefault();
+    saveBrandStylePresets(defaultBrandStylePresets());
+    loadBackgroundsPage();
+    return;
+  }
+
   const queueRecommendation = event.target.closest("[data-report-queue-recommendation]");
   if (queueRecommendation) {
     event.preventDefault();

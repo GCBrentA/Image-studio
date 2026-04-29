@@ -82,6 +82,46 @@ type AuditItemRow = {
   recommended_action?: string | null;
 };
 
+type AuditScheduleRow = {
+  id: string;
+  store_id: string;
+  user_id: string | null;
+  frequency: string;
+  scan_mode: string;
+  email_report: boolean;
+  status: string;
+  remote_trigger_supported: boolean;
+  scheduled_scan_requested: boolean;
+  last_requested_at: Date | null;
+  last_scan_completed_at: Date | null;
+  next_scan_at: Date | null;
+  scan_options: unknown;
+  monthly_report_enabled: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type MonthlyReportRow = {
+  id: string;
+  store_id: string;
+  period_start: Date;
+  period_end: Date;
+  previous_scan_id: string | null;
+  current_scan_id: string | null;
+  previous_health_score: number | null;
+  current_health_score: number | null;
+  score_improvement: number | null;
+  issues_found: number | null;
+  issues_resolved: number | null;
+  images_processed: number | null;
+  estimated_time_saved_minutes_low: number | null;
+  estimated_time_saved_minutes_high: number | null;
+  top_remaining_opportunities: unknown;
+  email_status: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
 type ScoreBundle = {
   productImageHealthScore: number;
   seoScore: number;
@@ -2540,5 +2580,233 @@ export const listAuditQueueJobs = async (
     total_count: Number(countRows[0]?.count ?? 0),
     limit,
     offset
+  };
+};
+
+const allowedScheduleFrequencies = new Set(["off", "weekly", "monthly"]);
+const allowedScheduleModes = new Set(["updated", "full"]);
+
+const nextScanDate = (frequency: string): Date | null => {
+  if (frequency === "off") return null;
+  const date = new Date();
+  date.setUTCSeconds(0, 0);
+  if (frequency === "weekly") {
+    date.setUTCDate(date.getUTCDate() + 7);
+    return date;
+  }
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  return date;
+};
+
+const serializeSchedule = (row: AuditScheduleRow | null) => row ? serializeRecord(row) : null;
+const serializeMonthlyReport = (row: MonthlyReportRow | null) => row ? serializeRecord(row) : null;
+
+export const getAuditSchedule = async (
+  auth: ImageStudioAuthContext,
+  storeIdInput?: unknown
+): Promise<{ schedule: Record<string, unknown> | null; plugin_execution_required: true; message: string }> => {
+  const storeId = typeof storeIdInput === "string" && storeIdInput.trim()
+    ? storeIdInput.trim()
+    : auth.siteId ?? "";
+  if (!storeId) {
+    throw new ImageAuditError("store_id is required", 400);
+  }
+  await assertStoreAccess(auth, storeId);
+
+  const rows = await prisma.$queryRaw<AuditScheduleRow[]>`
+    SELECT *
+    FROM "image_audit_scan_schedules"
+    WHERE "store_id" = ${storeId}
+    LIMIT 1
+  `;
+
+  return {
+    schedule: serializeSchedule(rows[0] ?? null),
+    plugin_execution_required: true,
+    message: "WooCommerce scheduled scans are executed by the plugin via WP-Cron because the backend cannot access store products or media directly."
+  };
+};
+
+export const upsertAuditSchedule = async (
+  auth: ImageStudioAuthContext,
+  input: {
+    storeId?: unknown;
+    frequency?: unknown;
+    scanMode?: unknown;
+    emailReport?: unknown;
+    scanOptions?: unknown;
+    monthlyReportEnabled?: unknown;
+  }
+): Promise<{ ok: true; schedule: Record<string, unknown>; plugin_execution_required: true; message: string }> => {
+  const storeId = typeof input.storeId === "string" && input.storeId.trim()
+    ? input.storeId.trim()
+    : auth.siteId ?? "";
+  if (!storeId) {
+    throw new ImageAuditError("store_id is required", 400);
+  }
+  await assertStoreAccess(auth, storeId);
+
+  const frequencyRaw = typeof input.frequency === "string" ? input.frequency : "off";
+  const frequency = allowedScheduleFrequencies.has(frequencyRaw) ? frequencyRaw : "off";
+  const scanModeRaw = typeof input.scanMode === "string" ? input.scanMode : "updated";
+  const scanMode = allowedScheduleModes.has(scanModeRaw) ? scanModeRaw : "updated";
+  const nextScanAt = nextScanDate(frequency);
+  const status = frequency === "off" ? "off" : "pending_plugin";
+  const scanOptions = input.scanOptions && typeof input.scanOptions === "object" ? input.scanOptions : {};
+
+  const rows = await prisma.$queryRaw<AuditScheduleRow[]>`
+    INSERT INTO "image_audit_scan_schedules" (
+      "store_id",
+      "user_id",
+      "frequency",
+      "scan_mode",
+      "email_report",
+      "status",
+      "scheduled_scan_requested",
+      "last_requested_at",
+      "next_scan_at",
+      "scan_options",
+      "monthly_report_enabled"
+    )
+    VALUES (
+      ${storeId},
+      ${auth.userId ?? null},
+      ${frequency},
+      ${scanMode},
+      ${Boolean(input.emailReport)},
+      ${status},
+      ${frequency !== "off"},
+      ${frequency !== "off" ? new Date() : null},
+      ${nextScanAt},
+      ${scanOptions as Prisma.JsonObject},
+      ${input.monthlyReportEnabled !== false}
+    )
+    ON CONFLICT ("store_id") DO UPDATE SET
+      "user_id" = EXCLUDED."user_id",
+      "frequency" = EXCLUDED."frequency",
+      "scan_mode" = EXCLUDED."scan_mode",
+      "email_report" = EXCLUDED."email_report",
+      "status" = EXCLUDED."status",
+      "scheduled_scan_requested" = EXCLUDED."scheduled_scan_requested",
+      "last_requested_at" = EXCLUDED."last_requested_at",
+      "next_scan_at" = EXCLUDED."next_scan_at",
+      "scan_options" = EXCLUDED."scan_options",
+      "monthly_report_enabled" = EXCLUDED."monthly_report_enabled",
+      "updated_at" = now()
+    RETURNING *
+  `;
+
+  return {
+    ok: true,
+    schedule: serializeSchedule(rows[0]) ?? {},
+    plugin_execution_required: true,
+    message: "Schedule saved. The WooCommerce plugin will execute the scan via WP-Cron or the next admin load."
+  };
+};
+
+export const acknowledgeScheduledAuditRun = async (
+  auth: ImageStudioAuthContext,
+  input: { storeId?: unknown; status?: unknown; scanId?: unknown; nextScanAt?: unknown }
+): Promise<{ ok: true; schedule: Record<string, unknown> | null }> => {
+  const storeId = typeof input.storeId === "string" && input.storeId.trim()
+    ? input.storeId.trim()
+    : auth.siteId ?? "";
+  if (!storeId) {
+    throw new ImageAuditError("store_id is required", 400);
+  }
+  await assertStoreAccess(auth, storeId);
+
+  const status = typeof input.status === "string" && ["requested", "running", "active", "error"].includes(input.status)
+    ? input.status
+    : "active";
+  const next = typeof input.nextScanAt === "string" && input.nextScanAt ? new Date(input.nextScanAt) : null;
+
+  const rows = await prisma.$queryRaw<AuditScheduleRow[]>`
+    UPDATE "image_audit_scan_schedules"
+    SET
+      "status" = ${status},
+      "scheduled_scan_requested" = ${status === "error"},
+      "last_scan_completed_at" = CASE WHEN ${status} = 'active' THEN now() ELSE "last_scan_completed_at" END,
+      "next_scan_at" = COALESCE(${next}, "next_scan_at"),
+      "updated_at" = now()
+    WHERE "store_id" = ${storeId}
+    RETURNING *
+  `;
+
+  return { ok: true, schedule: serializeSchedule(rows[0] ?? null) };
+};
+
+export const getLatestMonthlyAuditReport = async (
+  auth: ImageStudioAuthContext,
+  storeIdInput?: unknown
+): Promise<{ monthly_report: Record<string, unknown> | null; summary: Record<string, unknown> | null }> => {
+  const storeId = typeof storeIdInput === "string" && storeIdInput.trim()
+    ? storeIdInput.trim()
+    : auth.siteId ?? "";
+  if (!storeId) {
+    throw new ImageAuditError("store_id is required", 400);
+  }
+  await assertStoreAccess(auth, storeId);
+
+  const existing = await prisma.$queryRaw<MonthlyReportRow[]>`
+    SELECT *
+    FROM "image_audit_monthly_reports"
+    WHERE "store_id" = ${storeId}
+    ORDER BY "period_start" DESC
+    LIMIT 1
+  `;
+  if (existing[0]) {
+    return { monthly_report: serializeMonthlyReport(existing[0]), summary: null };
+  }
+
+  const scans = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT
+      s."id"::text,
+      s."created_at",
+      m."product_image_health_score",
+      m."seo_score",
+      m."image_quality_score",
+      m."catalogue_consistency_score",
+      m."performance_score",
+      m."estimated_manual_minutes_low",
+      m."estimated_manual_minutes_high",
+      COALESCE(issue_counts."count", 0) AS "issues_found"
+    FROM "image_audit_scans" s
+    LEFT JOIN "image_audit_scan_metrics" m ON m."scan_id" = s."id"
+    LEFT JOIN (
+      SELECT "scan_id", COUNT(*)::int AS "count"
+      FROM "image_audit_issues"
+      WHERE "status" <> 'ignored'
+      GROUP BY "scan_id"
+    ) issue_counts ON issue_counts."scan_id" = s."id"
+    WHERE s."store_id" = ${storeId}
+      AND s."status" = 'completed'
+    ORDER BY s."created_at" DESC
+    LIMIT 2
+  `;
+
+  const current = scans[0] ?? null;
+  const previous = scans[1] ?? null;
+  if (!current) {
+    return { monthly_report: null, summary: null };
+  }
+
+  const currentScore = Number(current.product_image_health_score ?? 0);
+  const previousScore = previous ? Number(previous.product_image_health_score ?? 0) : null;
+  return {
+    monthly_report: null,
+    summary: {
+      previous_score: previousScore,
+      current_score: currentScore,
+      score_improvement: previousScore === null ? 0 : Number((currentScore - previousScore).toFixed(2)),
+      issues_found: Number(current.issues_found ?? 0),
+      issues_resolved: previous ? Math.max(0, Number(previous.issues_found ?? 0) - Number(current.issues_found ?? 0)) : 0,
+      images_processed: 0,
+      estimated_time_saved_minutes_low: Number(current.estimated_manual_minutes_low ?? 0),
+      estimated_time_saved_minutes_high: Number(current.estimated_manual_minutes_high ?? 0),
+      top_remaining_opportunities: [],
+      email_status: "skipped",
+      generated_from_completed_scans: true
+    }
   };
 };

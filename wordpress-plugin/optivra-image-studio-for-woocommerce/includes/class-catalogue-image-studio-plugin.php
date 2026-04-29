@@ -262,6 +262,9 @@ class Catalogue_Image_Studio_Plugin {
 		$this->seo_generator = new Catalogue_Image_Studio_SEO_Metadata_Generator();
 		$this->approval      = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $settings, $this->logger);
 		$this->processor     = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->media, $this->seo_generator, $settings, $this->logger);
+
+		add_action('optivra_image_studio_scheduled_audit_tick', [$this, 'run_scheduled_audit_tick']);
+		add_action('admin_init', [$this, 'maybe_queue_due_scheduled_audit']);
 	}
 
 	/**
@@ -365,8 +368,27 @@ class Catalogue_Image_Studio_Plugin {
 			'show_failed_job_alerts'  => true,
 			'email_batch_complete'    => false,
 			'email_job_failed'        => false,
+			'audit_schedule_frequency' => 'off',
+			'audit_schedule_scan_mode' => 'updated',
+			'audit_schedule_email_report' => false,
+			'audit_monthly_report_enabled' => true,
+			'audit_schedule_next_run_at' => '',
 			'notification_email'      => '',
 			'send_operational_diagnostics' => true,
+			'active_brand_style_preset' => 'optivra-light',
+			'brand_style_presets'     => [
+				'optivra-light' => [
+					'name'                            => 'Optivra light studio',
+					'background_type'                 => 'optivra-light',
+					'custom_background_attachment_id' => 0,
+					'aspect_ratio'                    => '1:1',
+					'product_padding'                 => 'balanced',
+					'shadow'                          => 'subtle',
+					'output_format'                   => 'original',
+					'apply_scope'                     => 'all',
+					'category_ids'                    => [],
+				],
+			],
 			'category_presets'        => [],
 			'debug_mode'              => false,
 		];
@@ -420,6 +442,262 @@ class Catalogue_Image_Studio_Plugin {
 		$settings['preserve_dark_detail'] = array_key_exists('preserve_dark_detail', $settings) ? (bool) $settings['preserve_dark_detail'] : true;
 
 		return $settings;
+	}
+
+	public function sync_audit_schedule(array $settings): void {
+		if ('off' === (string) ($settings['audit_schedule_frequency'] ?? 'off')) {
+			wp_clear_scheduled_hook('optivra_image_studio_scheduled_audit_tick');
+			delete_option('optivra_scheduled_scan_state');
+			return;
+		}
+
+		$next_run = strtotime((string) ($settings['audit_schedule_next_run_at'] ?? ''));
+		if (! $next_run || $next_run < time()) {
+			$next_run = $this->calculate_next_scheduled_audit_timestamp((string) ($settings['audit_schedule_frequency'] ?? 'weekly'));
+			$settings['audit_schedule_next_run_at'] = gmdate('c', $next_run);
+			update_option($this->option_name, $settings, false);
+		}
+
+		wp_clear_scheduled_hook('optivra_image_studio_scheduled_audit_tick');
+		wp_schedule_single_event($next_run, 'optivra_image_studio_scheduled_audit_tick');
+
+		if (empty($settings['api_token'])) {
+			return;
+		}
+
+		$usage = $this->client->get_usage();
+		if (is_wp_error($usage)) {
+			$this->logger->warning('Could not sync audit schedule to Optivra.', ['reason' => $usage->get_error_message()]);
+			return;
+		}
+
+		$store_id = $this->extract_store_id_from_usage(is_array($usage) ? $usage : []);
+		if ('' === $store_id) {
+			return;
+		}
+
+		$this->client->save_image_audit_schedule(
+			$store_id,
+			[
+				'frequency'              => (string) ($settings['audit_schedule_frequency'] ?? 'off'),
+				'scan_mode'              => (string) ($settings['audit_schedule_scan_mode'] ?? 'updated'),
+				'email_report'           => ! empty($settings['audit_schedule_email_report']),
+				'monthly_report_enabled' => ! empty($settings['audit_monthly_report_enabled']),
+				'scan_options'           => $this->get_scheduled_audit_options($settings),
+			]
+		);
+	}
+
+	public function maybe_queue_due_scheduled_audit(): void {
+		$settings = $this->get_settings();
+		if ('off' === (string) ($settings['audit_schedule_frequency'] ?? 'off') || empty($settings['api_token'])) {
+			return;
+		}
+
+		$state = get_option('optivra_scheduled_scan_state', []);
+		if (is_array($state) && 'running' === (string) ($state['status'] ?? '')) {
+			if (! wp_next_scheduled('optivra_image_studio_scheduled_audit_tick')) {
+				wp_schedule_single_event(time() + 60, 'optivra_image_studio_scheduled_audit_tick');
+			}
+			return;
+		}
+
+		$next_run = strtotime((string) ($settings['audit_schedule_next_run_at'] ?? ''));
+		if ($next_run && $next_run <= time() && ! wp_next_scheduled('optivra_image_studio_scheduled_audit_tick')) {
+			wp_schedule_single_event(time() + 30, 'optivra_image_studio_scheduled_audit_tick');
+		}
+	}
+
+	public function run_scheduled_audit_tick(): void {
+		$settings = $this->get_settings();
+		if ('off' === (string) ($settings['audit_schedule_frequency'] ?? 'off') || empty($settings['api_token'])) {
+			return;
+		}
+
+		$state = get_option('optivra_scheduled_scan_state', []);
+		$state = is_array($state) ? $state : [];
+		$scan_id = (string) ($state['scan_id'] ?? '');
+		$store_id = (string) ($state['store_id'] ?? '');
+		$options = $this->get_scheduled_audit_options($settings);
+
+		if ('' === $scan_id) {
+			$usage = $this->client->get_usage();
+			if (is_wp_error($usage)) {
+				$this->record_scheduled_audit_error($usage->get_error_message(), $store_id);
+				return;
+			}
+			$store_id = $this->extract_store_id_from_usage(is_array($usage) ? $usage : []);
+			if ('' === $store_id) {
+				$this->record_scheduled_audit_error('No connected store ID was returned by Optivra.', '');
+				return;
+			}
+
+			$total = $this->scanner->count_audit_products($options);
+			$result = $this->client->start_image_audit(
+				$store_id,
+				$options + [
+					'scheduled'               => true,
+					'total_products_estimate' => $total,
+					'plugin_version'          => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+					'woocommerce_version'     => defined('WC_VERSION') ? WC_VERSION : '',
+				]
+			);
+			if (is_wp_error($result)) {
+				$this->record_scheduled_audit_error($result->get_error_message(), $store_id);
+				return;
+			}
+
+			$scan_id = $this->extract_scan_id_from_payload(is_array($result) ? $result : []);
+			if ('' === $scan_id) {
+				$this->record_scheduled_audit_error('Optivra did not return a scan ID for the scheduled audit.', $store_id);
+				return;
+			}
+
+			$state = [
+				'status'         => 'running',
+				'scan_id'        => $scan_id,
+				'store_id'       => $store_id,
+				'offset'         => 0,
+				'batch'          => 0,
+				'total_products' => $total,
+				'images_scanned' => 0,
+				'started_at'     => current_time('mysql'),
+			];
+			update_option('optivra_latest_scan_id', $scan_id, false);
+			update_option('optivra_latest_audit_store_id', $store_id, false);
+			update_option('optivra_scheduled_scan_state', $state, false);
+			$this->client->acknowledge_image_audit_schedule($store_id, ['status' => 'running', 'scan_id' => $scan_id]);
+		}
+
+		$offset = max(0, absint($state['offset'] ?? 0));
+		$batch = $this->scanner->collect_audit_batch($options, $offset, 25);
+		$items = isset($batch['items']) && is_array($batch['items']) ? $batch['items'] : [];
+		foreach (array_chunk($items, 75) as $chunk) {
+			$result = $this->client->submit_image_audit_items($scan_id, $chunk);
+			if (is_wp_error($result)) {
+				$this->record_scheduled_audit_error($result->get_error_message(), $store_id);
+				return;
+			}
+		}
+
+		$next_offset = max(0, absint($batch['next_offset'] ?? ($offset + 25)));
+		$done = empty($batch['has_more']) || ((int) ($state['total_products'] ?? 0) > 0 && $next_offset >= (int) ($state['total_products'] ?? 0));
+		$state['offset'] = $next_offset;
+		$state['batch'] = max(1, absint($state['batch'] ?? 0) + 1);
+		$state['images_scanned'] = (int) ($state['images_scanned'] ?? 0) + count($items);
+		update_option('optivra_scheduled_scan_state', $state, false);
+
+		if (! $done) {
+			wp_schedule_single_event(time() + 60, 'optivra_image_studio_scheduled_audit_tick');
+			return;
+		}
+
+		$report = $this->client->complete_image_audit($scan_id);
+		if (is_wp_error($report)) {
+			$this->record_scheduled_audit_error($report->get_error_message(), $store_id);
+			return;
+		}
+
+		$full_report = $this->client->get_image_audit($scan_id);
+		$summary = ! is_wp_error($full_report) && is_array($full_report) ? $full_report : (is_array($report) ? $report : []);
+		$score = $this->extract_health_score_from_report($summary);
+		$this->store_monthly_report_summary($summary, $score, $settings);
+		update_option('optivra_latest_health_score', $score, false);
+		update_option('optivra_last_scan_completed_at', current_time('mysql'), false);
+		update_option('optivra_scan_in_progress', false, false);
+		update_option('optivra_report_summary_cache', ['latest' => $summary, 'updated_at' => current_time('mysql')], false);
+		delete_option('optivra_scheduled_scan_state');
+
+		$next_run = $this->calculate_next_scheduled_audit_timestamp((string) ($settings['audit_schedule_frequency'] ?? 'weekly'));
+		$settings['audit_schedule_next_run_at'] = gmdate('c', $next_run);
+		update_option($this->option_name, $settings, false);
+		wp_schedule_single_event($next_run, 'optivra_image_studio_scheduled_audit_tick');
+		$this->client->acknowledge_image_audit_schedule($store_id, ['status' => 'active', 'scan_id' => $scan_id, 'next_scan_at' => gmdate('c', $next_run)]);
+	}
+
+	private function get_scheduled_audit_options(array $settings): array {
+		$scan_mode = (string) ($settings['audit_schedule_scan_mode'] ?? 'updated');
+		$options = [
+			'scan_scope'                  => 'all',
+			'status'                      => 'publish',
+			'category_ids'                => [],
+			'include_main_images'         => true,
+			'include_gallery_images'      => ! empty($settings['process_gallery_images']),
+			'include_variation_images'    => true,
+			'include_category_thumbnails' => ! empty($settings['process_category_images']),
+			'checks'                      => ['seo', 'performance', 'consistency', 'feed_readiness'],
+		];
+
+		if ('updated' === $scan_mode) {
+			$last_completed = (string) get_option('optivra_last_scan_completed_at', '');
+			if ('' !== $last_completed) {
+				$options['updated_since'] = $last_completed;
+			}
+		}
+
+		return $options;
+	}
+
+	private function calculate_next_scheduled_audit_timestamp(string $frequency): int {
+		$timestamp = 'monthly' === $frequency ? strtotime('+1 month') : strtotime('+1 week');
+		return $timestamp ? (int) $timestamp : (time() + WEEK_IN_SECONDS);
+	}
+
+	private function extract_store_id_from_usage(array $usage): string {
+		$candidates = [$usage['store_id'] ?? '', $usage['site_id'] ?? '', $usage['store']['id'] ?? '', $usage['site']['id'] ?? ''];
+		foreach ($candidates as $candidate) {
+			if (is_scalar($candidate) && '' !== (string) $candidate) {
+				return sanitize_text_field((string) $candidate);
+			}
+		}
+		return '';
+	}
+
+	private function extract_scan_id_from_payload(array $payload): string {
+		foreach ([$payload['scan_id'] ?? '', $payload['id'] ?? '', $payload['scan']['id'] ?? ''] as $candidate) {
+			if (is_scalar($candidate) && '' !== (string) $candidate) {
+				return sanitize_text_field((string) $candidate);
+			}
+		}
+		return '';
+	}
+
+	private function extract_health_score_from_report(array $summary): float {
+		foreach ([$summary['metrics']['product_image_health_score'] ?? null, $summary['product_image_health_score'] ?? null, $summary['health_score'] ?? null] as $candidate) {
+			if (is_numeric($candidate)) {
+				return max(0, min(100, (float) $candidate));
+			}
+		}
+		return 0;
+	}
+
+	private function store_monthly_report_summary(array $summary, float $score, array $settings): void {
+		$previous = get_option('optivra_monthly_report_summary', []);
+		$previous = is_array($previous) ? $previous : [];
+		$previous_score = isset($previous['current_score']) ? (float) $previous['current_score'] : null;
+		$metrics = isset($summary['metrics']) && is_array($summary['metrics']) ? $summary['metrics'] : [];
+		$monthly = [
+			'previous_score'                    => $previous_score,
+			'current_score'                     => $score,
+			'score_improvement'                 => null === $previous_score ? 0 : round($score - $previous_score, 2),
+			'issues_found'                      => isset($summary['issue_summary']['total_count']) ? (int) $summary['issue_summary']['total_count'] : 0,
+			'issues_resolved'                   => 0,
+			'images_processed'                  => (int) ($metrics['images_processed'] ?? 0),
+			'estimated_time_saved_minutes_low'  => (int) ($metrics['estimated_manual_minutes_low'] ?? 0),
+			'estimated_time_saved_minutes_high' => (int) ($metrics['estimated_manual_minutes_high'] ?? 0),
+			'top_remaining_opportunities'       => array_slice((array) ($summary['insights'] ?? []), 0, 5),
+			'email_status'                      => ! empty($settings['audit_schedule_email_report']) ? 'queued_stub' : 'skipped',
+			'updated_at'                        => current_time('mysql'),
+		];
+		update_option('optivra_monthly_report_summary', $monthly, false);
+	}
+
+	private function record_scheduled_audit_error(string $message, string $store_id): void {
+		$this->logger->error('Scheduled Product Image Health scan failed.', ['reason' => $message]);
+		update_option('optivra_scheduled_scan_state', ['status' => 'failed', 'message' => $message, 'updated_at' => current_time('mysql')], false);
+		if ('' !== $store_id) {
+			$this->client->acknowledge_image_audit_schedule($store_id, ['status' => 'error']);
+		}
 	}
 
 	public function logger(): Catalogue_Image_Studio_Logger {

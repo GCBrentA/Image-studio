@@ -2281,6 +2281,114 @@ pre {
   margin-top: 0;
 }
 
+.brand-style-hero {
+  align-items: center;
+}
+.brand-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin: 22px 0;
+}
+.brand-preset-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.brand-style-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1 / 1;
+  max-height: 230px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbfcff 0%, #eef4ff 100%);
+}
+.brand-style-preview.is-white { background: #fff; }
+.brand-style-preview.is-soft-grey { background: #eef2f7; }
+.brand-style-preview.is-custom { background: linear-gradient(135deg, #f8fafc, #e0e7ff); }
+.brand-style-preview.is-transparent {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #eef2f7 25%, transparent 25%),
+    linear-gradient(-45deg, #eef2f7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eef2f7 75%),
+    linear-gradient(-45deg, transparent 75%, #eef2f7 75%);
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
+}
+.sample-product {
+  width: 64%;
+  height: 28%;
+  border-radius: 999px 999px 32px 32px;
+  background: linear-gradient(135deg, #172033, #0f172a 54%, #475569);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
+}
+.sample-product::after {
+  content: "";
+  display: block;
+  width: 72%;
+  height: 14px;
+  margin: 31% auto 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.16);
+  filter: blur(7px);
+}
+.brand-preset-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.brand-preset-meta span {
+  display: inline-flex;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.brand-warning-list,
+.brand-warning-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: 12px;
+  background: #fffbeb;
+  color: #92400e;
+}
+.brand-warning-list p {
+  margin: 0;
+}
+.brand-preset-builder {
+  display: grid;
+  gap: 18px;
+}
+.brand-style-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+.brand-style-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-weight: 750;
+}
+.brand-style-form input,
+.brand-style-form select {
+  width: 100%;
+  min-width: 0;
+}
+.brand-style-form .brand-warning-panel,
+.brand-style-form .dashboard-actions {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 900px) {
   .example-report-header,
   .gateway-secondary {

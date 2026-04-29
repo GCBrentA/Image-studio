@@ -273,6 +273,49 @@ class Catalogue_Image_Studio_SaaSClient {
 		);
 	}
 
+	public function get_image_audit_schedule(string $store_id) {
+		return $this->request_json(
+			'GET',
+			'/api/image-studio/audit-schedule?store_id=' . rawurlencode($store_id),
+			[],
+			20
+		);
+	}
+
+	public function save_image_audit_schedule(string $store_id, array $schedule) {
+		return $this->request_json(
+			'PUT',
+			'/api/image-studio/audit-schedule',
+			[
+				'store_id'                => $store_id,
+				'frequency'               => $schedule['frequency'] ?? 'off',
+				'scan_mode'               => $schedule['scan_mode'] ?? 'updated',
+				'email_report'            => ! empty($schedule['email_report']),
+				'monthly_report_enabled'  => ! empty($schedule['monthly_report_enabled']),
+				'scan_options'            => $schedule['scan_options'] ?? [],
+			],
+			25
+		);
+	}
+
+	public function acknowledge_image_audit_schedule(string $store_id, array $payload = []) {
+		return $this->request_json(
+			'POST',
+			'/api/image-studio/audit-schedule/ack',
+			array_merge(['store_id' => $store_id], $payload),
+			20
+		);
+	}
+
+	public function get_latest_monthly_image_audit_report(string $store_id) {
+		return $this->request_json(
+			'GET',
+			'/api/image-studio/monthly-report/latest?store_id=' . rawurlencode($store_id),
+			[],
+			20
+		);
+	}
+
 	/**
 	 * Fetch paginated audit issues.
 	 *

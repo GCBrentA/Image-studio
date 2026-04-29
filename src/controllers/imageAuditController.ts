@@ -11,9 +11,13 @@ import {
   listAuditQueueJobs,
   listAuditIssues,
   listAuditItems,
+  acknowledgeScheduledAuditRun,
+  getAuditSchedule,
+  getLatestMonthlyAuditReport,
   queueAuditIssues,
   queueAuditRecommendation,
-  startAuditScan
+  startAuditScan,
+  upsertAuditSchedule
 } from "../services/imageAuditService";
 import type { StartImageAuditRequest } from "../types/imageAudit";
 
@@ -295,6 +299,87 @@ export const listImageAuditQueueJobs = async (
 
   try {
     const result = await listAuditQueueJobs(auth, request.query, request.params.scan_id);
+    response.status(200).json(result);
+  } catch (error) {
+    sendError(response, error);
+  }
+};
+
+export const getImageAuditSchedule = async (
+  request: ImageStudioAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  const auth = requireAuth(request, response);
+  if (!auth) return;
+
+  try {
+    const result = await getAuditSchedule(auth, request.query.store_id);
+    response.status(200).json(result);
+  } catch (error) {
+    sendError(response, error);
+  }
+};
+
+export const saveImageAuditSchedule = async (
+  request: ImageStudioAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  const auth = requireAuth(request, response);
+  if (!auth) return;
+
+  try {
+    const body = request.body as {
+      store_id?: unknown;
+      frequency?: unknown;
+      scan_mode?: unknown;
+      email_report?: unknown;
+      scan_options?: unknown;
+      monthly_report_enabled?: unknown;
+    };
+    const result = await upsertAuditSchedule(auth, {
+      storeId: body.store_id,
+      frequency: body.frequency,
+      scanMode: body.scan_mode,
+      emailReport: body.email_report,
+      scanOptions: body.scan_options,
+      monthlyReportEnabled: body.monthly_report_enabled
+    });
+    response.status(200).json(result);
+  } catch (error) {
+    sendError(response, error);
+  }
+};
+
+export const acknowledgeImageAuditSchedule = async (
+  request: ImageStudioAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  const auth = requireAuth(request, response);
+  if (!auth) return;
+
+  try {
+    const body = request.body as { store_id?: unknown; status?: unknown; scan_id?: unknown; next_scan_at?: unknown };
+    const result = await acknowledgeScheduledAuditRun(auth, {
+      storeId: body.store_id,
+      status: body.status,
+      scanId: body.scan_id,
+      nextScanAt: body.next_scan_at
+    });
+    response.status(200).json(result);
+  } catch (error) {
+    sendError(response, error);
+  }
+};
+
+export const getImageAuditMonthlyReport = async (
+  request: ImageStudioAuthenticatedRequest,
+  response: Response
+): Promise<void> => {
+  const auth = requireAuth(request, response);
+  if (!auth) return;
+
+  try {
+    const result = await getLatestMonthlyAuditReport(auth, request.query.store_id);
     response.status(200).json(result);
   } catch (error) {
     sendError(response, error);
