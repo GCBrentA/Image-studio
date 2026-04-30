@@ -32,8 +32,19 @@ requireIncludes("WordPress scan UI", admin, [
   "optivra-audit-category-start",
   "Remote health report unavailable",
   "Catalogue scan completed locally",
+  "No queueable image metadata was found",
+  "_audit_item",
+  "_queueable_image",
   "Scan complete. No major issues found.",
   "No products found for this scan scope."
+]);
+
+requireIncludes("Product scanner fallback rows", readFileSync("wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-product-scanner.php", "utf8"), [
+  "build_audit_product_fallback_item",
+  "Product has no queueable product image.",
+  "Image could not be prepared for the health audit.",
+  "_audit_item",
+  "_queueable_image"
 ]);
 
 requireIncludes("WordPress scan results JavaScript", admin, [

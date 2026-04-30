@@ -391,14 +391,16 @@ class Catalogue_Image_Studio_Admin {
 					var boxes = Array.prototype.slice.call(root.querySelectorAll("[data-optivra-scan-item]"));
 					var selectedCount = root.querySelector("[data-optivra-selected-count]");
 					function updateCount() {
-						var count = boxes.filter(function(box) { return box.checked; }).length;
+						var count = boxes.filter(function(box) { return box.checked && !box.disabled; }).length;
 						if (selectedCount) {
 							selectedCount.textContent = String(count);
 						}
 					}
 					function setBoxes(predicate) {
 						boxes.forEach(function(box) {
-							box.checked = Boolean(predicate(box));
+							if (!box.disabled) {
+								box.checked = Boolean(predicate(box));
+							}
 						});
 						updateCount();
 					}
@@ -1201,7 +1203,12 @@ class Catalogue_Image_Studio_Admin {
 				continue;
 			}
 
-			$job_id = $this->plugin->jobs()->queue_from_audit_payload($this->sanitize_scan_queue_payload($payload));
+			$payload = $this->sanitize_scan_queue_payload($payload);
+			if (empty($payload['product_id']) || empty($payload['image_id'])) {
+				continue;
+			}
+
+			$job_id = $this->plugin->jobs()->queue_from_audit_payload($payload);
 			if ($job_id > 0) {
 				$job_ids[] = $job_id;
 			}
@@ -1633,10 +1640,19 @@ class Catalogue_Image_Studio_Admin {
 		$batch = $this->plugin->scanner()->collect_audit_batch($options, $offset, 25);
 		$items = isset($batch['items']) && is_array($batch['items']) ? $batch['items'] : [];
 		$this->append_audit_scan_items($scan_id, $items);
+		$remote_items = array_values(array_filter($items, static function ($item): bool {
+			return is_array($item) && ! empty($item['_audit_item']);
+		}));
+		$remote_items = array_map(static function ($item): array {
+			$item = is_array($item) ? $item : [];
+			unset($item['_audit_item']);
+			unset($item['_queueable_image']);
+			return $item;
+		}, $remote_items);
 
 		$remote_enabled = (bool) get_option('optivra_latest_audit_remote_enabled', true);
 		if ($remote_enabled) {
-			foreach (array_chunk($items, 75) as $chunk) {
+			foreach (array_chunk($remote_items, 75) as $chunk) {
 				$result = $this->plugin->client()->submit_image_audit_items($scan_id, $chunk);
 				if (is_wp_error($result)) {
 					$remote_enabled = false;
@@ -1663,6 +1679,11 @@ class Catalogue_Image_Studio_Admin {
 		$progress['current_batch'] = $batch_number;
 		$progress['warnings'] = array_values(array_unique(array_merge((array) ($progress['warnings'] ?? []), (array) ($batch['warnings'] ?? []))));
 		$progress['errors'] = array_values(array_unique(array_merge((array) ($progress['errors'] ?? []), (array) ($batch['errors'] ?? []))));
+		if ($done && $remote_enabled && (int) ($progress['images_scanned'] ?? 0) <= 0) {
+			$remote_enabled = false;
+			update_option('optivra_latest_audit_remote_enabled', false, false);
+			$progress['warnings'][] = __('No queueable image metadata was found for this scan. Showing scanned products locally so you can review them.', 'optivra-image-studio-for-woocommerce');
+		}
 		$progress['message'] = $done
 			? ($remote_enabled ? __('Metadata collection finished. Optivra is calculating the health report.', 'optivra-image-studio-for-woocommerce') : __('Metadata collection finished. Preparing the local scanned products list.', 'optivra-image-studio-for-woocommerce'))
 			: ($remote_enabled ? __('Metadata batch submitted successfully.', 'optivra-image-studio-for-woocommerce') : __('Metadata batch scanned locally.', 'optivra-image-studio-for-woocommerce'));
@@ -2022,7 +2043,7 @@ class Catalogue_Image_Studio_Admin {
 	private function prepare_local_scan_product(array $raw, string $scan_id): array {
 		$product_id = absint($raw['product_id'] ?? 0);
 		$attachment_id = absint($raw['_attachment_id'] ?? $raw['attachment_id'] ?? $raw['image_id'] ?? 0);
-		if ($product_id <= 0 || $attachment_id <= 0) {
+		if ($product_id <= 0) {
 			return [];
 		}
 
@@ -2052,11 +2073,12 @@ class Catalogue_Image_Studio_Admin {
 			'image_role'    => $image_role,
 			'galleryIndex'  => $gallery_index,
 			'gallery_index' => $gallery_index,
-			'status'        => __('Healthy', 'optivra-image-studio-for-woocommerce'),
-			'readiness'     => __('Ready', 'optivra-image-studio-for-woocommerce'),
-			'issues'        => [],
-			'recommendations' => [],
-			'recommended'   => false,
+			'status'        => sanitize_text_field((string) ($raw['status'] ?? __('Healthy', 'optivra-image-studio-for-woocommerce'))),
+			'readiness'     => sanitize_text_field((string) ($raw['readiness'] ?? __('Ready', 'optivra-image-studio-for-woocommerce'))),
+			'issues'        => isset($raw['issues']) && is_array($raw['issues']) ? $raw['issues'] : [],
+			'recommendations' => isset($raw['recommendations']) && is_array($raw['recommendations']) ? $raw['recommendations'] : [],
+			'recommended'   => ! empty($raw['recommended']),
+			'queueable'     => $attachment_id > 0 && ! empty($raw['_queueable_image']),
 			'queuePayload'  => [
 				'scan_id'           => $scan_id,
 				'product_id'        => $product_id,
@@ -2190,6 +2212,7 @@ class Catalogue_Image_Studio_Admin {
 		$recommended = ! empty($row['recommended']) || ! empty($issues);
 		$status = $this->report_text($row, ['status'], $recommended ? __('Needs attention', 'optivra-image-studio-for-woocommerce') : __('Healthy', 'optivra-image-studio-for-woocommerce'));
 		$queue_payload = isset($row['queuePayload']) && is_array($row['queuePayload']) ? $row['queuePayload'] : (isset($row['queue_payload']) && is_array($row['queue_payload']) ? $row['queue_payload'] : []);
+		$queueable = $attachment_id > 0 && (! array_key_exists('queueable', $row) || ! empty($row['queueable']));
 		$queue_payload = array_merge(
 			[
 				'scan_id'           => $scan_id,
@@ -2227,6 +2250,7 @@ class Catalogue_Image_Studio_Admin {
 			'recommendations' => $this->normalize_scan_product_recommendations($row, $issues),
 			'readiness'       => $this->report_text($row, ['readiness'], $recommended ? __('Recommended', 'optivra-image-studio-for-woocommerce') : __('Ready', 'optivra-image-studio-for-woocommerce')),
 			'recommended'     => $recommended,
+			'queueable'       => $queueable,
 			'queuePayload'    => $queue_payload,
 		];
 	}
@@ -3163,6 +3187,7 @@ class Catalogue_Image_Studio_Admin {
 	private function render_scanned_product_row(array $product): void {
 		$token = sanitize_key((string) ($product['token'] ?? md5(wp_json_encode($product))));
 		$recommended = ! empty($product['recommended']);
+		$queueable = ! array_key_exists('queueable', $product) || ! empty($product['queueable']);
 		$issues = isset($product['issues']) && is_array($product['issues']) ? $product['issues'] : [];
 		$recommendations = isset($product['recommendations']) && is_array($product['recommendations']) ? $product['recommendations'] : [];
 		$queue_payload = isset($product['queuePayload']) && is_array($product['queuePayload']) ? $product['queuePayload'] : [];
@@ -3170,9 +3195,9 @@ class Catalogue_Image_Studio_Admin {
 		$image_url = $this->report_text($product, ['thumbnailUrl', 'imageUrl'], '');
 		$product_url = $this->report_text($product, ['productUrl'], '');
 		?>
-		<tr data-optivra-product-row data-optivra-recommended="<?php echo esc_attr($recommended ? '1' : '0'); ?>" data-optivra-filters="<?php echo esc_attr(implode(' ', array_map(static function ($issue) { return is_array($issue) ? sanitize_key((string) ($issue['type'] ?? $issue['filter'] ?? '')) : ''; }, $issues))); ?>">
+		<tr data-optivra-product-row data-optivra-recommended="<?php echo esc_attr($recommended && $queueable ? '1' : '0'); ?>" data-optivra-filters="<?php echo esc_attr(implode(' ', array_map(static function ($issue) { return is_array($issue) ? sanitize_key((string) ($issue['type'] ?? $issue['filter'] ?? '')) : ''; }, $issues))); ?>">
 			<th class="check-column">
-				<input type="checkbox" name="scan_items[]" value="<?php echo esc_attr($token); ?>" data-optivra-scan-item <?php checked($recommended); ?> />
+				<input type="checkbox" name="scan_items[]" value="<?php echo esc_attr($token); ?>" data-optivra-scan-item <?php checked($recommended && $queueable); ?> <?php disabled(! $queueable); ?> />
 				<input type="hidden" name="scan_queue_payloads[<?php echo esc_attr($token); ?>]" value="<?php echo esc_attr(is_string($queue_json) ? $queue_json : '{}'); ?>" />
 			</th>
 			<td><?php $this->render_thumbnail($image_url, __('Scanned product image', 'optivra-image-studio-for-woocommerce')); ?></td>
@@ -3215,7 +3240,7 @@ class Catalogue_Image_Studio_Admin {
 				<div class="optivra-row-actions">
 					<?php if ('' !== $product_url) : ?><a class="button" href="<?php echo esc_url($product_url); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('View product', 'optivra-image-studio-for-woocommerce'); ?></a><?php endif; ?>
 					<?php if ('' !== $this->report_text($product, ['imageUrl'], '')) : ?><a class="button" href="<?php echo esc_url($this->report_text($product, ['imageUrl'], '')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Preview image', 'optivra-image-studio-for-woocommerce'); ?></a><?php endif; ?>
-					<button type="button" class="button" data-optivra-row-add><?php echo esc_html__('Add to queue', 'optivra-image-studio-for-woocommerce'); ?></button>
+					<button type="button" class="button" data-optivra-row-add <?php disabled(! $queueable); ?>><?php echo esc_html($queueable ? __('Add to queue', 'optivra-image-studio-for-woocommerce') : __('No image to queue', 'optivra-image-studio-for-woocommerce')); ?></button>
 					<button type="button" class="button" data-optivra-row-ignore><?php echo esc_html__('Ignore', 'optivra-image-studio-for-woocommerce'); ?></button>
 				</div>
 			</td>

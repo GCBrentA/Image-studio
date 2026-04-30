@@ -123,6 +123,7 @@ class Catalogue_Image_Studio_ProductScanner {
 			$product_id = (int) $product->get_id();
 			$categories = $this->get_product_category_payload($product_id);
 			$seen_attachment_ids = [];
+			$product_item_count = 0;
 
 			if (empty($product->get_image_id())) {
 				$summary['missing_main']++;
@@ -134,6 +135,7 @@ class Catalogue_Image_Studio_ProductScanner {
 					$items[] = $item;
 					$seen_attachment_ids[] = (int) $item['_attachment_id'];
 					$summary['main_images']++;
+					$product_item_count++;
 				}
 			}
 
@@ -148,6 +150,7 @@ class Catalogue_Image_Studio_ProductScanner {
 						$items[] = $item;
 						$seen_attachment_ids[] = $attachment_id;
 						$summary['gallery_images']++;
+						$product_item_count++;
 					}
 				}
 			}
@@ -169,6 +172,7 @@ class Catalogue_Image_Studio_ProductScanner {
 						$items[] = $item;
 						$seen_attachment_ids[] = $attachment_id;
 						$summary['variation_images']++;
+						$product_item_count++;
 					}
 				}
 			}
@@ -193,9 +197,14 @@ class Catalogue_Image_Studio_ProductScanner {
 							$items[] = $item;
 							$seen_attachment_ids[] = $attachment_id;
 							$summary['category_images']++;
+							$product_item_count++;
 						}
 					}
 				}
+			}
+
+			if (0 === $product_item_count) {
+				$items[] = $this->build_audit_product_fallback_item($product, $categories);
 			}
 		}
 
@@ -204,7 +213,9 @@ class Catalogue_Image_Studio_ProductScanner {
 		}
 		unset($item);
 
-		$summary['images_scanned'] = count($items);
+		$summary['images_scanned'] = count(array_filter($items, static function ($item): bool {
+			return is_array($item) && ! empty($item['_audit_item']);
+		}));
 
 		return [
 			'items'     => $items,
@@ -545,6 +556,83 @@ class Catalogue_Image_Studio_ProductScanner {
 			'description'      => (string) $attachment->post_content,
 			'upload_date'      => (string) get_post_time('c', true, $attachment_id),
 			'gallery_index'    => $index,
+			'_audit_item'      => true,
+			'_queueable_image' => true,
+		];
+	}
+
+	/**
+	 * Build a product-level row when no queueable audit image was found.
+	 *
+	 * @param array{ids:array<int,string>,names:array<int,string>} $categories Product categories.
+	 * @return array<string,mixed>
+	 */
+	private function build_audit_product_fallback_item(WC_Product $product, array $categories): array {
+		$product_id = (int) $product->get_id();
+		$attachment_id = absint($product->get_image_id());
+		$image_role = 'main';
+		$gallery_index = 0;
+
+		if ($attachment_id <= 0) {
+			$gallery_ids = array_values(array_filter(array_map('absint', $product->get_gallery_image_ids())));
+			if (! empty($gallery_ids[0])) {
+				$attachment_id = (int) $gallery_ids[0];
+				$image_role = 'gallery';
+			}
+		}
+
+		$image_url = $attachment_id > 0 ? (string) (wp_get_attachment_image_url($attachment_id, 'thumbnail') ?: wp_get_attachment_url($attachment_id)) : '';
+		$issue_type = $attachment_id > 0 ? 'unsupported_image' : 'missing_main_image';
+		$issue_label = $attachment_id > 0
+			? __('Image could not be prepared for the health audit.', 'optivra-image-studio-for-woocommerce')
+			: __('Product has no queueable product image.', 'optivra-image-studio-for-woocommerce');
+
+		return [
+			'_attachment_id'   => $attachment_id,
+			'attachment_id'    => $attachment_id,
+			'product_id'       => (string) $product_id,
+			'product_name'     => (string) $product->get_name(),
+			'product_sku'      => (string) $product->get_sku(),
+			'product_url'      => (string) get_permalink($product_id),
+			'product_type'     => (string) $product->get_type(),
+			'product_status'   => (string) get_post_status($product_id),
+			'product_updated_at' => $product->get_date_modified() ? $product->get_date_modified()->date('c') : '',
+			'image_id'         => $attachment_id > 0 ? (string) $attachment_id : '',
+			'image_url'        => $image_url,
+			'image_role'       => $image_role,
+			'category_ids'     => $categories['ids'],
+			'category_names'   => $categories['names'],
+			'filename'         => '',
+			'file_extension'   => '',
+			'mime_type'        => $attachment_id > 0 ? (string) get_post_mime_type($attachment_id) : '',
+			'width'            => null,
+			'height'           => null,
+			'file_size_bytes'  => null,
+			'alt_text'         => $attachment_id > 0 ? (string) get_post_meta($attachment_id, '_wp_attachment_image_alt', true) : '',
+			'image_title'      => $attachment_id > 0 ? (string) get_the_title($attachment_id) : '',
+			'caption'          => '',
+			'description'      => '',
+			'upload_date'      => $attachment_id > 0 ? (string) get_post_time('c', true, $attachment_id) : '',
+			'gallery_index'    => $gallery_index,
+			'status'           => __('Needs attention', 'optivra-image-studio-for-woocommerce'),
+			'readiness'        => $attachment_id > 0 ? __('Review image', 'optivra-image-studio-for-woocommerce') : __('Image needed', 'optivra-image-studio-for-woocommerce'),
+			'issues'           => [
+				[
+					'type'     => $issue_type,
+					'label'    => $issue_label,
+					'severity' => 'medium',
+				],
+			],
+			'recommendations'  => [
+				[
+					'label'    => $attachment_id > 0 ? __('Review image before queueing', 'optivra-image-studio-for-woocommerce') : __('Add a product image', 'optivra-image-studio-for-woocommerce'),
+					'severity' => 'info',
+					'filter'   => $issue_type,
+				],
+			],
+			'recommended'      => false,
+			'_audit_item'      => false,
+			'_queueable_image' => $attachment_id > 0,
 		];
 	}
 
