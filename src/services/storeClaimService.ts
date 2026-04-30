@@ -1,4 +1,4 @@
-import { CreditLedgerReason, Prisma } from "@prisma/client";
+import { CreditLedgerReason, Prisma, type FreeCreditGrant } from "@prisma/client";
 import { randomBytes, createHash } from "crypto";
 import { addCredits, FREE_TRIAL_CREDITS } from "./creditService";
 import { prisma } from "../utils/prisma";
@@ -80,6 +80,84 @@ const maskInstallId = (installId: string): string =>
 
 const isKnownPrismaError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
   error instanceof Prisma.PrismaClientKnownRequestError;
+
+const logFreeCreditGrantResult = (
+  canonicalDomain: string,
+  grantType: string,
+  created: boolean
+): void => {
+  console.info("Free credit grant idempotency result", {
+    canonical_domain: canonicalDomain,
+    grant_type: grantType,
+    grant_result: created ? "created" : "already_existed",
+    created
+  });
+};
+
+const findFreeCreditGrant = (
+  canonicalDomain: string,
+  grantType: string
+) =>
+  prisma.freeCreditGrant.findUnique({
+    where: {
+      canonical_domain_grant_type: {
+        canonical_domain: canonicalDomain,
+        grant_type: grantType
+      }
+    }
+  });
+
+const ensureFreeCreditGrant = async (
+  canonicalDomain: string,
+  grantType: string,
+  accountId: string,
+  siteId: string,
+  now: Date
+): Promise<{ grant: FreeCreditGrant; created: boolean }> => {
+  const existingGrant = await findFreeCreditGrant(canonicalDomain, grantType);
+
+  if (existingGrant) {
+    logFreeCreditGrantResult(canonicalDomain, grantType, false);
+    return {
+      grant: existingGrant,
+      created: false
+    };
+  }
+
+  try {
+    const grant = await prisma.freeCreditGrant.create({
+      data: {
+        canonical_domain: canonicalDomain,
+        account_id: accountId,
+        store_id: siteId,
+        credits_granted: FREE_TRIAL_CREDITS,
+        grant_type: grantType,
+        granted_at: now,
+        reason: "Verified production WooCommerce store"
+      }
+    });
+
+    logFreeCreditGrantResult(canonicalDomain, grantType, true);
+    return {
+      grant,
+      created: true
+    };
+  } catch (error) {
+    if (isKnownPrismaError(error) && error.code === "P2002") {
+      const existingRaceGrant = await findFreeCreditGrant(canonicalDomain, grantType);
+
+      if (existingRaceGrant) {
+        logFreeCreditGrantResult(canonicalDomain, grantType, false);
+        return {
+          grant: existingRaceGrant,
+          created: false
+        };
+      }
+    }
+
+    throw error;
+  }
+};
 
 export const noteAbuseSignal = (message: string, details: Record<string, unknown>): void => {
   console.warn("Store claim abuse diagnostic", {
@@ -182,18 +260,15 @@ export const verifyConnectedSite = async (
     };
   }
 
-  try {
-    await prisma.freeCreditGrant.create({
-      data: {
-        canonical_domain: canonicalDomain,
-        account_id: accountId,
-        store_id: siteId,
-        credits_granted: FREE_TRIAL_CREDITS,
-        grant_type: signupFreeCreditsGrantType,
-        reason: "Verified production WooCommerce store"
-      }
-    });
+  const grant = await ensureFreeCreditGrant(
+    canonicalDomain,
+    signupFreeCreditsGrantType,
+    accountId,
+    siteId,
+    now
+  );
 
+  if (grant.created) {
     await addCredits(accountId, FREE_TRIAL_CREDITS, CreditLedgerReason.trial, {
       source: "free_signup_credits",
       description: "Free signup credits",
@@ -215,24 +290,14 @@ export const verifyConnectedSite = async (
       freeCreditsGranted: true,
       message: `${FREE_TRIAL_CREDITS} free credits have been added to this store.`
     };
-  } catch (error) {
-    if (isKnownPrismaError(error) && error.code === "P2002") {
-      noteAbuseSignal("repeated free-credit grant attempt", {
-        canonicalDomain,
-        accountId,
-        siteId
-      });
-
-      return {
-        canonicalDomain,
-        claimStatus,
-        freeCreditsGranted: false,
-        message: "This store has already received its free credit allocation."
-      };
-    }
-
-    throw error;
   }
+
+  return {
+    canonicalDomain,
+    claimStatus,
+    freeCreditsGranted: false,
+    message: "This store has already received its free credit allocation."
+  };
 };
 
 export const createTransferChallenge = async (

@@ -24,6 +24,7 @@
     "test:csp": "tsx scripts/check-csp-rules.ts",
     "test:plugin-downloads": "tsx scripts/check-plugin-download-workflow.ts",
     "test:billing-credits": "tsx scripts/check-billing-credit-config.ts",
+    "test:free-credit-grant": "tsx scripts/check-free-credit-grant-idempotency.ts",
     "test:review-demo": "tsx scripts/check-review-demo-integrity.ts",
     "test:preserve-debug": "node scripts/check-preserve-debug.js",
     "test:preserve-architecture": "tsx scripts/check-preserve-architecture.ts",
