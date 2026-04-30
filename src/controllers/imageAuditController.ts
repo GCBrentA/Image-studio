@@ -287,8 +287,17 @@ export const queueImageAuditRecommendation = async (
   }
 
   try {
-    const body = request.body as { recommendation_id?: unknown; background_preset?: unknown; backgroundPreset?: unknown };
-    const result = await queueAuditRecommendation(auth, request.params.scan_id, body.recommendation_id, body);
+    const body = request.body as {
+      recommendation_id?: unknown;
+      recommendationId?: unknown;
+      scan_id?: unknown;
+      scanId?: unknown;
+      background_preset?: unknown;
+      backgroundPreset?: unknown;
+    };
+    const scanId = request.params.scan_id || String(body.scan_id ?? body.scanId ?? "");
+    const recommendationId = body.recommendation_id ?? body.recommendationId;
+    const result = await queueAuditRecommendation(auth, scanId, recommendationId, body);
     response.status(200).json(result);
   } catch (error) {
     sendError(response, error);

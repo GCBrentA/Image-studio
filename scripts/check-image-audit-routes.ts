@@ -20,6 +20,10 @@ const main = async (): Promise<void> => {
       healthBody.routes?.includes("POST /api/image-studio/audits/start"),
       "Health route should list audit start route"
     );
+    assert.ok(
+      healthBody.routes?.includes("POST /api/image-studio/queue/recommendation"),
+      "Health route should list recommendation queue alias"
+    );
 
     const start = await fetch(`${baseUrl}/api/image-studio/audits/start`, {
       method: "POST",
@@ -43,6 +47,13 @@ const main = async (): Promise<void> => {
       body: JSON.stringify({ source: "woocommerce", scan_options: {} })
     });
     assert.equal(duplicatedStart.status, 404, "Duplicated /api/api image-studio audit start route should not exist");
+
+    const recommendationAlias = await fetch(`${baseUrl}/api/image-studio/queue/recommendation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scanId: "not-a-uuid", recommendationId: "not-a-uuid" })
+    });
+    assert.notEqual(recommendationAlias.status, 404, "Recommendation queue alias must be mounted");
 
     console.log("Image audit route checks passed.");
   } finally {

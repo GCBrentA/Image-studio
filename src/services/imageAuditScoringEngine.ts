@@ -1421,7 +1421,7 @@ export const generateRecommendations = (
       title: "Standardise main image aspect ratios",
       description: "Make product grids look more polished by reviewing main images that do not match the dominant catalogue ratio.",
       priority: "high",
-      action_type: "manual_review",
+      action_type: "regenerate_thumbnail",
       estimated_images_affected: affected(["inconsistent_aspect_ratio"]),
       estimated_minutes_saved_low: affected(["inconsistent_aspect_ratio"]) * 2,
       estimated_minutes_saved_high: affected(["inconsistent_aspect_ratio"]) * 4,

@@ -229,6 +229,12 @@ type AuditQueueJobPayload = {
   created_at?: string;
 };
 
+type QueueIssuesResult = {
+  created: AuditQueueJobPayload[];
+  skippedDuplicateCount: number;
+  unsupportedCount: number;
+};
+
 const toScoringItem = (item: AuditItemRow): AuditScoringItem => ({
   id: item.id,
   product_id: item.product_id,
@@ -2727,12 +2733,29 @@ const queueIssuesForScan = async (
   scan: AuditScanRow,
   issues: AuditQueueIssueRow[],
   options: AuditQueueOptions,
-  recommendationId?: string
-): Promise<AuditQueueJobPayload[]> => {
+  recommendationId?: string,
+  forcedActionType?: AuditQueueActionType
+): Promise<QueueIssuesResult> => {
   const created: AuditQueueJobPayload[] = [];
+  const requestKeys = new Set<string>();
+  let attemptedCount = 0;
+  let unsupportedCount = 0;
 
   for (const issue of issues) {
-    const actionType = mapAuditActionToQueueAction(issue.action_type, issue.issue_type);
+    const actionType = forcedActionType ?? mapAuditActionToQueueAction(issue.action_type, issue.issue_type);
+    const policy = classifyAuditQueueAction(actionType);
+    if (policy.jobKind === "review") {
+      unsupportedCount += 1;
+      continue;
+    }
+    const requestKey = recommendationId && forcedActionType
+      ? `${issue.audit_item_id ?? issue.product_id ?? issue.item_product_id ?? issue.id}:${actionType}`
+      : issue.id;
+    if (requestKeys.has(requestKey)) {
+      continue;
+    }
+    requestKeys.add(requestKey);
+    attemptedCount += 1;
     const row = await insertAuditQueueJob(scan, {
       recommendationId: recommendationId ?? null,
       issue,
@@ -2745,18 +2768,26 @@ const queueIssuesForScan = async (
     }
   }
 
-  if (issues.length) {
+  const createdIssueIds = created
+    .map((job) => job.issue_id)
+    .filter((issueId): issueId is string => typeof issueId === "string" && issueId.length > 0);
+
+  if (createdIssueIds.length) {
     await prisma.$executeRaw`
       UPDATE "image_audit_issues"
       SET "status" = 'queued', "updated_at" = now()
       WHERE "scan_id" = ${scan.id}::uuid
         AND "store_id" = ${scan.store_id}
-        AND "id" IN (${Prisma.join(issues.map((issue) => Prisma.sql`${issue.id}::uuid`))})
+        AND "id" IN (${Prisma.join(createdIssueIds.map((issueId) => Prisma.sql`${issueId}::uuid`))})
         AND "status" IN ('open', 'queued')
     `;
   }
 
-  return created;
+  return {
+    created,
+    skippedDuplicateCount: Math.max(0, attemptedCount - created.length),
+    unsupportedCount
+  };
 };
 
 export const queueAuditIssues = async (
@@ -2777,13 +2808,19 @@ export const queueAuditIssues = async (
     throw new ImageAuditError("No open issues found for this scan", 404);
   }
 
-  const queueJobs = await queueIssuesForScan(scan, issues, queueOptions);
+  const queueResult = await queueIssuesForScan(scan, issues, queueOptions);
+  const queueJobs = queueResult.created;
   return {
     ok: true,
+    success: true,
     status: "queued",
     queued_count: queueJobs.length,
-    skipped_existing_count: Math.max(0, issues.length - queueJobs.length),
+    createdCount: queueJobs.length,
+    skippedDuplicateCount: queueResult.skippedDuplicateCount,
+    unsupportedCount: queueResult.unsupportedCount,
+    skipped_existing_count: queueResult.skippedDuplicateCount,
     queue_jobs: queueJobs,
+    queueItems: queueJobs,
     message: queueJobs.length
       ? "Audit issues were added to the queue."
       : "These audit issues were already queued."
@@ -2822,44 +2859,72 @@ export const queueAuditRecommendation = async (
 
   const recommendation = rows[0];
   const queueOptions = sanitizeQueueOptions(options);
+  const recommendationActionType = mapAuditActionToQueueAction(recommendation.action_type);
+  const recommendationPolicy = classifyAuditQueueAction(recommendationActionType);
   const issues = (await selectQueueableIssues(scan)).filter((issue) =>
     issueMatchesRecommendationFilter(issue, recommendation)
   );
-  let queueJobs = await queueIssuesForScan(scan, issues, queueOptions, recommendation.id);
 
-  if (!queueJobs.length && !issues.length) {
-    const actionType = mapAuditActionToQueueAction(recommendation.action_type);
-    const row = await insertAuditQueueJob(scan, {
-      recommendationId: recommendation.id,
-      actionType,
-      priority: recommendation.priority || "medium",
-      options: queueOptions,
-      metadata: {
-        recommendation_title: recommendation.title,
-        action_filter: recommendation.action_filter
-      }
-    });
-    queueJobs = row ? [row] : [];
+  if (recommendationPolicy.jobKind === "review") {
+    return {
+      ok: true,
+      success: false,
+      status: "manual_review_required",
+      recommendation_id: id,
+      actionType: recommendationActionType,
+      action_type: recommendationActionType,
+      jobKind: recommendationPolicy.jobKind,
+      job_kind: recommendationPolicy.jobKind,
+      createdCount: 0,
+      queued_count: 0,
+      skippedDuplicateCount: 0,
+      skipped_existing_count: 0,
+      unsupportedCount: issues.length || Number(recommendation.status === "available"),
+      queueItems: [],
+      queue_jobs: [],
+      message: "These items need manual review before processing jobs can be created."
+    };
   }
 
-  await prisma.$executeRaw`
-    UPDATE "image_audit_recommendations"
-    SET "status" = 'queued', "updated_at" = now()
-    WHERE "id" = ${recommendation.id}::uuid
-      AND "scan_id" = ${scan.id}::uuid
-      AND "store_id" = ${scan.store_id}
-      AND "status" IN ('available', 'queued')
-  `;
+  const queueResult = await queueIssuesForScan(scan, issues, queueOptions, recommendation.id, recommendationActionType);
+  const queueJobs = queueResult.created;
+
+  if (queueJobs.length > 0) {
+    await prisma.$executeRaw`
+      UPDATE "image_audit_recommendations"
+      SET "status" = 'queued', "updated_at" = now()
+      WHERE "id" = ${recommendation.id}::uuid
+        AND "scan_id" = ${scan.id}::uuid
+        AND "store_id" = ${scan.store_id}
+        AND "status" IN ('available', 'queued')
+    `;
+  }
+
+  const createdLabel = recommendationPolicy.jobKind === "seo_only"
+    ? `${queueJobs.length} alt text task(s) created. Alt text generation does not use image-processing credits.`
+    : `${queueJobs.length} image(s) added to the processing queue. Estimated processing credits: ${queueJobs.length}.`;
 
   return {
     ok: true,
-    status: "queued",
+    success: true,
+    status: queueJobs.length ? "queued" : "already_queued",
     queued_count: queueJobs.length,
+    createdCount: queueJobs.length,
+    skippedDuplicateCount: queueResult.skippedDuplicateCount,
+    unsupportedCount: queueResult.unsupportedCount,
+    skipped_existing_count: queueResult.skippedDuplicateCount,
     recommendation_id: id,
+    actionType: recommendationActionType,
+    action_type: recommendationActionType,
+    jobKind: recommendationPolicy.jobKind,
+    job_kind: recommendationPolicy.jobKind,
     queue_jobs: queueJobs,
+    queueItems: queueJobs,
     message: queueJobs.length
-      ? "Recommendation jobs were added to the queue."
-      : "This recommendation was already queued."
+      ? createdLabel
+      : queueResult.skippedDuplicateCount > 0
+        ? `${queueResult.skippedDuplicateCount} item(s) were already in the queue.`
+        : "No queueable affected images were found for this recommendation. Review the scanned products instead."
   };
 };
 

@@ -15,12 +15,13 @@ assert.equal(classifyAuditQueueAction(filenameAction).jobKind, "seo_only");
 const optimiseAction = mapAuditActionToQueueAction("compress_image", "oversized_file");
 assert.equal(optimiseAction, "optimise_image");
 const optimisePolicy = classifyAuditQueueAction(optimiseAction);
-assert.equal(optimisePolicy.jobKind, "optimisation");
-assert.equal(optimisePolicy.consumesCreditWhenProcessed, false);
+assert.equal(optimisePolicy.jobKind, "image_processing");
+assert.equal(optimisePolicy.consumesCreditWhenProcessed, true);
+assert.equal(optimisePolicy.processingMode, "preserve");
 
 const webpAction = mapAuditActionToQueueAction(undefined, "missing_webp");
 assert.equal(webpAction, "convert_webp");
-assert.equal(classifyAuditQueueAction(webpAction).jobKind, "optimisation");
+assert.equal(classifyAuditQueueAction(webpAction).jobKind, "image_processing");
 
 const backgroundAction = mapAuditActionToQueueAction("preserve_background_replace", "cluttered_background");
 assert.equal(backgroundAction, "replace_background");
@@ -39,4 +40,3 @@ assert.equal(manualAction, "add_main_image");
 assert.equal(classifyAuditQueueAction(manualAction).jobKind, "review");
 
 console.log("Audit queue rules passed.");
-

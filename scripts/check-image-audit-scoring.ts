@@ -165,6 +165,17 @@ assert.ok(recommendations.some((recommendation) => recommendation.title === "Fix
 assert.ok(recommendations.some((recommendation) => recommendation.title === "Optimise oversized images"));
 assert.ok(recommendations.some((recommendation) => recommendation.title === "Standardise main image aspect ratios"));
 assert.ok(recommendations.some((recommendation) => recommendation.title === "Improve product feed readiness"));
+assert.equal(
+  recommendations.find((recommendation) => recommendation.title === "Fix missing alt text")?.action_type,
+  "fix_alt_text"
+);
+assert.equal(
+  recommendations.find((recommendation) => recommendation.title === "Optimise oversized images")?.action_type,
+  "compress_image"
+);
+assert.equal(
+  recommendations.find((recommendation) => recommendation.title === "Standardise main image aspect ratios")?.action_type,
+  "regenerate_thumbnail"
+);
 
 console.log("Image audit scoring checks passed.");
-

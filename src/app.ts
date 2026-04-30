@@ -203,6 +203,9 @@ const registerImageStudioAuditRoutes = (prefix: string) => {
   app.post(`${prefix}/audits/:scan_id/queue-recommendation`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
     queueImageAuditRecommendation(request, response).catch(next);
   });
+  app.post(`${prefix}/queue/recommendation`, requireImageStudioAuth, (request: Request, response: Response, next: NextFunction) => {
+    queueImageAuditRecommendation(request, response).catch(next);
+  });
 };
 registerImageStudioAuditRoutes("/api/image-studio");
 app.use(webRoutes);

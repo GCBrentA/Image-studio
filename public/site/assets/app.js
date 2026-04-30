@@ -2683,27 +2683,43 @@ function renderReportRecommendations(recommendations) {
   if (!recommendations.length) {
     return `<section class="portal-empty-state compact-empty"><h2>No recommendations available</h2><p>Run a fresh scan after audit recommendations are enabled for this store.</p></section>`;
   }
-  return recommendations.map((item) => `
+  return recommendations.map((item) => {
+    const actionType = normalizedRecommendationAction(item.action_type || item.issue_type || item.title);
+    const baseActionKind = recommendationActionKind(actionType);
+    const actionKind = baseActionKind === "manual" && item.category ? "category" : baseActionKind;
+    const affected = numeric(item.estimated_images_affected || item.images_affected || 0);
+    const primaryLabel = actionKind === "image" ? "Add to Queue" : actionKind === "alt" ? "Generate Alt Text" : actionKind === "category" ? "Review Category" : "Review Images";
+    const primaryAttr = actionKind === "image" || actionKind === "alt"
+      ? `data-report-queue-recommendation="${escapeHtml(item.id || "")}" data-report-action-kind="${escapeHtml(actionKind)}"`
+      : "data-report-review";
+    const primaryDisabled = (actionKind === "image" || actionKind === "alt") && !item.id ? "disabled" : "";
+    const creditNote = actionKind === "image"
+      ? `Estimated processing credits: ${formatNumber(affected)}`
+      : actionKind === "alt"
+        ? "Alt text generation does not use image-processing credits."
+        : "No credits used. Review these items before creating jobs.";
+    return `
     <article class="recommendation-card" data-report-filter-key="${escapeHtml([item.action_type, item.category, item.issue_type, item.title].filter(Boolean).join(" ").toLowerCase())}">
       <div class="recommendation-topline">
         ${priorityBadge(item.priority || item.severity || "medium")}
-        <span class="action-pill">${escapeHtml(actionLabel(item.action_type))}</span>
+        <span class="action-pill">${escapeHtml(actionLabel(actionType))}</span>
       </div>
       <h3>${escapeHtml(item.title || "Recommended fix")}</h3>
       <p>${escapeHtml(item.description || item.body || "")}</p>
       <div class="recommendation-metrics">
-        ${metricTile("Issues", item.estimated_images_affected || item.images_affected || 0)}
+        ${metricTile("Issues", affected)}
         ${metricTile("Time saved", `${numeric(item.estimated_minutes_saved_low)}-${numeric(item.estimated_minutes_saved_high)} min`)}
         ${metricTile("Impact", priorityImpact(item.priority || item.severity))}
       </div>
+      <p class="muted-note">${escapeHtml(creditNote)}</p>
       <div class="dashboard-actions">
-        <button class="button primary" data-report-queue-recommendation="${escapeHtml(item.id || "")}" ${item.id ? "" : "disabled"}>Optimise now</button>
-        <button class="button ghost" data-report-queue-recommendation="${escapeHtml(item.id || "")}" ${item.id ? "" : "disabled"}>Add to queue</button>
-        <button class="button ghost" data-report-review>View original</button>
+        <button class="button primary" ${primaryAttr} ${primaryDisabled}>${primaryLabel}</button>
+        ${(actionKind === "image" || actionKind === "alt") ? `<button class="button ghost" data-report-review>Review Images</button>` : ""}
         <button class="button ghost" data-report-review>Ignore</button>
       </div>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function renderAuditQueueJobs(queueJobs) {
@@ -2965,6 +2981,45 @@ function actionLabel(type) {
     replace_main_image: "Add main image"
   };
   return labels[type] || "Review manually";
+}
+
+function normalizedRecommendationAction(type) {
+  const normalized = String(type || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+  const aliases = {
+    fix_alt_text: "generate_alt_text",
+    seo_update: "generate_alt_text",
+    missing_alt_text: "generate_alt_text",
+    weak_alt_text: "generate_alt_text",
+    compress_image: "optimise_image",
+    oversized_file: "optimise_image",
+    oversized_image: "optimise_image",
+    huge_dimensions: "optimise_image",
+    missing_webp: "convert_webp",
+    convert_to_webp: "convert_webp",
+    preserve_background_replace: "replace_background",
+    standard_background_replace: "standardise_background",
+    standardize_background: "standardise_background",
+    inconsistent_aspect_ratio: "resize_crop",
+    regenerate_thumbnail: "resize_crop",
+    replace_main_image: "add_main_image",
+    missing_main_image: "add_main_image",
+    manual_review: "review_manually"
+  };
+  return aliases[normalized] || normalized || "review_manually";
+}
+
+function recommendationActionKind(type) {
+  const action = normalizedRecommendationAction(type);
+  if (["optimise_image", "convert_webp", "replace_background", "standardise_background", "resize_crop"].includes(action)) {
+    return "image";
+  }
+  if (action === "generate_alt_text") {
+    return "alt";
+  }
+  if (action === "add_main_image") {
+    return "manual";
+  }
+  return "manual";
 }
 
 function imageRoleLabel(role) {
@@ -4094,13 +4149,14 @@ document.addEventListener("click", async (event) => {
   if (queueRecommendation) {
     event.preventDefault();
     const recommendationId = queueRecommendation.getAttribute("data-report-queue-recommendation");
+    const actionKind = queueRecommendation.getAttribute("data-report-action-kind") || "image";
     const report = window.optivraCurrentReport || {};
     const scanId = report.scan?.id || sessionStorage.getItem("optivraSelectedReportId") || "";
     if (!recommendationId || !scanId) return;
     const originalText = queueRecommendation.textContent;
     try {
       queueRecommendation.disabled = true;
-      queueRecommendation.textContent = "Adding...";
+      queueRecommendation.textContent = actionKind === "alt" ? "Creating..." : "Adding...";
       const result = await api(`/api/image-studio/audits/${encodeURIComponent(scanId)}/queue-recommendation`, {
         method: "POST",
         body: JSON.stringify({
@@ -4115,9 +4171,14 @@ document.addEventListener("click", async (event) => {
           }
         })
       });
-      queueRecommendation.textContent = result.queued_count ? "Queued" : "Already queued";
+      const created = numeric(result.createdCount || result.queued_count);
+      const skipped = numeric(result.skippedDuplicateCount || result.skipped_existing_count);
+      queueRecommendation.textContent = actionKind === "alt"
+        ? (created ? `${formatNumber(created)} alt text tasks created` : `${formatNumber(skipped)} already queued`)
+        : (created ? `${formatNumber(created)} added` : `${formatNumber(skipped)} already in queue`);
       queueRecommendation.classList.remove("primary");
       queueRecommendation.classList.add("ghost");
+      loadQueuePage();
       trackEvent("image_studio_feature_click", { cta_location: "portal_audit_queue", funnel_stage: "retention" });
     } catch (error) {
       queueRecommendation.disabled = false;
@@ -4139,7 +4200,7 @@ document.addEventListener("click", async (event) => {
     queueAllRecommended.textContent = "Adding...";
     try {
       let queued = 0;
-      for (const item of recommendations) {
+      for (const item of recommendations.filter((recommendation) => recommendationActionKind(recommendation.action_type || recommendation.issue_type || recommendation.title) === "image")) {
         const result = await api(`/api/image-studio/audits/${encodeURIComponent(scanId)}/queue-recommendation`, {
           method: "POST",
           body: JSON.stringify({

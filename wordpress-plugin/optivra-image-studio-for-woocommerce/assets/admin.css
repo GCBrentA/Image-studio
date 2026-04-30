@@ -2179,6 +2179,56 @@
 	color: var(--optivra-muted);
 }
 
+.optivra-admin-app .optivra-scanned-products-controls,
+.optivra-admin-app .optivra-scanned-products-pagination {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 14px;
+	background: #f8fafc;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-scanned-products-controls label {
+	display: flex;
+	flex: 1 1 220px;
+	gap: 8px;
+	align-items: center;
+	min-width: 0;
+}
+
+.optivra-admin-app .optivra-scanned-products-controls label > span,
+.optivra-admin-app .optivra-scanned-products-pagination span {
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-scanned-products-controls input[type="search"],
+.optivra-admin-app .optivra-scanned-products-controls select {
+	min-height: 36px;
+	max-width: 100%;
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-scanned-products-controls input[type="search"] {
+	width: min(320px, 100%);
+}
+
+.optivra-admin-app .optivra-scanned-products-pagination {
+	justify-content: flex-start;
+}
+
+.optivra-admin-app .optivra-pagination-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-left: auto;
+}
+
 .optivra-admin-app .optivra-scanned-products-table-wrap {
 	overflow-x: auto;
 	border: 1px solid var(--optivra-line);
@@ -2206,6 +2256,21 @@
 .optivra-admin-app .optivra-row-actions .button {
 	min-height: 30px;
 	line-height: 28px;
+}
+
+.optivra-admin-app .optivra-thumb-placeholder {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--optivra-muted);
+	font-size: 12px;
+	font-weight: 800;
+	line-height: 1.2;
+	text-align: center;
+}
+
+.optivra-admin-app .optivra-rec-pill.is-active {
+	box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(37, 99, 235, 0.28);
 }
 
 .optivra-admin-app .optivra-score-grid {
@@ -2915,6 +2980,45 @@
 
 	.optivra-admin-app .optivra-category-row > span {
 		text-align: left;
+	}
+
+	.optivra-admin-app .optivra-scanned-products-controls,
+	.optivra-admin-app .optivra-scanned-products-controls label,
+	.optivra-admin-app .optivra-scanned-products-pagination,
+	.optivra-admin-app .optivra-pagination-buttons {
+		display: grid;
+		grid-template-columns: 1fr;
+		width: 100%;
+		margin-left: 0;
+	}
+
+	.optivra-admin-app .optivra-scanned-products-table thead {
+		display: none;
+	}
+
+	.optivra-admin-app .optivra-scanned-products-table,
+	.optivra-admin-app .optivra-scanned-products-table tbody,
+	.optivra-admin-app .optivra-scanned-products-table tr,
+	.optivra-admin-app .optivra-scanned-products-table td,
+	.optivra-admin-app .optivra-scanned-products-table th {
+		display: block;
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.optivra-admin-app .optivra-scanned-products-table tr {
+		padding: 12px;
+		border-bottom: 1px solid var(--optivra-line);
+	}
+
+	.optivra-admin-app .optivra-scanned-products-table td[data-label]::before {
+		content: attr(data-label);
+		display: block;
+		margin-bottom: 4px;
+		color: var(--optivra-muted);
+		font-size: 11px;
+		font-weight: 850;
+		text-transform: uppercase;
 	}
 }
 

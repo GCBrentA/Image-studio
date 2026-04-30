@@ -41,7 +41,8 @@ imageAuditRoutes.get("/health", (_request, response) => {
       "POST /api/image-studio/audit-schedule/ack",
       "GET /api/image-studio/monthly-report/latest",
       "POST /api/image-studio/audits/:scanId/issues/queue",
-      "POST /api/image-studio/audits/:scanId/queue-recommendation"
+      "POST /api/image-studio/audits/:scanId/queue-recommendation",
+      "POST /api/image-studio/queue/recommendation"
     ]
   });
 });
@@ -113,5 +114,9 @@ imageAuditRoutes.post("/audits/:scan_id/issues/queue", (request, response, next)
 });
 
 imageAuditRoutes.post("/audits/:scan_id/queue-recommendation", (request, response, next) => {
+  queueImageAuditRecommendation(request, response).catch(next);
+});
+
+imageAuditRoutes.post("/queue/recommendation", (request, response, next) => {
   queueImageAuditRecommendation(request, response).catch(next);
 });

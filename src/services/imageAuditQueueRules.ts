@@ -8,7 +8,7 @@ export type AuditQueueActionType =
   | "review_manually"
   | "add_main_image";
 
-export type AuditQueueJobKind = "seo_only" | "optimisation" | "image_processing" | "review";
+export type AuditQueueJobKind = "seo_only" | "image_processing" | "review";
 
 export type AuditQueueActionPolicy = {
   actionType: AuditQueueActionType;
@@ -72,7 +72,7 @@ export const mapAuditActionToQueueAction = (actionType: unknown, issueType?: unk
   if (issue.includes("crop") || issue.includes("centering") || issue.includes("frame") || issue.includes("aspect")) {
     return "resize_crop";
   }
-  if (issue.includes("main_image")) {
+  if (issue.includes("main_image") || issue.includes("main image")) {
     return "add_main_image";
   }
 
@@ -91,18 +91,13 @@ export const classifyAuditQueueAction = (actionType: AuditQueueActionType): Audi
     };
   }
 
-  if (actionType === "optimise_image" || actionType === "convert_webp") {
-    return {
-      actionType,
-      jobKind: "optimisation",
-      consumesCreditWhenProcessed: false,
-      requiresReview: true,
-      processingMode: "none",
-      statusAfterFailure: "open"
-    };
-  }
-
-  if (actionType === "replace_background" || actionType === "standardise_background" || actionType === "resize_crop") {
+  if (
+    actionType === "optimise_image" ||
+    actionType === "convert_webp" ||
+    actionType === "replace_background" ||
+    actionType === "standardise_background" ||
+    actionType === "resize_crop"
+  ) {
     return {
       actionType,
       jobKind: "image_processing",
@@ -122,4 +117,3 @@ export const classifyAuditQueueAction = (actionType: AuditQueueActionType): Audi
     statusAfterFailure: "open"
   };
 };
-

@@ -18,6 +18,7 @@
     "test:image-audit": "tsx scripts/check-image-audit-scoring.ts",
     "test:image-audit-routes": "tsx scripts/check-image-audit-routes.ts",
     "test:image-audit-start-auth": "tsx scripts/check-image-audit-start-auth.ts",
+    "test:image-audit-recommendation-queue": "tsx scripts/check-image-audit-recommendation-queue.ts",
     "test:image-audit-large-e2e": "tsx scripts/check-image-audit-large-e2e.ts",
     "test:image-studio-ux": "tsx scripts/check-image-studio-ux-redesign.ts",
     "test:image-studio-scan-results": "tsx scripts/check-image-studio-scan-results-regression.ts",
