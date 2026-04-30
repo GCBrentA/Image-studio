@@ -1631,6 +1631,80 @@ const recommendationDraftToModel = (recommendation: RecommendationDraft): AuditR
   display_order: recommendation.displayOrder
 });
 
+const getMetricNumber = (metrics: Record<string, unknown>, key: string): number => {
+  const value = metrics[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : Number(value ?? 0) || 0;
+};
+
+const friendlyReportFields = (report: Record<string, unknown>): Record<string, unknown> => {
+  const metrics = (report.metrics && typeof report.metrics === "object" && !Array.isArray(report.metrics))
+    ? report.metrics as Record<string, unknown>
+    : {};
+  const issueSummary = (report.issue_summary && typeof report.issue_summary === "object" && !Array.isArray(report.issue_summary))
+    ? report.issue_summary as Record<string, unknown>
+    : {};
+  const byIssueType = (issueSummary.by_issue_type && typeof issueSummary.by_issue_type === "object" && !Array.isArray(issueSummary.by_issue_type))
+    ? issueSummary.by_issue_type as Record<string, unknown>
+    : {};
+  const recommendations = Array.isArray(report.recommendations)
+    ? report.recommendations
+    : Array.isArray(report.top_recommendations)
+      ? report.top_recommendations
+      : [];
+  const affectedProducts = Array.isArray(report.top_items_needing_attention) ? report.top_items_needing_attention : [];
+  const categoryScores = [
+    ["Image SEO", "seo_score"],
+    ["Background Quality", "background_quality_score", "image_quality_score"],
+    ["Lighting & Contrast", "lighting_contrast_score", "image_quality_score"],
+    ["File Size", "performance_score"],
+    ["Product Consistency", "catalogue_consistency_score"],
+    ["Optimisation Readiness", "google_shopping_readiness_score", "completeness_score"]
+  ].map(([label, primary, fallback]) => ({
+    label,
+    score: getMetricNumber(metrics, primary) || (fallback ? getMetricNumber(metrics, fallback) : 0)
+  }));
+  const pillDrafts = [
+    ["Missing alt text", "missing_alt_text_count", "missing_alt_text", "high"],
+    ["Dark background", "over_dark_count", "over_dark", "medium"],
+    ["Low product contrast", "low_contrast_count", "low_contrast", "medium"],
+    ["Large image file", "oversized_image_count", "oversized_image", "high"],
+    ["Inconsistent background", "inconsistent_background_count", "inconsistent_background", "medium"],
+    ["Product too small", "too_small_in_frame_count", "too_small_in_frame", "medium"],
+    ["SEO filename issue", "generic_filename_count", "generic_filename", "low"]
+  ];
+  const recommendationPills = pillDrafts
+    .map(([label, metricKey, issueKey, severity]) => ({
+      label,
+      count: getMetricNumber(metrics, metricKey) || getMetricNumber(byIssueType, issueKey),
+      severity,
+      filter: issueKey
+    }))
+    .filter((pill) => pill.count > 0);
+  const missingAlt = getMetricNumber(metrics, "missing_alt_text_count") || getMetricNumber(byIssueType, "missing_alt_text");
+  const backgroundCount = getMetricNumber(metrics, "cluttered_background_count") || getMetricNumber(metrics, "inconsistent_background_count");
+
+  return {
+    overallScore: getMetricNumber(metrics, "product_image_health_score"),
+    categoryScores,
+    highlights: [
+      `Your store images are mostly healthy, but ${backgroundCount} products need stronger backgrounds and ${missingAlt} images are missing SEO-friendly alt text.`
+    ],
+    recommendationPills: recommendationPills.length ? recommendationPills : [{
+      label: "Ready to optimise",
+      count: recommendations.length,
+      severity: "info",
+      filter: "ready_to_optimise"
+    }],
+    affectedProducts,
+    recommendedActions: recommendations
+  };
+};
+
+const withFriendlyReportFields = (report: Record<string, unknown>): Record<string, unknown> => ({
+  ...report,
+  ...friendlyReportFields(report)
+});
+
 const completionReportFromMemory = (
   scan: AuditScanRow,
   items: AuditItemRow[],
@@ -1648,7 +1722,7 @@ const completionReportFromMemory = (
   const recommendationModels = recommendations.map(recommendationDraftToModel);
   const recommendedFirst50 = rankRecommendedFirstImages(scoringItems, auditIssues, categoryScores, 50);
 
-  return {
+  return withFriendlyReportFields({
     scan: serializeRecord({
       ...scan,
       status: "completed",
@@ -1693,7 +1767,7 @@ const completionReportFromMemory = (
     top_items_needing_attention: recommendedFirst50.slice(0, 20),
     recommended_first_50_images: recommendedFirst50,
     fix_impact_forecast: calculateFixImpactForecast(metrics, auditIssues, recommendationModels)
-  };
+  });
 };
 
 export const completeAuditScan = async (
@@ -2091,7 +2165,7 @@ export const getAuditReport = async (
   const recommendedFirst50 = rankRecommendedFirstImages(reportItems, reportIssues, categoryModels, 50);
   const fixImpactForecast = calculateFixImpactForecast(forecastMetrics, reportIssues, recommendationModels);
 
-  return {
+  return withFriendlyReportFields({
     scan: serializeRecord(scan),
     metrics: serializeRecord(metricRows[0] ?? null),
     [options.topOnly ? "top_insights" : "insights"]: insights.map(serializeRecord),
@@ -2101,7 +2175,7 @@ export const getAuditReport = async (
     top_items_needing_attention: recommendedFirst50.slice(0, 20),
     recommended_first_50_images: recommendedFirst50,
     fix_impact_forecast: fixImpactForecast
-  };
+  });
 };
 
 const buildIssueFilters = (

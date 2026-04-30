@@ -10,6 +10,7 @@
 	max-width: 1200px;
 	background: #f6f7f8;
 	padding: 8px 0 24px;
+	font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
 }
 
 .optivra-admin-app.catalogue-image-studio-admin h1 {
@@ -840,6 +841,32 @@
 	color: var(--cis-muted);
 	font-size: 13px;
 	line-height: 1.45;
+}
+
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-tab-cards {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 10px;
+	margin: 16px 0;
+}
+
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-tab-cards a {
+	display: flex;
+	align-items: center;
+	min-height: 46px;
+	padding: 10px 12px;
+	background: #fff;
+	border: 1px solid var(--cis-line);
+	border-radius: 12px;
+	color: var(--cis-ink);
+	font-weight: 850;
+	text-decoration: none;
+	box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-tab-cards a:hover {
+	border-color: #9db8ff;
+	background: #f8fbff;
 }
 
 .optivra-admin-app.catalogue-image-studio-admin .optivra-status-pill {
@@ -1674,6 +1701,79 @@
 	gap: 18px;
 }
 
+.optivra-admin-app .optivra-one-click-scan {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(260px, max-content);
+	gap: 18px;
+	align-items: center;
+	padding: 22px;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	box-shadow: 0 16px 44px rgba(15, 23, 42, 0.07);
+}
+
+.optivra-admin-app .optivra-one-click-scan h3 {
+	margin: 10px 0 8px;
+	color: var(--optivra-ink);
+	font-size: 24px;
+	line-height: 1.2;
+}
+
+.optivra-admin-app .optivra-one-click-scan p {
+	max-width: 720px;
+	margin: 0;
+	color: var(--optivra-muted);
+	font-size: 15px;
+	line-height: 1.55;
+}
+
+.optivra-admin-app .optivra-primary-cta {
+	min-height: 52px;
+	padding: 0 24px;
+	font-size: 15px;
+}
+
+.optivra-admin-app .optivra-advanced-scan-options {
+	padding: 0;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
+.optivra-admin-app .optivra-advanced-scan-options summary {
+	padding: 16px 18px;
+	color: var(--optivra-ink);
+	font-weight: 850;
+	cursor: pointer;
+}
+
+.optivra-admin-app .optivra-advanced-scan-options[open] {
+	padding-bottom: 16px;
+}
+
+.optivra-admin-app .optivra-advanced-scan-options .optivra-wizard-section {
+	margin: 0 16px 14px;
+}
+
+.optivra-admin-app .optivra-advanced-scan-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 12px;
+	margin-top: 12px;
+}
+
+.optivra-admin-app .optivra-advanced-scan-grid label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 48px;
+	padding: 12px 14px;
+	background: #fbfcfe;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+}
+
 .optivra-admin-app .optivra-wizard-section {
 	display: grid;
 	gap: 16px;
@@ -1907,6 +2007,57 @@
 	font-weight: 900;
 }
 
+.optivra-admin-app .optivra-hero-score small,
+.optivra-admin-app .optivra-score-card small {
+	color: var(--optivra-muted);
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-report-actions,
+.optivra-admin-app .optivra-recommendation-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 18px;
+}
+
+.optivra-admin-app .optivra-rec-pill {
+	display: inline-flex;
+	align-items: center;
+	min-height: 32px;
+	padding: 6px 12px;
+	border-radius: 999px;
+	font-size: 13px;
+	font-weight: 850;
+	text-decoration: none;
+}
+
+.optivra-admin-app .optivra-rec-pill.is-low,
+.optivra-admin-app .optivra-rec-pill.is-good {
+	color: #047857;
+	background: #ecfdf3;
+	border: 1px solid #abefc6;
+}
+
+.optivra-admin-app .optivra-rec-pill.is-medium {
+	color: #b45309;
+	background: #fffbeb;
+	border: 1px solid #fde68a;
+}
+
+.optivra-admin-app .optivra-rec-pill.is-high,
+.optivra-admin-app .optivra-rec-pill.is-critical {
+	color: #b42318;
+	background: #fff1f3;
+	border: 1px solid #fecdca;
+}
+
+.optivra-admin-app .optivra-rec-pill.is-info {
+	color: #4c1d95;
+	background: #f5f3ff;
+	border: 1px solid #ddd6fe;
+}
+
 .optivra-admin-app .optivra-report-meta-grid {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1927,6 +2078,24 @@
 
 .optivra-admin-app .optivra-score-grid {
 	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.optivra-admin-app .optivra-score-card.is-good .optivra-score-ring {
+	background:
+		radial-gradient(circle at center, #fff 57%, transparent 58%),
+		conic-gradient(var(--optivra-success) var(--optivra-score, 0%), #e5e7eb 0);
+}
+
+.optivra-admin-app .optivra-score-card.is-attention .optivra-score-ring {
+	background:
+		radial-gradient(circle at center, #fff 57%, transparent 58%),
+		conic-gradient(#d97706 var(--optivra-score, 0%), #e5e7eb 0);
+}
+
+.optivra-admin-app .optivra-score-card.is-critical .optivra-score-ring {
+	background:
+		radial-gradient(circle at center, #fff 57%, transparent 58%),
+		conic-gradient(var(--optivra-danger) var(--optivra-score, 0%), #e5e7eb 0);
 }
 
 .optivra-admin-app .optivra-value-card {
@@ -2567,6 +2736,8 @@
 
 	.optivra-admin-app .optivra-option-grid,
 	.optivra-admin-app .optivra-switch-grid,
+	.optivra-admin-app .optivra-one-click-scan,
+	.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-tab-cards,
 	.optivra-admin-app .optivra-category-picker > div,
 	.optivra-admin-app .optivra-progress-grid,
 	.optivra-admin-app .optivra-report-hero,

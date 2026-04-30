@@ -539,7 +539,7 @@ function pageTitle(path) {
     "/analytics": "Analytics | Optivra",
     "/backgrounds": "Backgrounds | Optivra",
     "/seo-tools": "SEO Tools | Optivra",
-    "/settings": "Settings | Optivra",
+    "/settings": "Account & Settings | Optivra",
     "/admin/plugin-analytics": `${PRODUCT_NAME} Analytics | Optivra`,
     "/account/billing": `Billing & Credits | ${PRODUCT_NAME}`,
     "/billing/success": "Billing Success | Optivra",
@@ -1996,8 +1996,8 @@ function renderPortalNav(active) {
     ["analytics", "Analytics", "/analytics"],
     ["backgrounds", "Backgrounds", "/backgrounds"],
     ["seo", "SEO Tools", "/seo-tools"],
-    ["billing", "Billing", "/account/billing"],
-    ["settings", "Settings", "/settings"],
+    ["billing", "Credits & Billing", "/account/billing"],
+    ["settings", "Account & Settings", "/settings"],
     ["support", "Support", "/support"]
   ];
   return `
@@ -2018,7 +2018,7 @@ function renderImageStudioTabs(active) {
     ["before_after", "Before & After", "/queue"],
     ["backgrounds", "Backgrounds", "/backgrounds"],
     ["seo", "SEO", "/seo-tools"],
-    ["settings", "Settings", "/settings"]
+    ["settings", "Account & Settings", "/settings"]
   ];
   return `<nav class="studio-tabs" aria-label="Image Studio">${tabs.map(([key, label, href]) => `<a class="${key === active ? "active" : ""}" href="${href}" data-link>${label}</a>`).join("")}</nav>`;
 }
@@ -2197,38 +2197,41 @@ function renderHealthReportDetail(report) {
   const costLow = numeric(metrics.estimated_cost_saved_low);
   const costHigh = numeric(metrics.estimated_cost_saved_high);
   const priorityFixes = recommendations.filter((item) => ["critical", "high"].includes(String(item.priority || item.severity || ""))).length || recommendations.length;
+  const categoriesForScoreCards = healthCategoryCards(metrics);
+  const recommendationPills = buildRecommendationPills(report);
 
   return `
     <section class="report-hero premium-report-hero">
       <div>
         <span class="status-badge ready">Report Ready</span>
-        <h2>Your Product Image Health Report is ready</h2>
-        <p>Optivra scanned your WooCommerce catalogue and found opportunities to improve image SEO, page speed, visual consistency, and product presentation.</p>
+        <h2>Product Image Health Report</h2>
+        <p>${escapeHtml(buildSimpleHealthSummary(report))}</p>
+        <div class="dashboard-actions report-primary-actions">
+          <button class="button primary" data-report-optimise-recommended>Optimise Recommended Images</button>
+          <button class="button ghost" data-report-add-all-recommended>Add All Recommended to Queue</button>
+        </div>
       </div>
       <div class="report-hero-score">
-        <span>Product Image Health Score</span>
+        <span>Overall score</span>
         <strong>${scoreText(metrics.product_image_health_score)}</strong>
+        <small>${scoreStateLabel(metrics.product_image_health_score)}</small>
       </div>
     </section>
 
-    <section class="report-score-grid">
-      ${reportHeroCard("Image SEO Score", metrics.seo_score)}
-      ${reportHeroCard("Image Quality Score", metrics.image_quality_score)}
-      ${reportHeroCard("Catalogue Consistency Score", metrics.catalogue_consistency_score)}
-      ${reportHeroCard("Performance Score", metrics.performance_score)}
-      ${reportHeroCard("Product Feed Readiness", metrics.google_shopping_readiness_score)}
-      ${reportHeroCard("Estimated Time Saved", `${minutesToHours(minutesLow)}-${minutesToHours(minutesHigh)} hrs`, "time")}
-      ${reportHeroCard("Priority Fixes Found", priorityFixes, "count")}
-      ${reportHeroCard("Images Scanned", scan.images_scanned, "count")}
+    <section class="report-score-grid health-category-grid">
+      ${categoriesForScoreCards.map((item) => reportHeroCard(item.label, item.score, "score", item.description)).join("")}
     </section>
 
     <section class="portal-card">
       <div class="portal-section-head">
         <div>
-          <h2>Executive Summary</h2>
+          <h2>Key issue highlights</h2>
           <p>${escapeHtml(buildExecutiveSummary(report))}</p>
         </div>
-        <button class="button ghost" data-report-export>Export JSON</button>
+        <button class="button ghost" data-report-export>Export summary</button>
+      </div>
+      <div class="recommendation-pill-row">
+        ${recommendationPills.map((pill) => `<button class="recommendation-pill ${severityClass(pill.severity)}" data-report-pill="${escapeHtml(pill.filter)}">${escapeHtml(pill.label)} · ${formatNumber(pill.count)}</button>`).join("") || `<span class="recommendation-pill info">Ready to optimise</span>`}
       </div>
     </section>
 
@@ -2257,7 +2260,9 @@ function renderHealthReportDetail(report) {
       ${renderTopImages(topItems)}
     </section>
 
-    <section class="report-two-column">
+    <details class="technical-details report-technical-panel">
+      <summary>View technical details</summary>
+      <section class="report-two-column">
       <section class="portal-card">
         <h2>ROI Estimate</h2>
         <div class="roi-grid">
@@ -2280,9 +2285,9 @@ function renderHealthReportDetail(report) {
         </div>
         <p class="muted-note">Largest offenders are surfaced in the image table when file-size metadata is available from WooCommerce.</p>
       </section>
-    </section>
+      </section>
 
-    <section class="portal-card">
+      <section class="portal-card">
       <div class="portal-section-head"><div><h2>Processing Safety Insights</h2><p>Shown when this report includes processed-image safety data.</p></div></div>
       <div class="safety-grid">
         ${metricTile("Pixel drift warnings", metrics.product_pixel_drift_warning_count)}
@@ -2292,7 +2297,8 @@ function renderHealthReportDetail(report) {
         ${metricTile("Approved images", metrics.images_approved)}
         ${metricTile("Rejected images", metrics.images_rejected)}
       </div>
-    </section>
+      </section>
+    </details>
 
     <section class="portal-card">
       <div class="portal-section-head">
@@ -2327,11 +2333,55 @@ function buildExecutiveSummary(report) {
   return `Your catalogue scored ${health}/100 overall, with SEO at ${seo}/100 and performance at ${performance}/100. Optivra found ${formatNumber(issues)} improvement opportunities and estimates that resolving them manually would take about ${minutesToHours(minutesLow)}-${minutesToHours(minutesHigh)} hours. Start with high-priority main-image and SEO issues, then standardise file size, crop, background and feed-readiness fixes.`;
 }
 
-function reportHeroCard(label, value, type = "score") {
+function buildSimpleHealthSummary(report) {
+  const metrics = report.metrics || {};
+  const issues = numeric(report.issue_summary?.total || metrics.issue_count);
+  const backgrounds = numeric(metrics.cluttered_background_count || metrics.inconsistent_background_count);
+  const missingAlt = numeric(metrics.missing_alt_text_count);
+  if (!issues) return "Your store images are mostly healthy. Run a fresh scan after your next catalogue update to keep the report current.";
+  return `Your store images are mostly healthy, but ${formatNumber(backgrounds)} products need stronger backgrounds and ${formatNumber(missingAlt)} images are missing SEO-friendly alt text.`;
+}
+
+function healthCategoryCards(metrics) {
+  return [
+    ["Image SEO", metrics.seo_score, "Alt text, filenames, and product-feed metadata."],
+    ["Background Quality", metrics.background_quality_score || metrics.image_quality_score, "Clean, consistent, product-friendly backgrounds."],
+    ["Lighting & Contrast", metrics.lighting_contrast_score || metrics.image_quality_score, "Product visibility, shadows, and contrast."],
+    ["File Size", metrics.performance_score, "Large files, dimensions, and WebP readiness."],
+    ["Product Consistency", metrics.catalogue_consistency_score, "Matching image style across the catalogue."],
+    ["Optimisation Readiness", metrics.google_shopping_readiness_score || metrics.completeness_score, "Images ready for safe queueing and review."]
+  ].map(([label, score, description]) => ({ label, score, description }));
+}
+
+function buildRecommendationPills(report) {
+  const metrics = report.metrics || {};
+  const types = report.issue_summary?.by_issue_type || {};
+  return [
+    ["Missing alt text", metrics.missing_alt_text_count || types.missing_alt_text, "high", "missing_alt_text"],
+    ["Dark background", metrics.over_dark_count || types.over_dark, "medium", "dark_background"],
+    ["Low product contrast", metrics.low_contrast_count || types.low_contrast, "medium", "low_contrast"],
+    ["Large image file", metrics.oversized_image_count || types.oversized_file, "high", "oversized_file"],
+    ["Inconsistent background", metrics.inconsistent_background_count || types.inconsistent_background, "medium", "inconsistent_background"],
+    ["Needs lighting enhancement", metrics.lighting_issue_count, "medium", "lighting"],
+    ["Product too small", metrics.too_small_in_frame_count || types.too_small_in_frame, "medium", "too_small_in_frame"],
+    ["SEO filename issue", metrics.generic_filename_count || types.generic_filename, "low", "generic_filename"],
+    ["Ready to optimise", (report.recommendations || report.top_recommendations || []).length, "info", "ready_to_optimise"]
+  ].map(([label, count, severity, filter]) => ({ label, count: numeric(count), severity, filter })).filter((item) => item.count > 0).slice(0, 9);
+}
+
+function scoreStateLabel(value) {
+  const score = numeric(value);
+  if (score >= 80) return "Good";
+  if (score >= 60) return "Needs attention";
+  return "Critical issue";
+}
+
+function reportHeroCard(label, value, type = "score", description = "") {
   return `
-    <article class="report-score-card">
+    <article class="report-score-card ${type === "score" ? scoreClass(value) : ""}">
       <span>${escapeHtml(label)}</span>
       <strong>${type === "score" ? scoreText(value) : escapeHtml(formatNumber(value))}</strong>
+      ${description ? `<small>${escapeHtml(description)}</small>` : ""}
     </article>
   `;
 }
@@ -2377,7 +2427,7 @@ function renderReportRecommendations(recommendations) {
     return `<section class="portal-empty-state compact-empty"><h2>No recommendations available</h2><p>Run a fresh scan after audit recommendations are enabled for this store.</p></section>`;
   }
   return recommendations.map((item) => `
-    <article class="recommendation-card">
+    <article class="recommendation-card" data-report-filter-key="${escapeHtml([item.action_type, item.category, item.issue_type, item.title].filter(Boolean).join(" ").toLowerCase())}">
       <div class="recommendation-topline">
         ${priorityBadge(item.priority || item.severity || "medium")}
         <span class="action-pill">${escapeHtml(actionLabel(item.action_type))}</span>
@@ -2390,8 +2440,10 @@ function renderReportRecommendations(recommendations) {
         ${metricTile("Impact", priorityImpact(item.priority || item.severity))}
       </div>
       <div class="dashboard-actions">
-        <button class="button primary" data-report-queue-recommendation="${escapeHtml(item.id || "")}" ${item.id ? "" : "disabled"}>Add to Queue</button>
-        <button class="button ghost" data-report-review>Review</button>
+        <button class="button primary" data-report-queue-recommendation="${escapeHtml(item.id || "")}" ${item.id ? "" : "disabled"}>Optimise now</button>
+        <button class="button ghost" data-report-queue-recommendation="${escapeHtml(item.id || "")}" ${item.id ? "" : "disabled"}>Add to queue</button>
+        <button class="button ghost" data-report-review>View original</button>
+        <button class="button ghost" data-report-review>Ignore</button>
       </div>
     </article>
   `).join("");
@@ -2473,7 +2525,7 @@ function renderTopImages(items) {
   return `
     <div class="attention-grid">
       ${items.slice(0, 12).map((item) => `
-        <article class="attention-card">
+        <article class="attention-card" data-report-filter-key="${escapeHtml([item.issue_type, item.recommended_action, item.highest_severity, item.product_name].filter(Boolean).join(" ").toLowerCase())}">
           <img src="${escapeHtml(item.image_url || "")}" alt="" loading="lazy" />
           <div>
             <h3>${escapeHtml(item.product_name || "Product image")}</h3>
@@ -2484,9 +2536,10 @@ function renderTopImages(items) {
             </div>
             <p>${escapeHtml(item.recommended_action || "Review this image before processing.")}</p>
             <div class="dashboard-actions">
-              <button class="button primary" data-report-queue-item>Queue</button>
+              <button class="button primary" data-report-queue-item>Optimise now</button>
+              <button class="button ghost" data-report-queue-item>Add to queue</button>
               <button class="button ghost" data-report-ignore-item>Ignore</button>
-              ${item.product_url ? `<a class="button ghost" href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener noreferrer">View product</a>` : ""}
+              ${item.product_url ? `<a class="button ghost" href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener noreferrer">View original</a>` : ""}
             </div>
           </div>
         </article>
@@ -2547,6 +2600,11 @@ function scorePill(value) {
   const score = numeric(value);
   const tone = score >= 80 ? "good" : score >= 60 ? "warn" : "bad";
   return `<span class="score-pill ${tone}">${scoreText(value)}</span>`;
+}
+
+function scoreClass(value) {
+  const score = numeric(value);
+  return score >= 80 ? "good" : score >= 60 ? "warn" : "bad";
 }
 
 function priorityBadge(value) {
@@ -2836,13 +2894,13 @@ async function loadSettingsPage() {
   const root = document.getElementById("settings-root") || document.querySelector('[data-page="/settings"] .portal-placeholder-root');
   if (!root) return;
   if (!token()) {
-    root.innerHTML = portalShell("Image Studio Settings", "Log in to manage scan scheduling and recurring report settings.", "settings", `
+    root.innerHTML = portalShell("Account & Settings", "Log in to manage your connected store, credits, image defaults, scan preferences and advanced settings.", "settings", `
       <section class="portal-empty-state"><h2>Login required</h2><p>Scheduled scans are connected to your Optivra account and WooCommerce stores.</p><a class="button primary" href="/login" data-link>Login</a></section>
     `);
     return;
   }
 
-  root.innerHTML = portalShell("Image Studio Settings", "Manage recurring Product Image Health scans and monthly report groundwork.", "settings", renderPortalLoading("Loading settings..."));
+  root.innerHTML = portalShell("Account & Settings", "Manage your connected store, credits, image defaults, scan preferences and advanced settings.", "settings", renderPortalLoading("Loading settings..."));
   try {
     const account = await api("/account/dashboard");
     const sites = Array.isArray(account.connected_sites) ? account.connected_sites : [];
@@ -2858,8 +2916,40 @@ async function loadSettingsPage() {
       monthly = monthlyPayload.monthly_report || monthlyPayload.summary || null;
     }
 
-    root.innerHTML = portalShell("Image Studio Settings", "Manage recurring Product Image Health scans and monthly report groundwork.", "settings", `
+    root.innerHTML = portalShell("Account & Settings", "Manage your connected store, credits, image defaults, scan preferences and advanced settings.", "settings", `
       ${store ? "" : renderStoreConnectionPanel(account)}
+      <section class="portal-card settings-hub">
+        <div class="portal-section-head"><div><h2>Account & Settings</h2><p>Simple defaults first. Advanced controls stay tucked away unless support asks for them.</p></div></div>
+        <div class="settings-hub-grid">
+          <a href="#settings-account">Account</a>
+          <a href="#settings-billing">Credits & Billing</a>
+          <a href="#settings-image-defaults">Image Defaults</a>
+          <a href="#settings-scan-preferences">Scan Preferences</a>
+          <a href="#settings-advanced">Advanced</a>
+        </div>
+      </section>
+      <section class="portal-card" id="settings-account">
+        <div class="portal-section-head"><div><h2>Account</h2><p>Connected store, API token status, plan, and credit balance.</p></div></div>
+        <div class="metric-card-grid">
+          ${metricTile("Connected store", store?.domain || "Not connected")}
+          ${metricTile("API token", store ? "Connected" : "Not connected")}
+          ${metricTile("Plan", account.billing?.plan || account.usage?.plan || "-")}
+          ${metricTile("Credit balance", `${account.billing?.credits_remaining ?? account.usage?.credits_remaining ?? 0} / ${account.billing?.credits_total ?? account.usage?.credits_total ?? 0}`)}
+        </div>
+      </section>
+      <section class="portal-card" id="settings-billing">
+        <div class="portal-section-head"><div><h2>Credits & Billing</h2><p>Current credits, buy credits, billing portal, and usage summary.</p></div><a class="button primary" href="/account/billing" data-link>Open Billing</a></div>
+      </section>
+      <section class="portal-card" id="settings-image-defaults">
+        <div class="portal-section-head"><div><h2>Image Defaults</h2><p>Safe defaults preserve product pixels, improve backgrounds and lighting, and wait for approval before replacing originals.</p></div></div>
+        <div class="mini-card-grid">
+          <div><strong>Default background</strong><p>Optivra light studio</p></div>
+          <div><strong>Preserve product mode</strong><p>Enabled</p></div>
+          <div><strong>Lighting enhancement</strong><p>Enabled when recommended</p></div>
+          <div><strong>Output format</strong><p>Original, WebP where safe</p></div>
+          <div><strong>Approval behaviour</strong><p>Review before replace</p></div>
+        </div>
+      </section>
       <section class="portal-card">
         <div class="portal-section-head"><div><h2>Scheduled Product Image Health scans</h2><p>The backend stores schedule intent. The WooCommerce plugin executes the scan via WP-Cron because it has direct product and media access.</p></div><span class="status-badge ${schedule?.frequency && schedule.frequency !== "off" ? "ready" : "needs-review"}">${escapeHtml(schedule?.frequency || "off")}</span></div>
         ${store ? `
@@ -2901,9 +2991,26 @@ async function loadSettingsPage() {
           </div>
         ` : `<p class="muted-note">Monthly summaries will appear after completed scheduled scans.</p>`}
       </section>
+      <section class="portal-card" id="settings-scan-preferences">
+        <div class="portal-section-head"><div><h2>Scan Preferences</h2><p>Default scan scope, auto queue recommendations, and ignored categories/products.</p></div></div>
+        <div class="mini-card-grid">
+          <div><strong>Default scan scope</strong><p>Full health scan</p></div>
+          <div><strong>Auto queue recommendations</strong><p>Off until enabled in the plugin</p></div>
+          <div><strong>Ignored categories/products</strong><p>Managed from WooCommerce</p></div>
+        </div>
+      </section>
+      <details class="portal-card technical-details" id="settings-advanced">
+        <summary>Advanced</summary>
+        <div class="mini-card-grid">
+          <div><strong>API base URL</strong><p>Configured in the plugin</p></div>
+          <div><strong>Debug mode</strong><p>Hidden unless support needs it</p></div>
+          <div><strong>Request timeout</strong><p>Plugin controlled</p></div>
+          <div><strong>Reset local plugin cache</strong><p>Available in WooCommerce admin</p></div>
+        </div>
+      </details>
     `);
   } catch (error) {
-    root.innerHTML = portalShell("Image Studio Settings", "Manage recurring Product Image Health scans and monthly report groundwork.", "settings", `
+    root.innerHTML = portalShell("Account & Settings", "Manage your connected store, credits, image defaults, scan preferences and advanced settings.", "settings", `
       <section class="portal-empty-state"><h2>Settings could not load</h2><p>${escapeHtml(error.message)}</p></section>
     `);
   }
@@ -2916,7 +3023,7 @@ function renderPortalPlaceholder(path) {
     "/analytics": "Analytics",
     "/backgrounds": "Backgrounds",
     "/seo-tools": "SEO Tools",
-    "/settings": "Settings"
+    "/settings": "Account & Settings"
   };
   const active = path === "/seo-tools" ? "seo" : path.replace("/", "");
   const root = document.getElementById(`${active.replace("-", "_")}-root`) || document.querySelector(`[data-page="${path}"] .portal-placeholder-root`);
@@ -3727,7 +3834,14 @@ document.addEventListener("click", async (event) => {
         method: "POST",
         body: JSON.stringify({
           recommendation_id: recommendationId,
-          background_preset: "optivra-default"
+          background_preset: "optivra-default",
+          safe_defaults: {
+            preserve_product_pixels: true,
+            improve_background: true,
+            improve_lighting: true,
+            generate_alt_text: true,
+            require_approval_before_replace: true
+          }
         })
       });
       queueRecommendation.textContent = result.queued_count ? "Queued" : "Already queued";
@@ -3739,6 +3853,57 @@ document.addEventListener("click", async (event) => {
       queueRecommendation.textContent = error.message || originalText;
       window.setTimeout(() => { queueRecommendation.textContent = originalText; }, 2500);
     }
+    return;
+  }
+
+  const queueAllRecommended = event.target.closest("[data-report-optimise-recommended], [data-report-add-all-recommended]");
+  if (queueAllRecommended) {
+    event.preventDefault();
+    const report = window.optivraCurrentReport || {};
+    const scanId = report.scan?.id || sessionStorage.getItem("optivraSelectedReportId") || "";
+    const recommendations = (report.recommendations || report.top_recommendations || []).filter((item) => item.id);
+    if (!scanId || !recommendations.length) return;
+    const originalText = queueAllRecommended.textContent;
+    queueAllRecommended.disabled = true;
+    queueAllRecommended.textContent = "Adding...";
+    try {
+      let queued = 0;
+      for (const item of recommendations) {
+        const result = await api(`/api/image-studio/audits/${encodeURIComponent(scanId)}/queue-recommendation`, {
+          method: "POST",
+          body: JSON.stringify({
+            recommendation_id: item.id,
+            background_preset: "optivra-default",
+            safe_defaults: {
+              preserve_product_pixels: true,
+              improve_background: true,
+              improve_lighting: true,
+              generate_alt_text: true,
+              require_approval_before_replace: true
+            }
+          })
+        });
+        queued += numeric(result.queued_count || result.queue_count);
+      }
+      queueAllRecommended.textContent = queued ? "Recommended images queued" : "Already queued";
+      trackEvent("image_studio_feature_click", { cta_location: "portal_audit_queue_all", funnel_stage: "retention" });
+    } catch (error) {
+      queueAllRecommended.disabled = false;
+      queueAllRecommended.textContent = error.message || originalText;
+      window.setTimeout(() => { queueAllRecommended.textContent = originalText; }, 2500);
+    }
+    return;
+  }
+
+  const pill = event.target.closest("[data-report-pill]");
+  if (pill) {
+    event.preventDefault();
+    const filter = pill.getAttribute("data-report-pill") || "";
+    document.querySelectorAll("[data-report-filter-key]").forEach((node) => {
+      const keys = String(node.getAttribute("data-report-filter-key") || "");
+      node.hidden = filter && !keys.includes(filter);
+    });
+    document.querySelectorAll("[data-report-pill]").forEach((node) => node.classList.toggle("active", node === pill));
     return;
   }
 

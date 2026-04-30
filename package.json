@@ -19,6 +19,7 @@
     "test:image-audit-routes": "tsx scripts/check-image-audit-routes.ts",
     "test:image-audit-start-auth": "tsx scripts/check-image-audit-start-auth.ts",
     "test:image-audit-large-e2e": "tsx scripts/check-image-audit-large-e2e.ts",
+    "test:image-studio-ux": "tsx scripts/check-image-studio-ux-redesign.ts",
     "test:audit-queue": "tsx scripts/check-audit-queue-rules.ts",
     "test:wordpress-api-url": "php scripts/check-wordpress-api-url.php",
     "test:csp": "tsx scripts/check-csp-rules.ts",
