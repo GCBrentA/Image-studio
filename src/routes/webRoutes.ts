@@ -37,6 +37,7 @@ const webPaths = new Set([
   ...blogSlugs.map((slug) => `/resources/${slug}`),
   "/login",
   "/dashboard",
+  "/product-scan",
   "/reports",
   "/recommendations",
   "/queue",
@@ -465,6 +466,12 @@ const metaForPath = (requestPath: string): PageMeta => {
       title: "Dashboard | Optivra Image Studio",
       description: "Private Optivra account dashboard.",
       canonicalPath: "/dashboard",
+      robots: privateRobots
+    },
+    "/product-scan": {
+      title: "Product Scan | Optivra Image Studio",
+      description: "Private product scan workflow guide for full-store and category scans.",
+      canonicalPath: "/product-scan",
       robots: privateRobots
     },
     "/reports": {

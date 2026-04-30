@@ -2434,6 +2434,21 @@ pre {
   grid-template-columns: 110px minmax(0, 1fr);
   gap: 14px;
   padding: 14px;
+  align-items: start;
+}
+.attention-card > div {
+  min-width: 0;
+}
+.attention-card .badge-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.attention-card p {
+  margin: 10px 0 14px;
+  color: var(--muted);
+}
+.attention-card .dashboard-actions {
+  gap: 8px;
 }
 .attention-image-frame,
 .attention-card img,
@@ -2443,13 +2458,20 @@ pre {
 }
 .attention-image-frame {
   position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
 }
-.attention-card img,
+.attention-card img {
+  display: block;
+  object-fit: contain;
+  background: #fff;
+}
 .attention-image-fallback {
   display: grid;
   place-items: center;
-  object-fit: contain;
-  background: #f8fafc;
+  background: linear-gradient(135deg, #f8fafc, #eef4ff);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -2457,6 +2479,13 @@ pre {
   color: var(--muted);
   font-size: 28px;
   font-weight: 900;
+}
+.attention-image-frame .attention-image-fallback {
+  border: 0;
+  border-radius: 0;
+}
+.attention-image-fallback[hidden] {
+  display: none !important;
 }
 .trend-chart {
   width: 100%;

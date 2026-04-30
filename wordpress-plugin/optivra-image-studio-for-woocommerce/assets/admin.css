@@ -1856,7 +1856,7 @@
 	border-radius: var(--optivra-radius);
 }
 
-.optivra-admin-app .optivra-category-picker > div {
+.optivra-admin-app .optivra-category-list {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: 8px 14px;
@@ -1870,6 +1870,22 @@
 	align-items: center;
 	gap: 8px;
 	color: var(--optivra-ink);
+}
+
+.optivra-admin-app .optivra-category-scan-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+	padding-top: 12px;
+	border-top: 1px solid var(--optivra-line);
+}
+
+.optivra-admin-app .optivra-category-scan-actions small {
+	max-width: 680px;
+	color: var(--optivra-muted);
+	font-weight: 700;
+	line-height: 1.45;
 }
 
 .optivra-admin-app .optivra-switch-grid {
@@ -2846,7 +2862,7 @@
 	.optivra-admin-app .optivra-switch-grid,
 	.optivra-admin-app .optivra-one-click-scan,
 	.optivra-admin-app.catalogue-image-studio-admin .optivra-settings-tab-cards,
-	.optivra-admin-app .optivra-category-picker > div,
+	.optivra-admin-app .optivra-category-list,
 	.optivra-admin-app .optivra-progress-grid,
 	.optivra-admin-app .optivra-report-hero,
 	.optivra-admin-app .optivra-scan-results-summary,

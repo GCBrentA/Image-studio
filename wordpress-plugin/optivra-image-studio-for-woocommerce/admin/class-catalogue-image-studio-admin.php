@@ -472,6 +472,7 @@ class Catalogue_Image_Studio_Admin {
 					var form = document.getElementById("optivra-audit-scan-form");
 					var progress = document.getElementById("optivra-audit-scan-progress");
 					var startButton = document.getElementById("optivra-audit-start");
+					var categoryButton = document.getElementById("optivra-audit-category-start");
 					var cancelButton = document.getElementById("optivra-audit-cancel");
 					var cancelled = false;
 
@@ -481,6 +482,9 @@ class Catalogue_Image_Studio_Admin {
 
 					function fail(error) {
 						startButton.disabled = false;
+						if (categoryButton) {
+							categoryButton.disabled = false;
+						}
 						cancelButton.disabled = false;
 						cancelButton.hidden = true;
 						setProgress(progress, {
@@ -509,8 +513,14 @@ class Catalogue_Image_Studio_Admin {
 								return post("optivra_image_audit_complete", { scan_id: scanId }).then(function(doneData) {
 									setProgress(progress, doneData.progress || {});
 									startButton.disabled = false;
+									if (categoryButton) {
+										categoryButton.disabled = false;
+									}
 									cancelButton.hidden = true;
-									window.setTimeout(function() { window.location.reload(); }, 900);
+									window.setTimeout(function() {
+										window.location.replace(window.location.pathname + window.location.search + "#optivra-scan-results");
+										window.location.reload();
+									}, 900);
 								});
 							}
 							return window.setTimeout(function() {
@@ -519,19 +529,46 @@ class Catalogue_Image_Studio_Admin {
 						});
 					}
 
-					startButton.addEventListener("click", function(event) {
+					function startScan(event, overrideOptions) {
 						event.preventDefault();
 						cancelled = false;
 						startButton.disabled = true;
+						if (categoryButton) {
+							categoryButton.disabled = true;
+						}
 						cancelButton.disabled = false;
 						cancelButton.hidden = false;
-						var options = collectOptions(form);
+						var options = Object.assign(collectOptions(form), overrideOptions || {});
 						setProgress(progress, { status_label: window.optivraScanConfig.i18n.starting, message: "" });
 						post("optivra_image_audit_start", { options: JSON.stringify(options) }).then(function(data) {
 							setProgress(progress, data.progress || {});
 							return runBatch(data.scan_id, options, 0, 1, data.total_products || 0);
 						}).catch(fail);
+					}
+
+					startButton.addEventListener("click", function(event) {
+						startScan(event, { scan_scope: "all", category_ids: [] });
 					});
+
+					if (categoryButton) {
+						categoryButton.addEventListener("click", function(event) {
+							var categoryIds = checkedValues(form, "category_ids[]");
+							if (!categoryIds.length) {
+								event.preventDefault();
+								setProgress(progress, {
+									status: "ready",
+									status_label: "Choose a category",
+									message: "Select at least one category under Advanced scan options, then run the category scan."
+								});
+								return;
+							}
+							var categoryRadio = form.querySelector("[name=\"scan_scope\"][value=\"categories\"]");
+							if (categoryRadio) {
+								categoryRadio.checked = true;
+							}
+							startScan(event, { scan_scope: "categories", category_ids: categoryIds });
+						});
+					}
 
 					if (cancelButton) {
 						cancelButton.addEventListener("click", function(event) {
@@ -3002,7 +3039,7 @@ class Catalogue_Image_Studio_Admin {
 			return is_array($product) && ! empty($product['recommended']);
 		}));
 		?>
-		<div class="catalogue-image-studio-panel optivra-scan-results" data-optivra-scan-results>
+		<div id="optivra-scan-results" class="catalogue-image-studio-panel optivra-scan-results" data-optivra-scan-results>
 			<section class="optivra-scan-results-summary">
 				<div>
 					<?php $this->render_status_badge(__('Scan complete', 'optivra-image-studio-for-woocommerce'), 'approved'); ?>
@@ -3151,7 +3188,14 @@ class Catalogue_Image_Studio_Admin {
 		$cache = is_array($cache) ? $cache : [];
 		$history = isset($cache['history']) && is_array($cache['history']) ? $cache['history'] : [];
 		$latest = isset($cache['latest']) && is_array($cache['latest']) ? $cache['latest'] : [];
-		$scan_result = ! empty($latest) ? $this->normalize_scan_result($this->get_report_payload($latest), $latest) : [];
+		$latest_payload = ! empty($latest) ? $this->get_report_payload($latest) : [];
+		if (! empty($latest['scan_id']) && empty($latest_payload['_local_scan_items'])) {
+			$local_items = $this->get_cached_audit_scan_items((string) $latest['scan_id']);
+			if (! empty($local_items)) {
+				$latest_payload['_local_scan_items'] = $local_items;
+			}
+		}
+		$scan_result = ! empty($latest) ? $this->normalize_scan_result($latest_payload, $latest) : [];
 		?>
 		<div class="catalogue-image-studio-panel optivra-scan-wizard">
 			<div class="optivra-card-header">
@@ -3193,10 +3237,14 @@ class Catalogue_Image_Studio_Admin {
 						<?php if (! is_wp_error($categories) && ! empty($categories)) : ?>
 							<div class="optivra-category-picker">
 								<strong><?php echo esc_html__('Categories', 'optivra-image-studio-for-woocommerce'); ?></strong>
-								<div>
+								<div class="optivra-category-list">
 									<?php foreach ($categories as $category) : ?>
 										<label><input type="checkbox" name="category_ids[]" value="<?php echo esc_attr((string) $category->term_id); ?>" /> <?php echo esc_html($category->name); ?></label>
 									<?php endforeach; ?>
+								</div>
+								<div class="optivra-category-scan-actions">
+									<button type="button" id="optivra-audit-category-start" class="button optivra-action-button is-secondary"><?php echo esc_html__('Run Selected Category Scan', 'optivra-image-studio-for-woocommerce'); ?></button>
+									<small><?php echo esc_html__('Use this when you want to scan one category, then review and select only those scanned products for the queue.', 'optivra-image-studio-for-woocommerce'); ?></small>
 								</div>
 							</div>
 						<?php endif; ?>

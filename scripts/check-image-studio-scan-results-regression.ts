@@ -19,6 +19,7 @@ requireIncludes("WordPress scan UI", admin, [
   "normalize_scan_result",
   "Health Report summary",
   "Scanned Products",
+  "Run Selected Category Scan",
   "data-optivra-scan-results",
   "data-optivra-scan-item",
   "Select all recommended",
@@ -27,6 +28,7 @@ requireIncludes("WordPress scan UI", admin, [
   "queue_selected_scan_results",
   "queue_from_audit_payload",
   "optivra_latest_audit_items",
+  "optivra-audit-category-start",
   "Scan complete. No major issues found.",
   "No products found for this scan scope."
 ]);
@@ -36,7 +38,9 @@ requireIncludes("WordPress scan results JavaScript", admin, [
   "data-optivra-selected-count",
   "data-optivra-result-filter",
   "data-optivra-row-add",
-  "data-optivra-row-ignore"
+  "data-optivra-row-ignore",
+  "scan_scope: \"categories\"",
+  "scan_scope: \"all\", category_ids: []"
 ]);
 
 requireIncludes("Scan results styling", css, [
@@ -57,32 +61,39 @@ requireIncludes("Backend report response", service, [
 
 requireIncludes("Portal health report images", portalApp, [
   "normalizeReportTopImages",
+  "normalizeImageSourceUrl",
   "report.products",
   "report.images",
   "thumbnailUrl",
   "thumbnail_url",
+  "referrerpolicy=\"no-referrer\"",
   "renderAttentionImage",
   "attention-image-fallback"
 ]);
 
 requireIncludes("Portal before and after navigation", portalApp, [
   "[\"before_after\", \"Before & After\", \"/before-after\"]",
+  "[\"scan\", \"Product Scan\", \"/product-scan\"]",
+  "loadProductScanPage",
   "loadBeforeAfterPage",
   "before-after-root",
   "data-before-after-reload"
 ]);
 
 requireIncludes("Portal account dropdown", portalApp, [
+  "ensureHeaderAccountMenuPortal",
   "positionHeaderAccountMenu",
+  "authActionsRoot.querySelector(\"#header-account-trigger\")",
   "data-auth-account-trigger",
   "header-account-menu",
   "data-auth-logout",
-  "role=\"menu\""
+  "setAttribute(\"role\", \"menu\")"
 ]);
 
 requireIncludes("Portal thumbnail styling", portalStyles, [
   ".attention-image-frame",
   ".attention-image-fallback",
+  ".attention-image-fallback[hidden]",
   ".account-dropdown.is-open",
   "z-index: 10000"
 ]);

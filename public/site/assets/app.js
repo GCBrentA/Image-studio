@@ -250,6 +250,7 @@ const blogArticles = [
 let currentUser = null;
 let currentUserLoaded = false;
 let headerAccountMenuOpen = false;
+let headerAccountMenuPortal = null;
 let pluginDownloadLastFocus = null;
 let pluginDownloadScrollY = 0;
 const authActionsRoot = document.getElementById("header-auth-actions");
@@ -289,44 +290,55 @@ function userInitials(user = {}) {
 }
 
 function closeHeaderAccountMenu() {
-  if (!headerActionsRoot) return;
-  const menu = headerActionsRoot.querySelector("#header-account-menu");
-  const trigger = headerActionsRoot.querySelector("#header-account-trigger");
-  if (menu) {
-    menu.hidden = true;
-    menu.classList.remove("is-open");
-    menu.style.removeProperty("top");
-    menu.style.removeProperty("right");
-    menu.style.removeProperty("left");
+  const trigger = authActionsRoot?.querySelector("#header-account-trigger");
+  if (headerAccountMenuPortal) {
+    headerAccountMenuPortal.hidden = true;
+    headerAccountMenuPortal.classList.remove("is-open");
+    headerAccountMenuPortal.style.removeProperty("top");
+    headerAccountMenuPortal.style.removeProperty("right");
+    headerAccountMenuPortal.style.removeProperty("left");
   }
   if (trigger) trigger.setAttribute("aria-expanded", "false");
   headerAccountMenuOpen = false;
 }
 
 function positionHeaderAccountMenu() {
-  if (!headerActionsRoot || !headerAccountMenuOpen) return;
-  const menu = headerActionsRoot.querySelector("#header-account-menu");
-  const trigger = headerActionsRoot.querySelector("#header-account-trigger");
-  if (!menu || !trigger || menu.hidden) return;
+  if (!authActionsRoot || !headerAccountMenuPortal || !headerAccountMenuOpen) return;
+  const trigger = authActionsRoot.querySelector("#header-account-trigger");
+  if (!trigger || headerAccountMenuPortal.hidden) return;
 
   const rect = trigger.getBoundingClientRect();
   const width = Math.min(280, Math.max(240, window.innerWidth - 24));
   const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.right = "auto";
-  menu.style.top = `${Math.round(rect.bottom + 10)}px`;
+  headerAccountMenuPortal.style.left = `${Math.round(left)}px`;
+  headerAccountMenuPortal.style.right = "auto";
+  headerAccountMenuPortal.style.top = `${Math.round(rect.bottom + 10)}px`;
 }
 
 function toggleHeaderAccountMenu() {
-  if (!headerActionsRoot) return;
-  const menu = headerActionsRoot.querySelector("#header-account-menu");
-  const trigger = headerActionsRoot.querySelector("#header-account-trigger");
-  if (!menu || !trigger) return;
+  if (!authActionsRoot) return;
+  const trigger = authActionsRoot.querySelector("#header-account-trigger");
+  if (!headerAccountMenuPortal || !trigger) return;
   headerAccountMenuOpen = !headerAccountMenuOpen;
-  menu.hidden = !headerAccountMenuOpen;
-  menu.classList.toggle("is-open", headerAccountMenuOpen);
+  headerAccountMenuPortal.hidden = !headerAccountMenuOpen;
+  headerAccountMenuPortal.classList.toggle("is-open", headerAccountMenuOpen);
   trigger.setAttribute("aria-expanded", String(headerAccountMenuOpen));
   positionHeaderAccountMenu();
+}
+
+function ensureHeaderAccountMenuPortal(menuHtml) {
+  if (!headerAccountMenuPortal) {
+    headerAccountMenuPortal = document.createElement("div");
+    headerAccountMenuPortal.id = "header-account-menu";
+    headerAccountMenuPortal.className = "account-dropdown";
+    headerAccountMenuPortal.setAttribute("role", "menu");
+    headerAccountMenuPortal.hidden = true;
+    document.body.appendChild(headerAccountMenuPortal);
+  }
+  headerAccountMenuPortal.innerHTML = menuHtml;
+  headerAccountMenuPortal.hidden = true;
+  headerAccountMenuPortal.classList.remove("is-open");
+  headerAccountMenuOpen = false;
 }
 
 function updateMobileAuthShortcuts() {
@@ -368,6 +380,10 @@ function updateAuthActions() {
   }
 
   if (!currentUser) {
+    if (headerAccountMenuPortal) {
+      headerAccountMenuPortal.remove();
+      headerAccountMenuPortal = null;
+    }
     authActionsRoot.innerHTML = `
       <a class="button ghost" href="/login" data-link data-analytics="click_open_admin">Login</a>
       <a class="button primary" href="/free-woocommerce-image-audit" data-link data-analytics="click_run_free_audit">Run Free Audit</a>
@@ -381,29 +397,29 @@ function updateAuthActions() {
   const accountLabel = userDisplayLabel(currentUser);
   const signedInLine = String(currentUser.email || currentUser.display_name || accountName || "account");
   const portalHref = "/dashboard";
-  const menuId = "header-account-menu";
   const triggerId = "header-account-trigger";
   const avatar = userInitials(currentUser);
+  const menuHtml = `
+    <p class="account-meta">Signed in as</p>
+    <p class="account-meta-value" title="${escapeHtml(signedInLine)}">${escapeHtml(signedInLine)}</p>
+    <a href="/account" data-link role="menuitem">My Account</a>
+    <a href="${portalHref}" data-link role="menuitem">Portal / Dashboard</a>
+    <a href="/account/billing" data-link role="menuitem">Billing</a>
+    <a href="/settings" data-link role="menuitem">Connected Stores</a>
+    <a href="/downloads" data-link role="menuitem">Downloads</a>
+    <a href="/support" data-link role="menuitem">Support</a>
+    <button type="button" data-auth-logout role="menuitem">Log out</button>
+  `;
+  ensureHeaderAccountMenuPortal(menuHtml);
 
   authActionsRoot.innerHTML = `
     <a class="button ghost header-portal-btn" href="${portalHref}" data-link aria-label="Open portal">Portal</a>
     <div class="account-menu-wrap">
-      <button id="${triggerId}" class="account-chip" type="button" data-auth-account-trigger aria-expanded="false" aria-controls="${menuId}" aria-haspopup="menu" aria-label="Open account menu">
+      <button id="${triggerId}" class="account-chip" type="button" data-auth-account-trigger aria-expanded="false" aria-controls="header-account-menu" aria-haspopup="menu" aria-label="Open account menu">
         <span class="account-avatar" aria-hidden="true">${escapeHtml(avatar)}</span>
         <span class="account-chip-text" title="${escapeHtml(accountName)}">${escapeHtml(accountLabel)}</span>
         <span class="account-chip-caret" aria-hidden="true">&#9662;</span>
       </button>
-      <div id="${menuId}" class="account-dropdown" role="menu" hidden>
-        <p class="account-meta">Signed in as</p>
-        <p class="account-meta-value" title="${escapeHtml(signedInLine)}">${escapeHtml(signedInLine)}</p>
-        <a href="/account" data-link role="menuitem">My Account</a>
-        <a href="${portalHref}" data-link role="menuitem">Portal / Dashboard</a>
-        <a href="/account/billing" data-link role="menuitem">Billing</a>
-        <a href="/settings" data-link role="menuitem">Connected Stores</a>
-        <a href="/downloads" data-link role="menuitem">Downloads</a>
-        <a href="/support" data-link role="menuitem">Support</a>
-        <button type="button" data-auth-logout role="menuitem">Log out</button>
-      </div>
     </div>
   `;
   updateMobileAuthShortcuts();
@@ -461,6 +477,9 @@ function routeTo(path) {
   }
   if (normalized === "/reports") {
     loadReports();
+  }
+  if (normalized === "/product-scan") {
+    loadProductScanPage();
   }
   if (normalized === "/analytics") {
     loadAnalyticsTrends();
@@ -558,6 +577,7 @@ function pageTitle(path) {
     "/blog/how-to-test-woocommerce-payment-gateway-rules-safely": "How to Test WooCommerce Payment Gateway Rules Safely | Optivra",
     "/login": "Login | Optivra",
     "/dashboard": "Dashboard | Optivra",
+    "/product-scan": "Product Scan | Optivra",
     "/reports": "Product Image Health Reports | Optivra",
     "/recommendations": "Recommendations | Optivra",
     "/queue": "Queue | Optivra",
@@ -606,6 +626,7 @@ function pageDescription(path) {
     "/blog/how-to-write-alt-text-for-woocommerce-product-images": "Write useful WooCommerce product image alt text that supports accessibility, product context, and search relevance.",
     "/blog/how-to-replace-product-image-backgrounds-in-woocommerce": "Learn how to replace product image backgrounds in WooCommerce while preserving originals and reviewing results.",
     "/blog/ai-product-photography-for-woocommerce-stores": "See how AI product photography can standardise WooCommerce product visuals with review controls.",
+    "/product-scan": "Run full-store or category Product Image Health scans from the WooCommerce plugin, then review scanned products and add selected images to the queue.",
     "/reports": "View Product Image Health Report history and full ecommerce image audit reports in the Optivra portal.",
     "/recommendations": "Review product image recommendations from Optivra Image Health Reports.",
     "/queue": "Review and manage Optivra Image Studio processing queue actions.",
@@ -779,6 +800,7 @@ function pageRobots(path) {
     path.startsWith("/account") ||
     path.startsWith("/admin") ||
     path === "/dashboard" ||
+    path === "/product-scan" ||
     path === "/reports" ||
     path === "/recommendations" ||
     path === "/queue" ||
@@ -918,7 +940,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (headerActionsRoot && !headerActionsRoot.contains(event.target)) {
+  if (authActionsRoot && !authActionsRoot.contains(event.target)) {
     closeHeaderAccountMenu();
   } else if (event.target.closest(".account-dropdown a")) {
     closeHeaderAccountMenu();
@@ -955,7 +977,7 @@ document.addEventListener("keydown", (event) => {
     closeMobileMenu();
     closeHeaderAccountMenu();
   }
-  if (event.key === "Tab" && headerAccountMenuOpen && authActionsRoot && !authActionsRoot.contains(document.activeElement)) {
+  if (event.key === "Tab" && headerAccountMenuOpen && authActionsRoot && !authActionsRoot.contains(document.activeElement) && !document.activeElement?.closest(".account-dropdown")) {
     closeHeaderAccountMenu();
   }
 });
@@ -964,7 +986,7 @@ window.addEventListener("resize", positionHeaderAccountMenu);
 window.addEventListener("scroll", positionHeaderAccountMenu, { passive: true });
 
 document.addEventListener("click", (event) => {
-  if (headerAccountMenuOpen && headerActionsRoot && !headerActionsRoot.contains(event.target) && !event.target.closest(".account-dropdown")) {
+  if (headerAccountMenuOpen && authActionsRoot && !authActionsRoot.contains(event.target) && !event.target.closest(".account-dropdown")) {
     closeHeaderAccountMenu();
   }
   if (!document.body.classList.contains("mobile-menu-open")) return;
@@ -2049,6 +2071,33 @@ async function loadAuditQueuePage() {
   }
 }
 
+function loadProductScanPage() {
+  const root = document.getElementById("product-scan-root");
+  if (!root) return;
+  root.innerHTML = portalShell("Product Scan", "Start simple in WooCommerce, then review scanned products before queueing work.", "scan", `
+    <section class="dashboard-hero-card">
+      <div>
+        <span class="status-badge ready">WooCommerce plugin</span>
+        <h2>Run a full scan or scan a category</h2>
+        <p>The scan runs inside WooCommerce because the plugin has direct access to product categories, media attachments, thumbnails and queue slots.</p>
+      </div>
+      <div class="dashboard-actions">
+        <a class="button primary" href="/downloads" data-link>Download plugin</a>
+        <a class="button ghost" href="/reports" data-link>View reports</a>
+      </div>
+    </section>
+    <section class="portal-card">
+      <div class="portal-section-head"><div><h2>Scan workflow</h2><p>The WordPress Product Scan page keeps the one-click full scan button and includes category scans under Advanced scan options.</p></div></div>
+      <div class="mini-card-grid">
+        <div><strong>Full scan</strong><p>Click Run Full Health Scan to scan everything reasonable for the store.</p></div>
+        <div><strong>Category scan</strong><p>Open Advanced scan options, choose one or more categories, then click Run Selected Category Scan.</p></div>
+        <div><strong>Review results</strong><p>After completion, Scanned Products shows every scanned product/image with selection checkboxes.</p></div>
+        <div><strong>Queue selected</strong><p>Use Select all recommended, Select all, Clear selection, then Add Selected to Queue.</p></div>
+      </div>
+    </section>
+  `);
+}
+
 function portalShell(title, subtitle, active, body) {
   return `
     <div class="portal-shell">
@@ -2097,7 +2146,7 @@ function renderPortalNav(active) {
 function renderImageStudioTabs(active) {
   const tabs = [
     ["dashboard", "Dashboard", "/dashboard"],
-    ["scan", "Product Scan", "/reports"],
+    ["scan", "Product Scan", "/product-scan"],
     ["reports", "Health Report", "/reports"],
     ["recommendations", "Recommendations", "/recommendations"],
     ["queue", "Queue", "/queue"],
@@ -2431,7 +2480,7 @@ function normalizeReportTopImages(report) {
   const seen = new Set();
   return source.map((item) => {
     const queuePayload = item.queuePayload || item.queue_payload || {};
-    const imageUrl = firstText(
+    const imageUrl = normalizeImageSourceUrl(firstText(
       item.thumbnailUrl,
       item.thumbnail_url,
       item.imageUrl,
@@ -2440,7 +2489,7 @@ function normalizeReportTopImages(report) {
       queuePayload.thumbnail_url,
       queuePayload.imageUrl,
       queuePayload.image_url
-    );
+    ));
     const productId = firstText(item.productId, item.product_id, queuePayload.product_id);
     const imageId = firstText(item.imageId, item.image_id, queuePayload.image_id);
     const key = [productId, imageId, imageUrl, item.product_name || item.productName].join(":");
@@ -2471,6 +2520,22 @@ function firstText(...values) {
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
+  return "";
+}
+
+function normalizeImageSourceUrl(value) {
+  const raw = firstText(value);
+  if (!raw) return "";
+  if (/^(data:image\/|blob:)/i.test(raw)) return raw;
+  if (/^(about:|javascript:|mailto:)/i.test(raw)) return "";
+  if (raw.startsWith("//")) return `${window.location.protocol}${raw}`;
+  if (/^https?:\/\//i.test(raw)) {
+    if (window.location.protocol === "https:" && raw.startsWith("http://")) {
+      return raw.replace(/^http:\/\//i, "https://");
+    }
+    return raw;
+  }
+  if (raw.startsWith("/")) return raw;
   return "";
 }
 
@@ -2690,12 +2755,12 @@ function renderTopImages(items) {
 }
 
 function renderAttentionImage(item) {
-  const imageUrl = firstText(item.image_url, item.thumbnailUrl, item.thumbnail_url, item.imageUrl);
+  const imageUrl = normalizeImageSourceUrl(firstText(item.image_url, item.thumbnailUrl, item.thumbnail_url, item.imageUrl));
   const fallback = `<div class="attention-image-fallback" aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>`;
   if (!imageUrl) return fallback;
   return `
     <div class="attention-image-frame">
-      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.product_name || "Product image")}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false;" />
+      <img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.closest('.attention-image-frame').classList.add('has-image');" onerror="const fallback=this.nextElementSibling; this.remove(); if (fallback) fallback.hidden=false;" />
       <div class="attention-image-fallback" hidden aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>
     </div>
   `;
