@@ -2472,6 +2472,9 @@ pre {
   opacity: 0;
   transition: opacity 0.18s ease;
 }
+.attention-card img[hidden] {
+  display: none !important;
+}
 .attention-image-fallback {
   display: grid;
   place-items: center;

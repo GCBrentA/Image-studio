@@ -99,6 +99,18 @@ const isBlockedProxyImageHost = (hostname: string): boolean => {
   return false;
 };
 
+const isLocalImageProxyRequest = (request: Request): boolean => {
+  const hostname = request.hostname.toLowerCase();
+  const remoteAddress = request.socket.remoteAddress ?? "";
+  return (
+    process.env.NODE_ENV !== "production" ||
+    ["localhost", "127.0.0.1", "::1"].includes(hostname) ||
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1"
+  );
+};
+
 app.get("/api/image-proxy", async (request: Request, response: Response, next: NextFunction) => {
   try {
     const rawUrl = typeof request.query.url === "string" ? request.query.url : "";
@@ -109,7 +121,7 @@ app.get("/api/image-proxy", async (request: Request, response: Response, next: N
       response.status(400).json({ error: "Invalid image URL" });
       return;
     }
-    if (!["http:", "https:"].includes(parsed.protocol) || isBlockedProxyImageHost(parsed.hostname)) {
+    if (!["http:", "https:"].includes(parsed.protocol) || (isBlockedProxyImageHost(parsed.hostname) && !isLocalImageProxyRequest(request))) {
       response.status(400).json({ error: "Unsupported image URL" });
       return;
     }

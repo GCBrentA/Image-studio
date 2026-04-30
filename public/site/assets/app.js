@@ -2530,12 +2530,7 @@ function normalizeImageSourceUrl(value) {
   if (/^(data:image\/|blob:)/i.test(raw)) return raw;
   if (/^(about:|javascript:|mailto:)/i.test(raw)) return "";
   if (raw.startsWith("//")) return `${window.location.protocol}${raw}`;
-  if (/^https?:\/\//i.test(raw)) {
-    if (window.location.protocol === "https:" && raw.startsWith("http://")) {
-      return raw.replace(/^http:\/\//i, "https://");
-    }
-    return raw;
-  }
+  if (/^https?:\/\//i.test(raw)) return raw;
   if (raw.startsWith("/")) return raw;
   return "";
 }
@@ -2553,17 +2548,25 @@ function hydrateAttentionImages(root = document) {
     img.dataset.attentionBound = "1";
 
     const showImage = () => {
+      img.hidden = false;
       frame.classList.add("has-image");
       frame.classList.remove("is-missing");
     };
     const showFallback = () => {
+      img.hidden = true;
       frame.classList.remove("has-image");
       frame.classList.add("is-missing");
     };
-    const tryProxy = () => {
-      const proxySrc = img.getAttribute("data-proxy-src") || "";
-      if (proxySrc && img.getAttribute("src") !== proxySrc) {
-        img.setAttribute("src", proxySrc);
+    const tryAlternateSource = () => {
+      const candidates = [
+        img.getAttribute("data-proxy-src") || "",
+        img.getAttribute("data-direct-src") || ""
+      ].filter(Boolean);
+      const current = img.getAttribute("src") || "";
+      const next = candidates.find((candidate) => candidate !== current && img.dataset.lastFailedSrc !== candidate);
+      if (next) {
+        img.hidden = true;
+        img.setAttribute("src", next);
         return true;
       }
       return false;
@@ -2573,13 +2576,14 @@ function hydrateAttentionImages(root = document) {
       if (img.naturalWidth > 0) showImage();
     });
     img.addEventListener("error", () => {
-      if (!tryProxy()) showFallback();
+      img.dataset.lastFailedSrc = img.getAttribute("src") || "";
+      if (!tryAlternateSource()) showFallback();
     });
 
     if (img.complete) {
       if (img.naturalWidth > 0) {
         showImage();
-      } else if (!tryProxy()) {
+      } else if (!tryAlternateSource()) {
         showFallback();
       }
     }
@@ -2806,10 +2810,11 @@ function renderAttentionImage(item) {
   const fallback = `<div class="attention-image-fallback" aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>`;
   if (!imageUrl) return fallback;
   const proxyUrl = proxiedImageSourceUrl(imageUrl);
+  const primaryUrl = proxyUrl || imageUrl;
   return `
     <div class="attention-image-frame" data-attention-image-frame>
       ${fallback}
-      <img data-attention-image src="${escapeHtml(imageUrl)}" data-proxy-src="${escapeHtml(proxyUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+      <img data-attention-image hidden src="${escapeHtml(primaryUrl)}" data-proxy-src="${escapeHtml(proxyUrl)}" data-direct-src="${escapeHtml(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
     </div>
   `;
 }

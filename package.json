@@ -21,6 +21,7 @@
     "test:image-audit-large-e2e": "tsx scripts/check-image-audit-large-e2e.ts",
     "test:image-studio-ux": "tsx scripts/check-image-studio-ux-redesign.ts",
     "test:image-studio-scan-results": "tsx scripts/check-image-studio-scan-results-regression.ts",
+    "test:attention-images": "tsx scripts/check-attention-image-proxy.ts",
     "test:audit-queue": "tsx scripts/check-audit-queue-rules.ts",
     "test:wordpress-api-url": "php scripts/check-wordpress-api-url.php",
     "test:csp": "tsx scripts/check-csp-rules.ts",
