@@ -231,6 +231,7 @@ export type PreserveMaskDiagnostics = {
     height: number;
   };
   bboxAreaPercent: number;
+  bboxFillPercent: number;
   connectedComponentCount: number;
   largestComponentPixels: number;
   largestComponentCoveragePercent: number;
@@ -654,7 +655,10 @@ const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<B
     .png()
     .toBuffer();
 
-const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResult> => {
+const processImageFlexibleMode = async (
+  openAiInput: Buffer,
+  preferLocalForegroundFallback = false
+): Promise<CutoutResult> => {
   const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(openAiInput);
 
   if (sourceAlphaCutout) {
@@ -668,6 +672,18 @@ const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResu
         foregroundMeanDelta: 0
       }
     };
+  }
+
+  if (preferLocalForegroundFallback) {
+    try {
+      const localFallback = await buildFlexibleLocalForegroundCutout(openAiInput, "local-color-segmentation:strict-preserve-fallback", 1);
+
+      return localFallback;
+    } catch (error) {
+      console.warn("Strict preserve fallback could not use local foreground extraction first; trying AI cutout", {
+        reason: error instanceof Error ? error.message : "Unknown local foreground fallback error"
+      });
+    }
   }
 
   const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
@@ -694,6 +710,30 @@ const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResu
     });
   }
 
+  const rawAiDiagnostics = await getImageAlphaMaskDiagnostics(aiCutout);
+
+  if (!rawAiDiagnostics.passed) {
+    console.warn("Flexible cutout raw AI result rejected; using local foreground fallback", {
+      provider: `openai:${openAiImageEditModel}:flexible-cutout`,
+      failureReasons: rawAiDiagnostics.failureReasons,
+      alphaCoveragePercent: rawAiDiagnostics.alphaCoveragePercent,
+      bboxFillPercent: rawAiDiagnostics.bboxFillPercent,
+      bbox: rawAiDiagnostics.bbox
+    });
+
+    try {
+      const localFallback = await buildFlexibleLocalForegroundCutout(openAiInput, "local-color-segmentation:flexible-fallback", 2);
+
+      return localFallback;
+    } catch (fallbackError) {
+      throw new Error(
+        `Flexible cutout rejected raw AI output (${rawAiDiagnostics.failureReasons.join("; ")}) and local foreground fallback failed: ${
+          fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
+        }`
+      );
+    }
+  }
+
   return {
     cutout: aiCutout,
     debugCutout: aiCutout,
@@ -704,6 +744,66 @@ const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResu
       foregroundMeanDelta: 0
     }
   };
+};
+
+const buildFlexibleLocalForegroundCutout = async (
+  sourceBuffer: Buffer,
+  provider: string,
+  attempts: number
+): Promise<CutoutResult> => {
+  const metadata = await sharp(sourceBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Local foreground fallback could not read source image dimensions.");
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = await smoothAlphaMask(buildLocalForegroundAlpha(rgba, width, height), width, height);
+  const diagnostics = analyzeAlphaMask(alpha, width, height);
+
+  if (diagnostics.alphaCoverage <= 0) {
+    throw new Error("Local foreground fallback did not find a product foreground.");
+  }
+
+  const productRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), alpha, width, height);
+  const cutout = await sharp(productRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return {
+    cutout,
+    debugCutout: cutout,
+    provider,
+    attempts,
+    validation: {
+      alphaCoverage: diagnostics.alphaCoverage,
+      foregroundMeanDelta: 0
+    }
+  };
+};
+
+const getImageAlphaMaskDiagnostics = async (imageBuffer: Buffer): Promise<PreserveMaskDiagnostics> => {
+  const metadata = await sharp(imageBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Image alpha diagnostics failed because dimensions could not be read.");
+  }
+
+  const alpha = await sharp(imageBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .raw()
+    .toBuffer();
+
+  return analyzeAlphaMask(alpha, metadata.width, metadata.height);
 };
 
 const buildCutoutFromExistingSourceAlpha = async (
@@ -2845,6 +2945,8 @@ const analyzeAlphaMask = (alpha: Buffer, width: number, height: number): Preserv
       };
   const alphaCoveragePercent = totalPixels > 0 ? (alphaCoverage / totalPixels) * 100 : 0;
   const bboxAreaPercent = totalPixels > 0 ? ((bbox.width * bbox.height) / totalPixels) * 100 : 0;
+  const bboxPixels = bbox.width * bbox.height;
+  const bboxFillPercent = bboxPixels > 0 ? (alphaCoverage / bboxPixels) * 100 : 0;
   const largestComponentCoveragePercent = totalPixels > 0 ? (largestComponentPixels / totalPixels) * 100 : 0;
   const largestComponentSharePercent = alphaCoverage > 0 ? (largestComponentPixels / alphaCoverage) * 100 : 0;
   const failureReasons: string[] = [];
@@ -2868,6 +2970,10 @@ const analyzeAlphaMask = (alpha: Buffer, width: number, height: number): Preserv
 
   if (hasForeground && bboxAreaPercent < 0.4) {
     failureReasons.push(`mask bounding box area ${bboxAreaPercent.toFixed(3)}% is too small`);
+  }
+
+  if (hasForeground && bboxAreaPercent > 18 && bboxFillPercent > 88) {
+    failureReasons.push(`mask appears to contain a filled rectangular photo area (${bboxFillPercent.toFixed(1)}% of bounds), not an isolated product`);
   }
 
   if (largestComponentPixels > 0 && largestComponentPixels < minimumForegroundPixels) {
@@ -2894,6 +3000,7 @@ const analyzeAlphaMask = (alpha: Buffer, width: number, height: number): Preserv
     visibleForegroundCoveragePercent: alphaCoveragePercent,
     bbox,
     bboxAreaPercent,
+    bboxFillPercent,
     connectedComponentCount,
     largestComponentPixels,
     largestComponentCoveragePercent,
@@ -3438,6 +3545,144 @@ const assertVisibleProductImage = async (productBuffer: Buffer): Promise<void> =
   }
 };
 
+const removePalePhotoCardFromProductBuffer = async (productBuffer: Buffer): Promise<Buffer> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return productBuffer;
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = rgba[pixel * 4 + 3] ?? 0;
+  }
+
+  const diagnostics = analyzeAlphaMask(alpha, width, height);
+
+  if (diagnostics.bboxAreaPercent < 18 || diagnostics.bboxFillPercent < 82) {
+    return productBuffer;
+  }
+
+  const removable = new Uint8Array(alpha.length);
+  const { bbox } = diagnostics;
+
+  for (let y = bbox.y; y < bbox.y + bbox.height; y += 1) {
+    for (let x = bbox.x; x < bbox.x + bbox.width; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) < 24) {
+        continue;
+      }
+
+      const index = pixel * 4;
+      const r = rgba[index] ?? 0;
+      const g = rgba[index + 1] ?? 0;
+      const b = rgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const gradient = getRgbGradientMagnitude(rgba, width, height, pixel);
+      const smoothWhiteCard = luminance > 225 && saturation < 0.12 && channelSpread < 34;
+      const smoothPaleCard = luminance > 188 && saturation < 0.08 && channelSpread < 24 && gradient < 12;
+
+      if (smoothWhiteCard || smoothPaleCard) {
+        removable[pixel] = 1;
+      }
+    }
+  }
+
+  const queue: number[] = [];
+  const visited = new Uint8Array(alpha.length);
+  const maxX = bbox.x + bbox.width - 1;
+  const maxY = bbox.y + bbox.height - 1;
+  const enqueue = (x: number, y: number): void => {
+    const pixel = y * width + x;
+
+    if (visited[pixel] || !removable[pixel]) {
+      return;
+    }
+
+    visited[pixel] = 1;
+    queue.push(pixel);
+  };
+
+  for (let x = bbox.x; x <= maxX; x += 1) {
+    enqueue(x, bbox.y);
+    enqueue(x, maxY);
+  }
+
+  for (let y = bbox.y; y <= maxY; y += 1) {
+    enqueue(bbox.x, y);
+    enqueue(maxX, y);
+  }
+
+  const cleanedAlpha = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  while (queue.length > 0) {
+    const pixel = queue.pop() as number;
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    cleanedAlpha[pixel] = 0;
+    removedPixels += 1;
+
+    const neighbours = [
+      x > bbox.x ? pixel - 1 : -1,
+      x < maxX ? pixel + 1 : -1,
+      y > bbox.y ? pixel - width : -1,
+      y < maxY ? pixel + width : -1
+    ];
+
+    for (const next of neighbours) {
+      if (next < 0 || visited[next] || !removable[next]) {
+        continue;
+      }
+
+      visited[next] = 1;
+      queue.push(next);
+    }
+  }
+
+  const initialCoverage = getAlphaCoverage(alpha);
+  const cleanedCoverage = getAlphaCoverage(cleanedAlpha);
+
+  if (removedPixels < initialCoverage * 0.08 || cleanedCoverage < initialCoverage * 0.12) {
+    return productBuffer;
+  }
+
+  const cleanedDiagnostics = analyzeAlphaMask(cleanedAlpha, width, height);
+
+  if (cleanedDiagnostics.bboxFillPercent >= diagnostics.bboxFillPercent && cleanedDiagnostics.bboxAreaPercent >= diagnostics.bboxAreaPercent * 0.85) {
+    return productBuffer;
+  }
+
+  console.info("Removed pale rectangular photo-card background from product layer", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    initialBboxFillPercent: diagnostics.bboxFillPercent,
+    cleanedBboxFillPercent: cleanedDiagnostics.bboxFillPercent,
+    initialBboxAreaPercent: diagnostics.bboxAreaPercent,
+    cleanedBboxAreaPercent: cleanedDiagnostics.bboxAreaPercent
+  });
+
+  const cleanedRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), cleanedAlpha, width, height);
+
+  return sharp(cleanedRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+};
+
 const assertCompositeContainsProduct = async (
   backgroundBuffer: Buffer,
   composedImage: Buffer,
@@ -3842,7 +4087,7 @@ export const processImageForProduct = async ({
         sourceDimensions: originalImageDimensions,
         fallbackMode: preserveModeFallback
       })
-    : await processImageFlexibleMode(openAiInput);
+    : await processImageFlexibleMode(openAiInput, processingSettings.preserveFallbackFromStrictMode === true);
   const cutout = cutoutResult.cutout;
   await validateImage(cutout);
 
@@ -3889,6 +4134,7 @@ export const processImageForProduct = async ({
       .toBuffer();
     productMetadata = await sharp(productBuffer).metadata();
   }
+  productBuffer = await removePalePhotoCardFromProductBuffer(productBuffer);
   productBuffer = preserveProductExactly
     ? productBuffer
     : await applyProductLighting(productBuffer, lightingSettings);
@@ -3918,6 +4164,25 @@ export const processImageForProduct = async ({
     Boolean(shadow),
     reframedProduct.autoFixedFraming
   );
+  if (
+    processingSettings.preserveFallbackFromStrictMode === true &&
+    outputValidation.status === "Failed" &&
+    outputValidation.failureReasons.every((reason) => reason.includes("Product coverage"))
+  ) {
+    outputValidation = {
+      ...outputValidation,
+      status: "Needs Review",
+      checks: {
+        ...outputValidation.checks,
+        framing: "Needs Review"
+      },
+      warnings: Array.from(new Set([
+        ...outputValidation.warnings,
+        "Strict preserve fallback produced a clean product layer, but product framing needs review before approval."
+      ])),
+      failureReasons: []
+    };
+  }
 
   if (preserveProductExactly && cutoutResult.preserveDebug) {
     cutoutResult.preserveDebug.outputValidation = outputValidation;
