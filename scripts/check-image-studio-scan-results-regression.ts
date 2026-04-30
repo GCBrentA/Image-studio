@@ -28,7 +28,10 @@ requireIncludes("WordPress scan UI", admin, [
   "queue_selected_scan_results",
   "queue_from_audit_payload",
   "optivra_latest_audit_items",
+  "optivra_latest_audit_remote_enabled",
   "optivra-audit-category-start",
+  "Remote health report unavailable",
+  "Catalogue scan completed locally",
   "Scan complete. No major issues found.",
   "No products found for this scan scope."
 ]);

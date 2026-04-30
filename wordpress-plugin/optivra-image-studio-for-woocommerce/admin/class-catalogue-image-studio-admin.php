@@ -1549,11 +1549,17 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		$usage = $this->get_usage();
+		$remote_enabled = ! is_wp_error($usage);
+		$warnings = [];
 		if (is_wp_error($usage)) {
-			$this->send_audit_wp_error($usage);
+			$warnings[] = sprintf(
+				/* translators: %s: remote API error message. */
+				__('Remote health report unavailable: %s. The local catalogue scan will still show products you can select for the queue.', 'optivra-image-studio-for-woocommerce'),
+				$usage->get_error_message()
+			);
 		}
 
-		$store_id = $this->get_audit_store_id(is_array($usage) ? $usage : []);
+		$store_id = $remote_enabled ? $this->get_audit_store_id(is_array($usage) ? $usage : []) : '';
 		$total_products = $this->plugin->scanner()->count_audit_products($options);
 		$scan_options = $options + [
 			'total_products_estimate' => $total_products,
@@ -1561,18 +1567,29 @@ class Catalogue_Image_Studio_Admin {
 			'woocommerce_version'     => defined('WC_VERSION') ? WC_VERSION : '',
 		];
 
-		$result = $this->plugin->client()->start_image_audit($store_id, $scan_options);
-		if (is_wp_error($result)) {
-			$this->send_audit_wp_error($result, ['store_id' => $store_id]);
+		$result = [];
+		if ($remote_enabled) {
+			$result = $this->plugin->client()->start_image_audit($store_id, $scan_options);
+			if (is_wp_error($result)) {
+				$remote_enabled = false;
+				$warnings[] = sprintf(
+					/* translators: %s: remote API error message. */
+					__('Remote health report unavailable: %s. The local catalogue scan will still show products you can select for the queue.', 'optivra-image-studio-for-woocommerce'),
+					$result->get_error_message()
+				);
+				$result = [];
+			}
 		}
 
 		$scan_id = $this->extract_scan_id(is_array($result) ? $result : []);
 		if ('' === $scan_id) {
-			$this->send_audit_error(__('Optivra did not return a scan ID for this audit.', 'optivra-image-studio-for-woocommerce'));
+			$scan_id = 'local-' . sanitize_key(function_exists('wp_generate_uuid4') ? wp_generate_uuid4() : uniqid('', true));
+			$remote_enabled = false;
 		}
 
 		update_option('optivra_latest_scan_id', $scan_id, false);
 		update_option('optivra_latest_audit_store_id', $store_id, false);
+		update_option('optivra_latest_audit_remote_enabled', $remote_enabled, false);
 		update_option('optivra_scan_in_progress', true, false);
 		update_option('optivra_latest_audit_items', ['scan_id' => $scan_id, 'items' => []], false);
 
@@ -1586,13 +1603,13 @@ class Catalogue_Image_Studio_Admin {
 				'total_products'   => $total_products,
 				'current_batch'    => 0,
 				'errors'           => [],
-				'warnings'         => [],
+				'warnings'         => $warnings,
 				'started_at'       => current_time('mysql'),
-				'message'          => __('Audit scan started. Metadata collection is free and does not use image processing credits.', 'optivra-image-studio-for-woocommerce'),
+				'message'          => $remote_enabled ? __('Audit scan started. Metadata collection is free and does not use image processing credits.', 'optivra-image-studio-for-woocommerce') : __('Local catalogue scan started. You can still review scanned products and add selected images to the queue.', 'optivra-image-studio-for-woocommerce'),
 			]
 		);
 
-		wp_send_json_success(['scan_id' => $scan_id, 'total_products' => $total_products, 'progress' => $progress]);
+		wp_send_json_success(['scan_id' => $scan_id, 'total_products' => $total_products, 'remote_enabled' => $remote_enabled, 'progress' => $progress]);
 	}
 
 	public function ajax_image_audit_batch(): void {
@@ -1610,20 +1627,28 @@ class Catalogue_Image_Studio_Admin {
 
 		$options = $this->get_audit_options_from_ajax();
 		$progress = $this->get_audit_progress();
+		$progress['warnings'] = isset($progress['warnings']) && is_array($progress['warnings']) ? $progress['warnings'] : [];
+		$progress['errors'] = isset($progress['errors']) && is_array($progress['errors']) ? $progress['errors'] : [];
 		$total_products = max(0, (int) ($progress['total_products'] ?? 0));
 		$batch = $this->plugin->scanner()->collect_audit_batch($options, $offset, 25);
 		$items = isset($batch['items']) && is_array($batch['items']) ? $batch['items'] : [];
 		$this->append_audit_scan_items($scan_id, $items);
 
-		foreach (array_chunk($items, 75) as $chunk) {
-			$result = $this->plugin->client()->submit_image_audit_items($scan_id, $chunk);
-			if (is_wp_error($result)) {
-				$progress['status'] = 'failed';
-				$progress['status_label'] = __('Failed', 'optivra-image-studio-for-woocommerce');
-				$progress['message'] = $result->get_error_message();
-				$progress['errors'][] = $result->get_error_message();
-				$this->save_audit_progress($progress);
-				$this->send_audit_wp_error($result, ['scan_id' => $scan_id]);
+		$remote_enabled = (bool) get_option('optivra_latest_audit_remote_enabled', true);
+		if ($remote_enabled) {
+			foreach (array_chunk($items, 75) as $chunk) {
+				$result = $this->plugin->client()->submit_image_audit_items($scan_id, $chunk);
+				if (is_wp_error($result)) {
+					$remote_enabled = false;
+					update_option('optivra_latest_audit_remote_enabled', false, false);
+					$progress['warnings'][] = sprintf(
+						/* translators: %s: remote API error message. */
+						__('Remote report submission failed: %s. The local catalogue scan will continue so products can still be selected for the queue.', 'optivra-image-studio-for-woocommerce'),
+						$result->get_error_message()
+					);
+					$progress['errors'][] = $result->get_error_message();
+					break;
+				}
 			}
 		}
 
@@ -1639,8 +1664,8 @@ class Catalogue_Image_Studio_Admin {
 		$progress['warnings'] = array_values(array_unique(array_merge((array) ($progress['warnings'] ?? []), (array) ($batch['warnings'] ?? []))));
 		$progress['errors'] = array_values(array_unique(array_merge((array) ($progress['errors'] ?? []), (array) ($batch['errors'] ?? []))));
 		$progress['message'] = $done
-			? __('Metadata collection finished. Optivra is calculating the health report.', 'optivra-image-studio-for-woocommerce')
-			: __('Metadata batch submitted successfully.', 'optivra-image-studio-for-woocommerce');
+			? ($remote_enabled ? __('Metadata collection finished. Optivra is calculating the health report.', 'optivra-image-studio-for-woocommerce') : __('Metadata collection finished. Preparing the local scanned products list.', 'optivra-image-studio-for-woocommerce'))
+			: ($remote_enabled ? __('Metadata batch submitted successfully.', 'optivra-image-studio-for-woocommerce') : __('Metadata batch scanned locally.', 'optivra-image-studio-for-woocommerce'));
 		$progress = $this->save_audit_progress($progress);
 
 		wp_send_json_success(['done' => $done, 'next_offset' => $next_offset, 'progress' => $progress]);
@@ -1655,33 +1680,51 @@ class Catalogue_Image_Studio_Admin {
 			$this->send_audit_error(__('This scan is no longer active. Start a new scan and try again.', 'optivra-image-studio-for-woocommerce'));
 		}
 
-		$result = $this->plugin->client()->complete_image_audit($scan_id);
-		if (is_wp_error($result)) {
-			$progress = $this->get_audit_progress();
-			$progress['status'] = 'failed';
-			$progress['status_label'] = __('Failed', 'optivra-image-studio-for-woocommerce');
-			$progress['message'] = $result->get_error_message();
-			$this->save_audit_progress($progress);
-			update_option('optivra_scan_in_progress', false, false);
-			$this->send_audit_wp_error($result, ['scan_id' => $scan_id]);
+		$progress = $this->get_audit_progress();
+		$progress['warnings'] = isset($progress['warnings']) && is_array($progress['warnings']) ? $progress['warnings'] : [];
+		$progress['errors'] = isset($progress['errors']) && is_array($progress['errors']) ? $progress['errors'] : [];
+		$remote_enabled = (bool) get_option('optivra_latest_audit_remote_enabled', true);
+		$result = [];
+		if ($remote_enabled) {
+			$result = $this->plugin->client()->complete_image_audit($scan_id);
+			if (is_wp_error($result)) {
+				$remote_enabled = false;
+				update_option('optivra_latest_audit_remote_enabled', false, false);
+				$progress['warnings'][] = sprintf(
+					/* translators: %s: remote API error message. */
+					__('Remote health report failed: %s. Showing the local scanned products list instead.', 'optivra-image-studio-for-woocommerce'),
+					$result->get_error_message()
+				);
+				$progress['errors'][] = $result->get_error_message();
+				$result = [];
+			}
 		}
 
 		$summary = is_array($result) ? $result : [];
-		$progress = $this->get_audit_progress();
 		$store_id = (string) get_option('optivra_latest_audit_store_id', '');
-		if ('' !== $store_id) {
+		if ($remote_enabled && '' !== $store_id) {
 			$latest = $this->plugin->client()->get_latest_image_audit($store_id);
 			if (! is_wp_error($latest) && is_array($latest)) {
 				$summary = $latest;
 			}
 		}
-		$full_report = $this->plugin->client()->get_image_audit($scan_id);
-		if (! is_wp_error($full_report) && is_array($full_report)) {
-			$summary = $full_report;
+		if ($remote_enabled) {
+			$full_report = $this->plugin->client()->get_image_audit($scan_id);
+			if (! is_wp_error($full_report) && is_array($full_report)) {
+				$summary = $full_report;
+			}
 		}
 		$local_items = $this->get_cached_audit_scan_items($scan_id);
 		if (! empty($local_items)) {
 			$summary['_local_scan_items'] = $local_items;
+		}
+		if (empty($summary)) {
+			$summary = [
+				'scan'     => ['id' => $scan_id],
+				'products' => $local_items,
+				'images'   => $local_items,
+				'summary'  => empty($local_items) ? __('No products found for this scan scope.', 'optivra-image-studio-for-woocommerce') : __('Catalogue scan completed. Review scanned products and choose which images to add to the queue.', 'optivra-image-studio-for-woocommerce'),
+			];
 		}
 		$score = $this->extract_health_score($summary);
 		update_option('optivra_latest_health_score', $score, false);
@@ -1691,7 +1734,7 @@ class Catalogue_Image_Studio_Admin {
 
 		$progress['status'] = 'completed';
 		$progress['status_label'] = __('Completed', 'optivra-image-studio-for-woocommerce');
-		$progress['message'] = __('Product Image Health Report completed. Scanning did not consume image processing credits.', 'optivra-image-studio-for-woocommerce');
+		$progress['message'] = $remote_enabled ? __('Product Image Health Report completed. Scanning did not consume image processing credits.', 'optivra-image-studio-for-woocommerce') : __('Catalogue scan completed locally. Review scanned products and add selected images to the queue.', 'optivra-image-studio-for-woocommerce');
 		$progress['completed_at'] = current_time('mysql');
 		$progress = $this->save_audit_progress($progress);
 
