@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
+import { isIP } from "net";
 import path from "path";
 import { optivraContentSecurityPolicyDirectives } from "./config/contentSecurityPolicy";
 import { env } from "./config/env";
@@ -86,6 +87,63 @@ app.get("/sitemap.xml", (_request, response) => {
 app.use("/assets", express.static(path.resolve(process.cwd(), "public", "site", "assets")));
 app.use("/downloads", staticDownloadAnalytics, express.static(path.resolve(process.cwd(), "public", "site", "downloads"), { redirect: false }));
 app.use("/processed-images", express.static(path.resolve(process.cwd(), "storage", "processed-images")));
+
+const isBlockedProxyImageHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  if (["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(host)) return true;
+  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (isIP(host) === 4) {
+    const [a, b] = host.split(".").map((part) => Number(part));
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  return false;
+};
+
+app.get("/api/image-proxy", async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    const rawUrl = typeof request.query.url === "string" ? request.query.url : "";
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      response.status(400).json({ error: "Invalid image URL" });
+      return;
+    }
+    if (!["http:", "https:"].includes(parsed.protocol) || isBlockedProxyImageHost(parsed.hostname)) {
+      response.status(400).json({ error: "Unsupported image URL" });
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const upstream = await fetch(parsed.toString(), {
+      signal: controller.signal,
+      headers: {
+        "accept": "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8,*/*;q=0.5",
+        "user-agent": "OptivraImageStudio/1.0"
+      }
+    }).finally(() => clearTimeout(timeout));
+
+    const contentType = upstream.headers.get("content-type") || "";
+    const contentLength = Number(upstream.headers.get("content-length") || 0);
+    if (!upstream.ok || !contentType.toLowerCase().startsWith("image/") || contentLength > 8_000_000) {
+      response.status(502).json({ error: "Image could not be loaded" });
+      return;
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    if (buffer.byteLength > 8_000_000) {
+      response.status(413).json({ error: "Image is too large" });
+      return;
+    }
+
+    response.setHeader("content-type", contentType);
+    response.setHeader("cache-control", "public, max-age=86400, stale-while-revalidate=604800");
+    response.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/account/dashboard", (request, response, next) => {
   const wantsHtml = request.accepts(["html", "json"]) === "html";

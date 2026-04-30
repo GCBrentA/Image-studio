@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 const admin = readFileSync("wordpress-plugin/optivra-image-studio-for-woocommerce/admin/class-catalogue-image-studio-admin.php", "utf8");
 const css = readFileSync("wordpress-plugin/optivra-image-studio-for-woocommerce/assets/admin.css", "utf8");
 const service = readFileSync("src/services/imageAuditService.ts", "utf8");
+const app = readFileSync("src/app.ts", "utf8");
 const portalApp = readFileSync("public/site/assets/app.js", "utf8");
 const portalStyles = readFileSync("public/site/assets/styles.css", "utf8");
 
@@ -62,7 +63,8 @@ requireIncludes("Scan results styling", css, [
   ".optivra-admin-app .optivra-scan-results-summary",
   ".optivra-admin-app .optivra-scanned-products-table-wrap",
   ".optivra-admin-app .optivra-row-actions",
-  "repeat(auto-fit, minmax(320px, 1fr))"
+  "repeat(auto-fit, minmax(320px, 1fr))",
+  ".optivra-background-preset-muted"
 ]);
 
 requireIncludes("Preserve settings respected", admin, [
@@ -70,6 +72,16 @@ requireIncludes("Preserve settings respected", admin, [
   "'preserveProductExactly' => $preserve_product_exactly",
   "'autoFailIfProductAltered' => $preserve_product_exactly && ! empty($settings['auto_fail_product_altered'])",
   "standard_ecommerce_cleanup"
+]);
+
+requireIncludes("Custom background respected for audit queue jobs", admin, [
+  "$custom_background_attachment_id = absint($settings['custom_background_attachment_id'] ?? 0)",
+  "$uses_custom_background = 'custom' === $background_source",
+  "$is_audit_job && ! $uses_custom_background",
+  "! $uses_custom_background && empty($options['background_image_url'])",
+  "'customBackgroundUrl' => $custom_background_url ?: null",
+  "backgroundSource.value = 'custom'",
+  "syncBackgroundMode"
 ]);
 
 requireIncludes("Backend report response", service, [
@@ -84,11 +96,14 @@ requireIncludes("Backend report response", service, [
 requireIncludes("Portal health report images", portalApp, [
   "normalizeReportTopImages",
   "normalizeImageSourceUrl",
+  "proxiedImageSourceUrl",
+  "hydrateAttentionImages",
   "report.products",
   "report.images",
   "thumbnailUrl",
   "thumbnail_url",
-  "referrerpolicy=\"no-referrer\"",
+  "data-attention-image",
+  "/api/image-proxy?url=",
   "renderAttentionImage",
   "attention-image-fallback"
 ]);
@@ -115,9 +130,18 @@ requireIncludes("Portal account dropdown", portalApp, [
 requireIncludes("Portal thumbnail styling", portalStyles, [
   ".attention-image-frame",
   ".attention-image-fallback",
+  ".attention-image-frame.has-image",
+  ".attention-image-frame.is-missing img",
   ".attention-image-fallback[hidden]",
   ".account-dropdown.is-open",
   "z-index: 10000"
+]);
+
+requireIncludes("Portal image proxy", app, [
+  "/api/image-proxy",
+  "isBlockedProxyImageHost",
+  "content-type",
+  "Image could not be loaded"
 ]);
 
 console.log("Image Studio scan results regression guard passed.");

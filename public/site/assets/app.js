@@ -1994,6 +1994,7 @@ async function loadReports() {
       const report = await api(`/api/image-studio/audits/${encodeURIComponent(selectedScanId)}`);
       window.optivraCurrentReport = report;
       root.innerHTML = portalShell("Full Health Report", "Premium catalogue audit with recommendations, ROI, performance and safety insights.", "reports", renderHealthReportDetail(report));
+      hydrateAttentionImages(root);
       return;
     }
 
@@ -2539,6 +2540,52 @@ function normalizeImageSourceUrl(value) {
   return "";
 }
 
+function proxiedImageSourceUrl(value) {
+  const raw = firstText(value);
+  if (!/^https?:\/\//i.test(raw)) return "";
+  return `/api/image-proxy?url=${encodeURIComponent(raw)}`;
+}
+
+function hydrateAttentionImages(root = document) {
+  root.querySelectorAll(".attention-image-frame[data-attention-image-frame]").forEach((frame) => {
+    const img = frame.querySelector("img[data-attention-image]");
+    if (!img || img.dataset.attentionBound === "1") return;
+    img.dataset.attentionBound = "1";
+
+    const showImage = () => {
+      frame.classList.add("has-image");
+      frame.classList.remove("is-missing");
+    };
+    const showFallback = () => {
+      frame.classList.remove("has-image");
+      frame.classList.add("is-missing");
+    };
+    const tryProxy = () => {
+      const proxySrc = img.getAttribute("data-proxy-src") || "";
+      if (proxySrc && img.getAttribute("src") !== proxySrc) {
+        img.setAttribute("src", proxySrc);
+        return true;
+      }
+      return false;
+    };
+
+    img.addEventListener("load", () => {
+      if (img.naturalWidth > 0) showImage();
+    });
+    img.addEventListener("error", () => {
+      if (!tryProxy()) showFallback();
+    });
+
+    if (img.complete) {
+      if (img.naturalWidth > 0) {
+        showImage();
+      } else if (!tryProxy()) {
+        showFallback();
+      }
+    }
+  });
+}
+
 function buildSimpleHealthSummary(report) {
   const metrics = report.metrics || {};
   const issues = numeric(report.issue_summary?.total || metrics.issue_count);
@@ -2758,10 +2805,11 @@ function renderAttentionImage(item) {
   const imageUrl = normalizeImageSourceUrl(firstText(item.image_url, item.thumbnailUrl, item.thumbnail_url, item.imageUrl));
   const fallback = `<div class="attention-image-fallback" aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>`;
   if (!imageUrl) return fallback;
+  const proxyUrl = proxiedImageSourceUrl(imageUrl);
   return `
-    <div class="attention-image-frame">
-      <img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.closest('.attention-image-frame').classList.add('has-image');" onerror="const fallback=this.nextElementSibling; this.remove(); if (fallback) fallback.hidden=false;" />
-      <div class="attention-image-fallback" hidden aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>
+    <div class="attention-image-frame" data-attention-image-frame>
+      ${fallback}
+      <img data-attention-image src="${escapeHtml(imageUrl)}" data-proxy-src="${escapeHtml(proxyUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
     </div>
   `;
 }

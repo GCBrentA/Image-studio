@@ -208,6 +208,22 @@ class Catalogue_Image_Studio_Admin {
 				if (overwrite) {
 					overwrite.addEventListener('change', function() { syncSeoMetadataToggles(overwrite); });
 				}
+				var backgroundSource = document.querySelector('select[name=\"background_source\"]');
+				var backgroundPreset = document.querySelector('select[name=\"background_preset\"]');
+				function syncBackgroundMode() {
+					if (!backgroundSource || !backgroundPreset) {
+						return;
+					}
+					var presetRow = backgroundPreset.closest('.optivra-setting-row');
+					if (presetRow) {
+						presetRow.classList.toggle('optivra-background-preset-muted', backgroundSource.value === 'custom');
+					}
+					backgroundPreset.setAttribute('aria-disabled', backgroundSource.value === 'custom' ? 'true' : 'false');
+				}
+				if (backgroundSource) {
+					backgroundSource.addEventListener('change', syncBackgroundMode);
+					syncBackgroundMode();
+				}
 				var button = document.getElementById('catalogue-image-studio-pick-background');
 				var removeButton = document.getElementById('catalogue-image-studio-remove-background');
 				if (!button || typeof wp === 'undefined' || !wp.media) {
@@ -256,6 +272,10 @@ class Catalogue_Image_Studio_Admin {
 						var attachment = selection.toJSON();
 						if (attachmentField) {
 							attachmentField.value = String(attachment.id || '');
+						}
+						if (backgroundSource && attachment.id) {
+							backgroundSource.value = 'custom';
+							syncBackgroundMode();
 						}
 						if (preview && attachment.url) {
 							preview.src = attachment.url;
@@ -5933,8 +5953,10 @@ class Catalogue_Image_Studio_Admin {
 		$is_audit_job = 'audit_report' === (string) ($job['audit_source'] ?? '');
 		$preserve_product_exactly = ! empty($settings['preserve_product_exactly']);
 		$processing_mode = (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve');
+		$custom_background_attachment_id = absint($settings['custom_background_attachment_id'] ?? 0);
+		$uses_custom_background = 'custom' === $background_source;
 
-		if ($is_audit_job && ! empty($job['audit_background_preset'])) {
+		if ($is_audit_job && ! $uses_custom_background && ! empty($job['audit_background_preset'])) {
 			$background_preset = $this->sanitize_background_preset((string) $job['audit_background_preset']);
 			$background_source = 'preset';
 		}
@@ -5946,14 +5968,14 @@ class Catalogue_Image_Studio_Admin {
 		$options = [];
 		$custom_background_url = '';
 		if ('custom' === $background_source) {
-			$custom_background_url = (string) wp_get_attachment_url(absint($settings['custom_background_attachment_id'] ?? 0));
+			$custom_background_url = (string) wp_get_attachment_url($custom_background_attachment_id);
 			if ($custom_background_url) {
 				$options['background_image_url'] = $custom_background_url;
-				$options['background_attachment_id'] = absint($settings['custom_background_attachment_id'] ?? 0);
+				$options['background_attachment_id'] = $custom_background_attachment_id;
 			}
 		}
 
-		if (empty($options['background_image_url'])) {
+		if (! $uses_custom_background && empty($options['background_image_url'])) {
 			$options['background'] = $this->resolve_background_value($background_preset);
 		}
 
@@ -5981,7 +6003,7 @@ class Catalogue_Image_Studio_Admin {
 				'source'              => $background_source,
 				'preset'              => $background_preset,
 				'customBackgroundUrl' => $custom_background_url ?: null,
-				'customBackgroundId'  => absint($settings['custom_background_attachment_id'] ?? 0) ?: null,
+				'customBackgroundId'  => $custom_background_attachment_id ?: null,
 			],
 			'framing' => [
 				'mode'                     => $scale_mode,

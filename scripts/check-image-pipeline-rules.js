@@ -46,6 +46,9 @@ assert.match(backgroundRemoval, /processImageFlexibleMode|flexible-cutout|Backgr
 
 assert.match(imageController, /deductCredit[\s\S]*if \(!result\.creditDeductionRequired\)[\s\S]*const deduction = await deductCredit/s, "credits are deducted only after processing success");
 assert.match(imageController, /catch \(error\)[\s\S]*response\.status\(422\)/s, "failed processing returns without deducting credit");
+assert.match(imageController, /Strict preserve mode failed; retrying with review-required standard output/, "strict preserve failures fall back to a review-required output");
+assert.match(imageController, /preserveFallbackFromStrictMode: true/, "preserve fallback is marked in processing settings");
+assert.match(imageController, /preserve_fallback: true/, "preserve fallback responses are explicit");
 assert.doesNotMatch(approvalManager, /process\(/, "approval manager does not auto-process or auto-apply failed outputs");
 
 assert.match(pluginAdmin, /Product Preservation:/, "review UI shows product preservation status");

@@ -2465,8 +2465,12 @@ pre {
 }
 .attention-card img {
   display: block;
+  position: absolute;
+  inset: 0;
   object-fit: contain;
   background: #fff;
+  opacity: 0;
+  transition: opacity 0.18s ease;
 }
 .attention-image-fallback {
   display: grid;
@@ -2484,6 +2488,11 @@ pre {
   border: 0;
   border-radius: 0;
 }
+.attention-image-frame.has-image img {
+  opacity: 1;
+}
+.attention-image-frame.has-image .attention-image-fallback,
+.attention-image-frame.is-missing img,
 .attention-image-fallback[hidden] {
   display: none !important;
 }
