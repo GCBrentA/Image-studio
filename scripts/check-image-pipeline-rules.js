@@ -25,6 +25,8 @@ assert.match(imageProcessing, /throw new PreserveModeProcessingError\(failureRea
 assert.match(imageProcessing, /repairInteriorProductDropouts/, "preserve mode has an interior dropout repair stage");
 assert.match(imageProcessing, /validatePreserveModeProgrammatic/, "preserve mode has strict programmatic validation");
 assert.match(imageProcessing, /runPreserveVisionQa/, "preserve mode has strict vision QA");
+assert.match(imageProcessing, /buildCutoutFromExistingSourceAlpha/, "standard/fallback mode uses existing transparent PNG alpha before AI cutout");
+assert.match(imageProcessing, /source-alpha:transparent-product-png/, "source alpha cutouts are tracked as a distinct provider");
 assert.match(imageProcessing, /secondOpinionForegroundPercent[\s\S]*productLikePercent[\s\S]*backgroundLikePercent[\s\S]*bridgesForeground/, "interior dropout repair uses structural and second-opinion evidence");
 assert.match(imageProcessing, /originalRgb[\s\S]*repairedAlpha\[pixel\] = 255/, "interior restoration restores original source pixels through the preserve alpha mask");
 assert.match(imageProcessing, /applyApprovedAlphaToOriginalPixels/, "final preserve product layer is original pixels cut by an approved alpha mask");

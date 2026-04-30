@@ -655,8 +655,44 @@ const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<B
     .toBuffer();
 
 const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResult> => {
+  const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(openAiInput);
+
+  if (sourceAlphaCutout) {
+    return {
+      cutout: sourceAlphaCutout,
+      debugCutout: sourceAlphaCutout,
+      provider: "source-alpha:transparent-product-png",
+      attempts: 0,
+      validation: {
+        alphaCoverage: await getImageAlphaCoverage(sourceAlphaCutout),
+        foregroundMeanDelta: 0
+      }
+    };
+  }
+
   const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
   await validateImage(aiCutout);
+
+  try {
+    const sourceDimensions = await getImageDimensions(openAiInput);
+    const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
+
+    return await buildPreservedProductCutoutFromAlpha(
+      openAiInput,
+      aiAlpha,
+      `openai:${openAiImageEditModel}:flexible-cutout-clean-alpha`,
+      1,
+      {
+        allowLocalAssist: true,
+        maskSource: "ai_mask",
+        removeBackgroundRemnants: true
+      }
+    );
+  } catch (error) {
+    console.warn("Flexible cutout alpha cleanup fell back to raw AI cutout", {
+      reason: error instanceof Error ? error.message : "Unknown alpha cleanup error"
+    });
+  }
 
   return {
     cutout: aiCutout,
@@ -668,6 +704,41 @@ const processImageFlexibleMode = async (openAiInput: Buffer): Promise<CutoutResu
       foregroundMeanDelta: 0
     }
   };
+};
+
+const buildCutoutFromExistingSourceAlpha = async (
+  sourceBuffer: Buffer
+): Promise<Buffer | null> => {
+  const metadata = await sharp(sourceBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return null;
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const sourceRgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
+  const sourceRgb = rgbaToRgb(sourceRgba);
+  const sourceAlpha = await sharp(sourceBuffer).ensureAlpha().extractChannel("alpha").raw().toBuffer();
+  const safeAlpha = keepMainAlphaComponents(thresholdAlphaMask(sourceAlpha, 96), width, height);
+  const coverage = getAlphaCoverage(safeAlpha);
+  const totalPixels = width * height;
+
+  if (coverage < Math.max(2500, totalPixels * 0.002) || coverage > totalPixels * 0.75) {
+    return null;
+  }
+
+  const productRgba = applyApprovedAlphaToOriginalPixels(sourceRgb, safeAlpha, width, height);
+
+  return sharp(productRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
 };
 
 const processImagePreserveMode = async (

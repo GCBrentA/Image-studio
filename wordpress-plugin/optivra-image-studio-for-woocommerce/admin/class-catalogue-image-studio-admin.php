@@ -5955,13 +5955,14 @@ class Catalogue_Image_Studio_Admin {
 		$processing_mode = (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve');
 		$custom_background_attachment_id = absint($settings['custom_background_attachment_id'] ?? 0);
 		$uses_custom_background = 'custom' === $background_source;
+		$strict_preserve_guard = $preserve_product_exactly && ! $is_audit_job && ! empty($settings['auto_fail_product_altered']);
 
 		if ($is_audit_job && ! $uses_custom_background && ! empty($job['audit_background_preset'])) {
 			$background_preset = $this->sanitize_background_preset((string) $job['audit_background_preset']);
 			$background_source = 'preset';
 		}
 
-		if (! $preserve_product_exactly && 'seo_product_feed_preserve' === $processing_mode) {
+		if (! $strict_preserve_guard && 'seo_product_feed_preserve' === $processing_mode) {
 			$processing_mode = 'standard_ecommerce_cleanup';
 		}
 
@@ -5984,13 +5985,22 @@ class Catalogue_Image_Studio_Admin {
 			$options['scale_percent'] = (int) $scale_percent;
 		}
 
+		$shadow_mode = (string) ($settings['shadow_mode'] ?? 'under');
+		$shadow_strength = (string) ($settings['shadow_strength'] ?? 'medium');
+		if ($is_audit_job) {
+			$shadow_mode = 'under';
+			$shadow_strength = 'light';
+		}
+
 		$options['settings'] = [
-			'preserveProductExactly' => $preserve_product_exactly,
+			'preserveProductExactly' => $strict_preserve_guard,
+			'preserveProductIntent' => $preserve_product_exactly,
+			'preserveFallbackFromStrictMode' => $preserve_product_exactly && ! $strict_preserve_guard,
 			'processingMode' => $processing_mode,
 			'promptVersion' => 'ecommerce_preserve_v2',
-			'autoFailIfProductAltered' => $preserve_product_exactly && ! empty($settings['auto_fail_product_altered']),
+			'autoFailIfProductAltered' => $strict_preserve_guard,
 			'autoFixCropSpacing' => ! empty($settings['auto_fix_crop_spacing']),
-			'preserveDarkDetail' => $preserve_product_exactly && ! empty($settings['preserve_dark_detail']),
+			'preserveDarkDetail' => $strict_preserve_guard && ! empty($settings['preserve_dark_detail']),
 			'requireReviewBeforeReplace' => true,
 			'auditReportSource' => $is_audit_job,
 			'auditActionType' => (string) ($job['audit_action_type'] ?? ''),
@@ -6014,8 +6024,8 @@ class Catalogue_Image_Studio_Admin {
 				'preserveTransparentEdges' => ! empty($settings['preserve_transparent_edges']),
 			],
 			'shadow' => [
-				'mode'     => (string) ($settings['shadow_mode'] ?? 'under'),
-				'strength' => (string) ($settings['shadow_strength'] ?? 'medium'),
+				'mode'     => $shadow_mode,
+				'strength' => $shadow_strength,
 				'opacity'  => (int) ($settings['shadow_opacity'] ?? 23),
 				'blur'     => (int) ($settings['shadow_blur'] ?? 22),
 				'offsetX'  => (int) ($settings['shadow_offset_x'] ?? 0),

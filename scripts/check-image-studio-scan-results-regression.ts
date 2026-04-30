@@ -69,8 +69,13 @@ requireIncludes("Scan results styling", css, [
 
 requireIncludes("Preserve settings respected", admin, [
   "$preserve_product_exactly = ! empty($settings['preserve_product_exactly'])",
-  "'preserveProductExactly' => $preserve_product_exactly",
-  "'autoFailIfProductAltered' => $preserve_product_exactly && ! empty($settings['auto_fail_product_altered'])",
+  "$strict_preserve_guard = $preserve_product_exactly && ! $is_audit_job && ! empty($settings['auto_fail_product_altered'])",
+  "'preserveProductExactly' => $strict_preserve_guard",
+  "'preserveProductIntent' => $preserve_product_exactly",
+  "'preserveFallbackFromStrictMode' => $preserve_product_exactly && ! $strict_preserve_guard",
+  "'autoFailIfProductAltered' => $strict_preserve_guard",
+  "if ($is_audit_job) {\n\t\t\t$shadow_mode = 'under';",
+  "$shadow_strength = 'light'",
   "standard_ecommerce_cleanup"
 ]);
 
