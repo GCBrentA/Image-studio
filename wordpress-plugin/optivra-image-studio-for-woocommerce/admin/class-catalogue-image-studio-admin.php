@@ -5931,10 +5931,16 @@ class Catalogue_Image_Studio_Admin {
 		$scale_mode = (string) ($settings['product_fit'] ?? $settings['default_scale_mode'] ?? $settings['scale_mode'] ?? 'auto');
 		$background_source = (string) ($settings['background_source'] ?? 'preset');
 		$is_audit_job = 'audit_report' === (string) ($job['audit_source'] ?? '');
+		$preserve_product_exactly = ! empty($settings['preserve_product_exactly']);
+		$processing_mode = (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve');
 
 		if ($is_audit_job && ! empty($job['audit_background_preset'])) {
 			$background_preset = $this->sanitize_background_preset((string) $job['audit_background_preset']);
 			$background_source = 'preset';
+		}
+
+		if (! $preserve_product_exactly && 'seo_product_feed_preserve' === $processing_mode) {
+			$processing_mode = 'standard_ecommerce_cleanup';
 		}
 
 		$options = [];
@@ -5957,12 +5963,12 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		$options['settings'] = [
-			'preserveProductExactly' => $is_audit_job ? true : ! empty($settings['preserve_product_exactly']),
-			'processingMode' => $is_audit_job ? 'seo_product_feed_preserve' : (string) ($settings['processing_mode'] ?? 'seo_product_feed_preserve'),
+			'preserveProductExactly' => $preserve_product_exactly,
+			'processingMode' => $processing_mode,
 			'promptVersion' => 'ecommerce_preserve_v2',
-			'autoFailIfProductAltered' => $is_audit_job ? true : ! empty($settings['auto_fail_product_altered']),
+			'autoFailIfProductAltered' => $preserve_product_exactly && ! empty($settings['auto_fail_product_altered']),
 			'autoFixCropSpacing' => ! empty($settings['auto_fix_crop_spacing']),
-			'preserveDarkDetail' => $is_audit_job ? true : ! empty($settings['preserve_dark_detail']),
+			'preserveDarkDetail' => $preserve_product_exactly && ! empty($settings['preserve_dark_detail']),
 			'requireReviewBeforeReplace' => true,
 			'auditReportSource' => $is_audit_job,
 			'auditActionType' => (string) ($job['audit_action_type'] ?? ''),

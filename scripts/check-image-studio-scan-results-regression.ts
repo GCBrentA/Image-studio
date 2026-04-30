@@ -61,7 +61,15 @@ requireIncludes("Scan results styling", css, [
   ".optivra-admin-app .optivra-scan-results",
   ".optivra-admin-app .optivra-scan-results-summary",
   ".optivra-admin-app .optivra-scanned-products-table-wrap",
-  ".optivra-admin-app .optivra-row-actions"
+  ".optivra-admin-app .optivra-row-actions",
+  "repeat(auto-fit, minmax(320px, 1fr))"
+]);
+
+requireIncludes("Preserve settings respected", admin, [
+  "$preserve_product_exactly = ! empty($settings['preserve_product_exactly'])",
+  "'preserveProductExactly' => $preserve_product_exactly",
+  "'autoFailIfProductAltered' => $preserve_product_exactly && ! empty($settings['auto_fail_product_altered'])",
+  "standard_ecommerce_cleanup"
 ]);
 
 requireIncludes("Backend report response", service, [
