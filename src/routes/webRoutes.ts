@@ -40,6 +40,7 @@ const webPaths = new Set([
   "/reports",
   "/recommendations",
   "/queue",
+  "/before-after",
   "/analytics",
   "/backgrounds",
   "/seo-tools",
@@ -482,6 +483,12 @@ const metaForPath = (requestPath: string): PageMeta => {
       title: "Queue | Optivra Image Studio",
       description: "Private product image processing queue workspace.",
       canonicalPath: "/queue",
+      robots: privateRobots
+    },
+    "/before-after": {
+      title: "Before & After | Optivra Image Studio",
+      description: "Private original and processed product image comparison workspace.",
+      canonicalPath: "/before-after",
       robots: privateRobots
     },
     "/analytics": {

@@ -2076,6 +2076,114 @@
 	font-weight: 850;
 }
 
+.optivra-admin-app .optivra-scan-results {
+	display: grid;
+	gap: 18px;
+}
+
+.optivra-admin-app .optivra-scan-results-summary {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 180px;
+	gap: 18px;
+	align-items: center;
+	padding: 20px;
+	background: #fff;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+}
+
+.optivra-admin-app .optivra-scan-results-summary h2 {
+	margin: 10px 0 8px;
+	color: var(--optivra-ink);
+	font-size: 22px;
+	line-height: 1.2;
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-scan-results-summary p {
+	margin: 0 0 14px;
+	color: var(--optivra-muted);
+	font-size: 14px;
+	line-height: 1.55;
+}
+
+.optivra-admin-app .optivra-scan-result-score {
+	min-height: 140px;
+}
+
+.optivra-admin-app .optivra-scan-result-score strong {
+	font-size: 48px;
+}
+
+.optivra-admin-app .optivra-scan-result-counts,
+.optivra-admin-app .optivra-scanned-products-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.optivra-admin-app .optivra-scan-result-counts span {
+	display: inline-flex;
+	gap: 6px;
+	align-items: baseline;
+	padding: 8px 12px;
+	background: #f8fafc;
+	border: 1px solid var(--optivra-line);
+	border-radius: 999px;
+	color: var(--optivra-muted);
+	font-size: 13px;
+	font-weight: 750;
+}
+
+.optivra-admin-app .optivra-scan-result-counts strong {
+	color: var(--optivra-ink);
+	font-size: 15px;
+}
+
+.optivra-admin-app .optivra-scanned-products-toolbar h3 {
+	margin: 0 0 4px;
+	color: var(--optivra-ink);
+	font-size: 18px;
+	font-weight: 850;
+}
+
+.optivra-admin-app .optivra-scanned-products-toolbar p {
+	margin: 0;
+	color: var(--optivra-muted);
+}
+
+.optivra-admin-app .optivra-scanned-products-table-wrap {
+	overflow-x: auto;
+	border: 1px solid var(--optivra-line);
+	border-radius: var(--optivra-radius);
+	background: #fff;
+}
+
+.optivra-admin-app .optivra-scanned-products-table {
+	border: 0;
+}
+
+.optivra-admin-app .optivra-scanned-products-table th,
+.optivra-admin-app .optivra-scanned-products-table td {
+	vertical-align: middle;
+}
+
+.optivra-admin-app .optivra-mini-pill-list,
+.optivra-admin-app .optivra-row-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+}
+
+.optivra-admin-app .optivra-row-actions .button {
+	min-height: 30px;
+	line-height: 28px;
+}
+
 .optivra-admin-app .optivra-score-grid {
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -2741,6 +2849,7 @@
 	.optivra-admin-app .optivra-category-picker > div,
 	.optivra-admin-app .optivra-progress-grid,
 	.optivra-admin-app .optivra-report-hero,
+	.optivra-admin-app .optivra-scan-results-summary,
 	.optivra-admin-app .optivra-report-meta-grid,
 	.optivra-admin-app .optivra-score-grid,
 	.optivra-admin-app .optivra-category-row,

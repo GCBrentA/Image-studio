@@ -140,10 +140,79 @@ const main = async (): Promise<void> => {
       headers,
       body: JSON.stringify({})
     });
-    const completeBody = await complete.json() as { ok?: boolean; status?: string; error?: string };
+    const completeBody = await complete.json() as {
+      ok?: boolean;
+      status?: string;
+      error?: string;
+      products?: unknown[];
+      images?: unknown[];
+      recommendationPills?: unknown[];
+      healthReport?: { overallScore?: number };
+      overallScore?: number;
+    };
     assert.equal(complete.status, 200, `Audit complete should succeed: ${JSON.stringify(completeBody)}`);
     assert.equal(completeBody.ok, true, "Audit complete should return ok true");
     assert.equal(completeBody.status, "completed", "Audit complete should return completed status");
+    assert.equal(Array.isArray(completeBody.products), true, "Audit complete should return normalized scanned products");
+    assert.equal(completeBody.products?.length, 100, "Audit complete should include all scanned product/image rows");
+    assert.equal(Array.isArray(completeBody.images), true, "Audit complete should return normalized scanned images alias");
+    assert.equal(Array.isArray(completeBody.recommendationPills), true, "Audit complete should return recommendation pills");
+    assert.equal(typeof (completeBody.healthReport?.overallScore ?? completeBody.overallScore), "number", "Audit complete should return a health report score");
+
+    const categoryStart = await fetch(`${baseUrl}/api/image-studio/audits/start`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        source: "woocommerce",
+        scan_options: {
+          scan_scope: "categories",
+          category_ids: ["cat-shoes"],
+          total_products_estimate: 3
+        }
+      })
+    });
+    const categoryStartBody = await categoryStart.json() as { scan_id?: string; status?: string; error?: string };
+    assert.equal(categoryStart.status, 201, `Category audit start should succeed: ${JSON.stringify(categoryStartBody)}`);
+    assert.ok(categoryStartBody.scan_id, "Category audit start should return scan_id");
+
+    const categoryItems = await fetch(`${baseUrl}/api/image-studio/audits/${encodeURIComponent(categoryStartBody.scan_id)}/items`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        items: Array.from({ length: 3 }, (_, index) => ({
+          product_id: `cat-product-${index}`,
+          product_name: `Category Test Product ${index}`,
+          product_url: `http://localhost/product/category-test-product-${index}`,
+          image_id: `cat-image-${index}`,
+          image_url: `http://localhost/wp-content/uploads/category-test-product-${index}.jpg`,
+          image_role: "main",
+          category_ids: ["cat-shoes"],
+          category_names: ["Category QA"],
+          filename: `category-test-product-${index}.jpg`,
+          mime_type: "image/jpeg",
+          width: 1200,
+          height: 1200,
+          file_size_bytes: 102400,
+          alt_text: `Category test product ${index}`
+        }))
+      })
+    });
+    const categoryItemsBody = await categoryItems.json() as { inserted?: number; error?: string };
+    assert.equal(categoryItems.status, 201, `Category audit items should be accepted: ${JSON.stringify(categoryItemsBody)}`);
+    assert.equal(categoryItemsBody.inserted, 3, "Category audit should insert only category-scoped rows sent by the plugin");
+
+    const categoryComplete = await fetch(`${baseUrl}/api/image-studio/audits/${encodeURIComponent(categoryStartBody.scan_id)}/complete`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({})
+    });
+    const categoryCompleteBody = await categoryComplete.json() as { ok?: boolean; status?: string; products?: Array<Record<string, unknown>>; recommendationPills?: unknown[]; error?: string };
+    assert.equal(categoryComplete.status, 200, `Category audit complete should succeed: ${JSON.stringify(categoryCompleteBody)}`);
+    assert.equal(categoryCompleteBody.ok, true, "Category audit complete should return ok true");
+    assert.equal(categoryCompleteBody.status, "completed", "Category audit complete should return completed status");
+    assert.equal(categoryCompleteBody.products?.length, 3, "Category audit report should include only the submitted category products");
+    assert.equal(categoryCompleteBody.products?.every((product) => product.categoryName === "Category QA"), true, "Category audit products should preserve category context");
+    assert.equal(Array.isArray(categoryCompleteBody.recommendationPills), true, "Category audit complete should return recommendation pills even for healthy scans");
 
     const phpClientOutput = await runPhpWordPressClientCheck(baseUrl, token);
     const phpClientBody = JSON.parse(phpClientOutput) as { ok?: boolean; scan_id?: string; status?: string };
@@ -156,6 +225,9 @@ const main = async (): Promise<void> => {
       usage_store_id: usageBody.store_id,
       scan_id: startBody.scan_id,
       scan_status: completeBody.status,
+      scanned_products_returned: completeBody.products?.length ?? 0,
+      recommendation_pills_returned: completeBody.recommendationPills?.length ?? 0,
+      category_scan_products_returned: categoryCompleteBody.products?.length ?? 0,
       wordpress_client_scan_id: phpClientBody.scan_id,
       stale_store_id_overridden: true
     }, null, 2));

@@ -1636,6 +1636,127 @@ const getMetricNumber = (metrics: Record<string, unknown>, key: string): number 
   return typeof value === "number" && Number.isFinite(value) ? value : Number(value ?? 0) || 0;
 };
 
+const issueSeverityRank = (severity: string | null | undefined): number => {
+  switch (severity) {
+    case "critical":
+      return 5;
+    case "high":
+      return 4;
+    case "medium":
+      return 3;
+    case "low":
+      return 2;
+    default:
+      return 1;
+  }
+};
+
+const statusFromIssues = (issues: AuditIssue[]): { status: string; readiness: string; recommended: boolean } => {
+  const highest = issues.reduce((top, issue) => issueSeverityRank(issue.severity) > issueSeverityRank(top) ? issue.severity : top, "info");
+
+  if (highest === "critical" || highest === "high") {
+    return { status: "Critical issue", readiness: "Recommended", recommended: true };
+  }
+
+  if (highest === "medium") {
+    return { status: "Needs attention", readiness: "Recommended", recommended: true };
+  }
+
+  if (highest === "low") {
+    return { status: "Minor issue", readiness: "Optional", recommended: false };
+  }
+
+  return { status: "Healthy", readiness: "Ready", recommended: false };
+};
+
+const issueMatchesItem = (issue: AuditIssue, item: AuditItemRow): boolean => {
+  if (issue.item_id && issue.item_id === item.id) {
+    return true;
+  }
+
+  if (issue.product_id && issue.product_id !== item.product_id) {
+    return false;
+  }
+
+  if (issue.image_id && item.image_id && issue.image_id !== item.image_id) {
+    return false;
+  }
+
+  return Boolean(issue.product_id || issue.image_id);
+};
+
+const scanProductsFromItems = (
+  scan: Pick<AuditScanRow, "id">,
+  items: AuditItemRow[],
+  issues: AuditIssue[]
+): Array<Record<string, unknown>> => items.map((item) => {
+  const itemIssues = issues.filter((issue) => issueMatchesItem(issue, item));
+  const state = statusFromIssues(itemIssues);
+  const topIssue = itemIssues
+    .slice()
+    .sort((a, b) => issueSeverityRank(b.severity) - issueSeverityRank(a.severity))[0];
+  const issueRows = itemIssues.map((issue) => ({
+    type: issue.issue_type,
+    label: issue.title || issue.issue_type,
+    severity: issue.severity,
+    recommendedAction: issue.recommended_action,
+    issueId: typeof issue.metadata?.issue_id === "string" ? issue.metadata.issue_id : null
+  }));
+  const recommendations = issueRows.slice(0, 4).map((issue) => ({
+    label: issue.label,
+    severity: issue.severity,
+    filter: issue.type
+  }));
+
+  return serializeRecord({
+    productId: item.product_id,
+    product_id: item.product_id,
+    productName: item.product_name ?? "Product image",
+    product_name: item.product_name ?? "Product image",
+    productUrl: item.product_url ?? "",
+    product_url: item.product_url ?? "",
+    productSku: item.product_sku ?? "",
+    product_sku: item.product_sku ?? "",
+    categoryName: item.category_names?.[0] ?? "Uncategorised",
+    category_name: item.category_names?.[0] ?? "Uncategorised",
+    categoryNames: item.category_names ?? [],
+    category_names: item.category_names ?? [],
+    imageId: item.image_id ?? "",
+    image_id: item.image_id ?? "",
+    imageUrl: item.image_url,
+    image_url: item.image_url,
+    thumbnailUrl: item.image_url,
+    thumbnail_url: item.image_url,
+    imageRole: item.image_role,
+    image_role: item.image_role,
+    galleryIndex: 0,
+    gallery_index: 0,
+    filename: item.filename ?? "",
+    width: item.width ?? null,
+    height: item.height ?? null,
+    fileSizeBytes: item.file_size_bytes ?? null,
+    file_size_bytes: item.file_size_bytes ?? null,
+    status: state.status,
+    readiness: state.readiness,
+    issues: issueRows,
+    recommendations,
+    recommended: state.recommended,
+    queuePayload: {
+      scan_id: scan.id,
+      audit_item_id: item.id,
+      issue_id: issueRows[0]?.issueId ?? null,
+      product_id: item.product_id,
+      image_id: item.image_id ?? "",
+      image_role: item.image_role,
+      gallery_index: 0,
+      action_type: topIssue?.action_type ?? "queue_processing",
+      priority: topIssue?.severity ?? (state.recommended ? "medium" : "low"),
+      background_preset: "optivra-default",
+      job_kind: "image_processing"
+    }
+  }) ?? {};
+});
+
 const friendlyReportFields = (report: Record<string, unknown>): Record<string, unknown> => {
   const metrics = (report.metrics && typeof report.metrics === "object" && !Array.isArray(report.metrics))
     ? report.metrics as Record<string, unknown>
@@ -1652,6 +1773,11 @@ const friendlyReportFields = (report: Record<string, unknown>): Record<string, u
       ? report.top_recommendations
       : [];
   const affectedProducts = Array.isArray(report.top_items_needing_attention) ? report.top_items_needing_attention : [];
+  const products = Array.isArray(report.products)
+    ? report.products
+    : Array.isArray(report.images)
+      ? report.images
+      : affectedProducts;
   const categoryScores = [
     ["Image SEO", "seo_score"],
     ["Background Quality", "background_quality_score", "image_quality_score"],
@@ -1695,7 +1821,9 @@ const friendlyReportFields = (report: Record<string, unknown>): Record<string, u
       severity: "info",
       filter: "ready_to_optimise"
     }],
-    affectedProducts,
+    affectedProducts: affectedProducts.length ? affectedProducts : products,
+    products,
+    images: products,
     recommendedActions: recommendations
   };
 };
@@ -1721,6 +1849,7 @@ const completionReportFromMemory = (
   const scoringItems = items.map(toScoringItem);
   const recommendationModels = recommendations.map(recommendationDraftToModel);
   const recommendedFirst50 = rankRecommendedFirstImages(scoringItems, auditIssues, categoryScores, 50);
+  const products = scanProductsFromItems(scan, items, auditIssues);
 
   return withFriendlyReportFields({
     scan: serializeRecord({
@@ -1766,6 +1895,8 @@ const completionReportFromMemory = (
     issue_summary: issueSummaryFromAuditIssues(auditIssues),
     top_items_needing_attention: recommendedFirst50.slice(0, 20),
     recommended_first_50_images: recommendedFirst50,
+    products,
+    images: products,
     fix_impact_forecast: calculateFixImpactForecast(metrics, auditIssues, recommendationModels)
   });
 };
@@ -2164,6 +2295,7 @@ export const getAuditReport = async (
   const forecastMetrics = metricsForForecast(metricRows[0], calculateAuditMetrics(reportItems));
   const recommendedFirst50 = rankRecommendedFirstImages(reportItems, reportIssues, categoryModels, 50);
   const fixImpactForecast = calculateFixImpactForecast(forecastMetrics, reportIssues, recommendationModels);
+  const products = scanProductsFromItems(scan, allItems, reportIssues);
 
   return withFriendlyReportFields({
     scan: serializeRecord(scan),
@@ -2174,6 +2306,8 @@ export const getAuditReport = async (
     issue_summary: issueSummary,
     top_items_needing_attention: recommendedFirst50.slice(0, 20),
     recommended_first_50_images: recommendedFirst50,
+    products,
+    images: products,
     fix_impact_forecast: fixImpactForecast
   });
 };

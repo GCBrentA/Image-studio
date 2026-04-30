@@ -383,7 +383,92 @@ class Catalogue_Image_Studio_Admin {
 					}
 				}
 
+				function initScanResults() {
+					var root = document.querySelector("[data-optivra-scan-results]");
+					if (!root) {
+						return;
+					}
+					var boxes = Array.prototype.slice.call(root.querySelectorAll("[data-optivra-scan-item]"));
+					var selectedCount = root.querySelector("[data-optivra-selected-count]");
+					function updateCount() {
+						var count = boxes.filter(function(box) { return box.checked; }).length;
+						if (selectedCount) {
+							selectedCount.textContent = String(count);
+						}
+					}
+					function setBoxes(predicate) {
+						boxes.forEach(function(box) {
+							box.checked = Boolean(predicate(box));
+						});
+						updateCount();
+					}
+					boxes.forEach(function(box) {
+						box.addEventListener("change", updateCount);
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-select-recommended]"), function(button) {
+						button.addEventListener("click", function() {
+							setBoxes(function(box) {
+								var row = box.closest("[data-optivra-product-row]");
+								return row && row.getAttribute("data-optivra-recommended") === "1";
+							});
+						});
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-optimise-recommended]"), function(button) {
+						button.addEventListener("click", function() {
+							setBoxes(function(box) {
+								var row = box.closest("[data-optivra-product-row]");
+								return row && row.getAttribute("data-optivra-recommended") === "1";
+							});
+							var form = button.closest("form");
+							if (form) {
+								form.submit();
+							}
+						});
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-select-all]"), function(button) {
+						button.addEventListener("click", function() { setBoxes(function() { return true; }); });
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-clear-selection]"), function(button) {
+						button.addEventListener("click", function() { setBoxes(function() { return false; }); });
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-row-add]"), function(button) {
+						button.addEventListener("click", function() {
+							setBoxes(function(box) {
+								var row = box.closest("[data-optivra-product-row]");
+								return row && row.contains(button);
+							});
+							var form = button.closest("form");
+							if (form) {
+								form.submit();
+							}
+						});
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-row-ignore]"), function(button) {
+						button.addEventListener("click", function() {
+							var row = button.closest("[data-optivra-product-row]");
+							if (row) {
+								row.style.display = "none";
+								var box = row.querySelector("[data-optivra-scan-item]");
+								if (box) {
+									box.checked = false;
+								}
+								updateCount();
+							}
+						});
+					});
+					Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-result-filter]"), function(button) {
+						button.addEventListener("click", function() {
+							var filter = button.getAttribute("data-optivra-result-filter") || "";
+							Array.prototype.forEach.call(root.querySelectorAll("[data-optivra-product-row]"), function(row) {
+								row.style.display = !filter || filter === "ready_to_optimise" || filter === "healthy" || (row.getAttribute("data-optivra-filters") || "").indexOf(filter) !== -1 ? "" : "none";
+							});
+						});
+					});
+					updateCount();
+				}
+
 				ready(function() {
+					initScanResults();
 					var form = document.getElementById("optivra-audit-scan-form");
 					var progress = document.getElementById("optivra-audit-scan-progress");
 					var startButton = document.getElementById("optivra-audit-start");
@@ -804,6 +889,17 @@ class Catalogue_Image_Studio_Admin {
 			return;
 		}
 
+		if ('queue_selected_scan_results' === $action) {
+			$job_ids = $this->queue_selected_scan_results();
+			$this->plugin->client()->send_event('image_queued', ['jobs_queued' => count($job_ids), 'source' => 'scan_results'], $settings);
+			$this->add_success(sprintf(
+				/* translators: %d: jobs queued */
+				__('%d selected scan result image(s) added to the queue.', 'optivra-image-studio-for-woocommerce'),
+				count($job_ids)
+			));
+			return;
+		}
+
 		if ('process_next_batch' === $action) {
 			if (! empty($settings['pause_low_credits']) && $this->is_low_credit_state($usage)) {
 				$this->add_error(__('Processing is paused because credits are running low. Buy credits or disable the pause setting to continue.', 'optivra-image-studio-for-woocommerce'));
@@ -1042,6 +1138,66 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		return array_values(array_filter(array_map('absint', $job_ids)));
+	}
+
+	/**
+	 * @return array<int,int>
+	 */
+	private function queue_selected_scan_results(): array {
+		// This helper is called only from handle_workflow_post(), after check_admin_referer() and manage_woocommerce checks.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$selected = isset($_POST['scan_items']) ? array_map('sanitize_text_field', (array) wp_unslash($_POST['scan_items'])) : [];
+		$payloads = isset($_POST['scan_queue_payloads']) && is_array($_POST['scan_queue_payloads'])
+			? wp_unslash($_POST['scan_queue_payloads'])
+			: [];
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		$job_ids = [];
+
+		foreach ($selected as $token) {
+			$token = sanitize_key((string) $token);
+			if ('' === $token || empty($payloads[$token]) || ! is_string($payloads[$token])) {
+				continue;
+			}
+
+			$payload = json_decode((string) $payloads[$token], true);
+			if (! is_array($payload)) {
+				continue;
+			}
+
+			$job_id = $this->plugin->jobs()->queue_from_audit_payload($this->sanitize_scan_queue_payload($payload));
+			if ($job_id > 0) {
+				$job_ids[] = $job_id;
+			}
+		}
+
+		return array_values(array_unique(array_filter(array_map('absint', $job_ids))));
+	}
+
+	/**
+	 * @param array<string,mixed> $payload Queue payload.
+	 * @return array<string,mixed>
+	 */
+	private function sanitize_scan_queue_payload(array $payload): array {
+		$attachment_id = absint($payload['attachment_id'] ?? $payload['_attachment_id'] ?? $payload['image_id'] ?? 0);
+		$image_role = sanitize_key((string) ($payload['image_role'] ?? 'main'));
+		if ('category_thumbnail' === $image_role) {
+			$image_role = 'category';
+		}
+
+		return [
+			'id'                => sanitize_text_field((string) ($payload['id'] ?? '')),
+			'scan_id'           => sanitize_text_field((string) ($payload['scan_id'] ?? '')),
+			'recommendation_id' => sanitize_text_field((string) ($payload['recommendation_id'] ?? '')),
+			'issue_id'          => sanitize_text_field((string) ($payload['issue_id'] ?? '')),
+			'product_id'        => absint($payload['product_id'] ?? 0),
+			'image_id'          => $attachment_id,
+			'image_role'        => $image_role,
+			'gallery_index'     => absint($payload['gallery_index'] ?? 0),
+			'action_type'       => sanitize_key((string) ($payload['action_type'] ?? 'queue_processing')),
+			'priority'          => sanitize_key((string) ($payload['priority'] ?? 'medium')),
+			'background_preset' => sanitize_text_field((string) ($payload['background_preset'] ?? 'optivra-default')),
+			'job_kind'          => sanitize_key((string) ($payload['job_kind'] ?? 'image_processing')),
+		];
 	}
 
 	/**
@@ -1381,6 +1537,7 @@ class Catalogue_Image_Studio_Admin {
 		update_option('optivra_latest_scan_id', $scan_id, false);
 		update_option('optivra_latest_audit_store_id', $store_id, false);
 		update_option('optivra_scan_in_progress', true, false);
+		update_option('optivra_latest_audit_items', ['scan_id' => $scan_id, 'items' => []], false);
 
 		$progress = $this->save_audit_progress(
 			[
@@ -1419,6 +1576,7 @@ class Catalogue_Image_Studio_Admin {
 		$total_products = max(0, (int) ($progress['total_products'] ?? 0));
 		$batch = $this->plugin->scanner()->collect_audit_batch($options, $offset, 25);
 		$items = isset($batch['items']) && is_array($batch['items']) ? $batch['items'] : [];
+		$this->append_audit_scan_items($scan_id, $items);
 
 		foreach (array_chunk($items, 75) as $chunk) {
 			$result = $this->plugin->client()->submit_image_audit_items($scan_id, $chunk);
@@ -1484,6 +1642,10 @@ class Catalogue_Image_Studio_Admin {
 		if (! is_wp_error($full_report) && is_array($full_report)) {
 			$summary = $full_report;
 		}
+		$local_items = $this->get_cached_audit_scan_items($scan_id);
+		if (! empty($local_items)) {
+			$summary['_local_scan_items'] = $local_items;
+		}
 		$score = $this->extract_health_score($summary);
 		update_option('optivra_latest_health_score', $score, false);
 		update_option('optivra_last_scan_completed_at', current_time('mysql'), false);
@@ -1496,7 +1658,7 @@ class Catalogue_Image_Studio_Admin {
 		$progress['completed_at'] = current_time('mysql');
 		$progress = $this->save_audit_progress($progress);
 
-		wp_send_json_success(['progress' => $progress, 'summary' => $this->summarize_report_for_ui($summary, $score)]);
+		wp_send_json_success(['progress' => $progress, 'summary' => $this->summarize_report_for_ui($summary, $score), 'result' => $this->normalize_scan_result($summary, ['health_score' => $score])]);
 	}
 
 	public function ajax_image_audit_cancel(): void {
@@ -1726,6 +1888,387 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		return $latest;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $items Items from the local WooCommerce scanner.
+	 */
+	private function append_audit_scan_items(string $scan_id, array $items): void {
+		if (empty($items)) {
+			return;
+		}
+
+		$cache = get_option('optivra_latest_audit_items', []);
+		$cache = is_array($cache) ? $cache : [];
+		$existing = isset($cache['scan_id'], $cache['items']) && (string) $cache['scan_id'] === $scan_id && is_array($cache['items'])
+			? $cache['items']
+			: [];
+
+		foreach ($items as $item) {
+			if (is_array($item)) {
+				$prepared = $this->prepare_local_scan_product($item, $scan_id);
+				if (! empty($prepared)) {
+					$existing[$prepared['token']] = $prepared;
+				}
+			}
+		}
+
+		update_option('optivra_latest_audit_items', ['scan_id' => $scan_id, 'items' => $existing], false);
+	}
+
+	/**
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_cached_audit_scan_items(string $scan_id): array {
+		$cache = get_option('optivra_latest_audit_items', []);
+		if (! is_array($cache) || (string) ($cache['scan_id'] ?? '') !== $scan_id || empty($cache['items']) || ! is_array($cache['items'])) {
+			return [];
+		}
+
+		$items = [];
+		foreach ($cache['items'] as $item) {
+			if (is_array($item)) {
+				$items[] = $item;
+			}
+		}
+
+		return $items;
+	}
+
+	/**
+	 * @param array<string,mixed> $raw Raw scanner row.
+	 * @return array<string,mixed>
+	 */
+	private function prepare_local_scan_product(array $raw, string $scan_id): array {
+		$product_id = absint($raw['product_id'] ?? 0);
+		$attachment_id = absint($raw['_attachment_id'] ?? $raw['attachment_id'] ?? $raw['image_id'] ?? 0);
+		if ($product_id <= 0 || $attachment_id <= 0) {
+			return [];
+		}
+
+		$image_role = sanitize_key((string) ($raw['image_role'] ?? 'main'));
+		$gallery_index = absint($raw['gallery_index'] ?? 0);
+		$token = sanitize_key(md5($product_id . ':' . $attachment_id . ':' . $image_role . ':' . $gallery_index));
+		$category_names = isset($raw['category_names']) && is_array($raw['category_names']) ? array_values(array_map('sanitize_text_field', $raw['category_names'])) : [];
+
+		return [
+			'token'         => $token,
+			'productId'     => $product_id,
+			'product_id'    => $product_id,
+			'productName'   => sanitize_text_field((string) ($raw['product_name'] ?? get_the_title($product_id))),
+			'product_name'  => sanitize_text_field((string) ($raw['product_name'] ?? get_the_title($product_id))),
+			'productUrl'    => esc_url_raw((string) ($raw['product_url'] ?? get_permalink($product_id))),
+			'product_url'   => esc_url_raw((string) ($raw['product_url'] ?? get_permalink($product_id))),
+			'categoryName'  => $category_names[0] ?? __('Uncategorised', 'optivra-image-studio-for-woocommerce'),
+			'category_name' => $category_names[0] ?? __('Uncategorised', 'optivra-image-studio-for-woocommerce'),
+			'categoryNames' => $category_names,
+			'imageId'       => $attachment_id,
+			'image_id'      => $attachment_id,
+			'attachment_id' => $attachment_id,
+			'imageUrl'      => esc_url_raw((string) ($raw['image_url'] ?? wp_get_attachment_url($attachment_id))),
+			'image_url'     => esc_url_raw((string) ($raw['image_url'] ?? wp_get_attachment_url($attachment_id))),
+			'thumbnailUrl'  => esc_url_raw((string) (wp_get_attachment_image_url($attachment_id, 'thumbnail') ?: ($raw['image_url'] ?? ''))),
+			'imageRole'     => $image_role,
+			'image_role'    => $image_role,
+			'galleryIndex'  => $gallery_index,
+			'gallery_index' => $gallery_index,
+			'status'        => __('Healthy', 'optivra-image-studio-for-woocommerce'),
+			'readiness'     => __('Ready', 'optivra-image-studio-for-woocommerce'),
+			'issues'        => [],
+			'recommendations' => [],
+			'recommended'   => false,
+			'queuePayload'  => [
+				'scan_id'           => $scan_id,
+				'product_id'        => $product_id,
+				'image_id'          => $attachment_id,
+				'attachment_id'     => $attachment_id,
+				'image_role'        => $image_role,
+				'gallery_index'     => $gallery_index,
+				'action_type'       => 'queue_processing',
+				'priority'          => 'medium',
+				'background_preset' => 'optivra-default',
+				'job_kind'          => 'image_processing',
+			],
+		];
+	}
+
+	/**
+	 * @param array<string,mixed> $raw Raw report payload.
+	 * @param array<string,mixed> $latest Cached report row.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_scan_result(array $raw, array $latest = []): array {
+		$metrics = $this->get_report_metrics($raw);
+		$scan = isset($raw['scan']) && is_array($raw['scan']) ? $raw['scan'] : [];
+		$issue_summary = isset($raw['issue_summary']) && is_array($raw['issue_summary']) ? $raw['issue_summary'] : [];
+		$recommendations = $this->report_list($raw, ['recommendedActions', 'top_recommendations', 'recommendations'], 100);
+		$products = $this->normalize_scan_products($raw);
+		$issues = max((int) $this->extract_issue_count($raw), count(array_filter($products, static function ($product) {
+			return ! empty($product['issues']);
+		})));
+		$score = $this->report_number($metrics, ['product_image_health_score', 'productImageHealthScore'], isset($raw['overallScore']) && is_numeric($raw['overallScore']) ? (float) $raw['overallScore'] : (float) ($latest['health_score'] ?? get_option('optivra_latest_health_score', 0)));
+		if ($score <= 0 && ! empty($products) && $issues <= 0) {
+			$score = 96;
+		}
+		$pills = $this->normalize_recommendation_pills($raw, $metrics, $issue_summary, $recommendations, $products);
+		$summary = $this->report_text($raw, ['summary'], '');
+		if ('' === $summary && isset($raw['healthReport']) && is_array($raw['healthReport'])) {
+			$summary = $this->report_text($raw['healthReport'], ['summary'], '');
+		}
+		if ('' === $summary) {
+			$summary = empty($products)
+				? __('No products found for this scan scope.', 'optivra-image-studio-for-woocommerce')
+				: ($issues <= 0 ? __('Scan complete. No major issues found.', 'optivra-image-studio-for-woocommerce') : $this->build_simple_health_summary($metrics, $issues));
+		}
+
+		return [
+			'overallScore'        => $score,
+			'categoryScores'      => isset($raw['categoryScores']) && is_array($raw['categoryScores']) ? $raw['categoryScores'] : $this->get_health_category_cards($metrics),
+			'highlights'          => isset($raw['highlights']) && is_array($raw['highlights']) ? array_values(array_filter(array_map('sanitize_text_field', $raw['highlights']))) : [$summary],
+			'recommendationPills' => $pills,
+			'products'            => $products,
+			'images'              => $products,
+			'recommendedActions'  => $recommendations,
+			'healthReport'        => [
+				'overallScore'   => $score,
+				'summary'        => $summary,
+				'highlights'     => isset($raw['highlights']) && is_array($raw['highlights']) ? $raw['highlights'] : [$summary],
+				'categoryScores' => isset($raw['categoryScores']) && is_array($raw['categoryScores']) ? $raw['categoryScores'] : $this->get_health_category_cards($metrics),
+			],
+			'totalScanned'        => count($products),
+			'recommendedCount'    => count(array_filter($products, static function ($product) {
+				return ! empty($product['recommended']);
+			})),
+		];
+	}
+
+	/**
+	 * @param array<string,mixed> $raw Raw report payload.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function normalize_scan_products(array $raw): array {
+		$scan_id = isset($raw['scan']['id']) && is_scalar($raw['scan']['id']) ? (string) $raw['scan']['id'] : (string) get_option('optivra_latest_scan_id', '');
+		$candidates = [];
+		foreach (['products', 'images', '_local_scan_items', 'affectedProducts', 'top_items_needing_attention', 'recommended_first_50_images'] as $key) {
+			if (isset($raw[$key]) && is_array($raw[$key])) {
+				$candidates = $raw[$key];
+				break;
+			}
+		}
+
+		$products = [];
+		foreach ($candidates as $row) {
+			if (is_array($row)) {
+				$product = $this->normalize_scan_product_row($row, $scan_id);
+				if (! empty($product)) {
+					$products[$product['token']] = $product;
+				}
+			}
+		}
+
+		if (! empty($raw['_local_scan_items']) && is_array($raw['_local_scan_items'])) {
+			foreach ($raw['_local_scan_items'] as $local_row) {
+				if (! is_array($local_row)) {
+					continue;
+				}
+				$local = $this->normalize_scan_product_row($local_row, $scan_id);
+				if (empty($local)) {
+					continue;
+				}
+				if (isset($products[$local['token']])) {
+					$merged = array_merge($local, array_filter($products[$local['token']], static function ($value) {
+						return [] !== $value && '' !== $value && null !== $value;
+					}));
+					$merged['attachmentId'] = $local['attachmentId'] ?? $local['imageId'] ?? 0;
+					$merged['queuePayload'] = isset($merged['queuePayload']) && is_array($merged['queuePayload']) ? array_merge($merged['queuePayload'], (array) ($local['queuePayload'] ?? [])) : ($local['queuePayload'] ?? []);
+					$products[$local['token']] = $merged;
+				} else {
+					$products[$local['token']] = $local;
+				}
+			}
+		}
+
+		return array_values($products);
+	}
+
+	/**
+	 * @param array<string,mixed> $row Product/image row.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_scan_product_row(array $row, string $scan_id): array {
+		$product_id = absint($row['productId'] ?? $row['product_id'] ?? 0);
+		$image_id_raw = (string) ($row['imageId'] ?? $row['image_id'] ?? '');
+		$attachment_id = absint($row['attachment_id'] ?? $row['_attachment_id'] ?? $image_id_raw);
+		if ($product_id <= 0 && '' === $image_id_raw) {
+			return [];
+		}
+
+		$image_role = sanitize_key((string) ($row['imageRole'] ?? $row['image_role'] ?? 'main'));
+		$gallery_index = absint($row['galleryIndex'] ?? $row['gallery_index'] ?? 0);
+		$token = sanitize_key((string) ($row['token'] ?? md5($product_id . ':' . ($attachment_id ?: $image_id_raw) . ':' . $image_role . ':' . $gallery_index)));
+		$issues = $this->normalize_scan_product_issues($row);
+		$recommended = ! empty($row['recommended']) || ! empty($issues);
+		$status = $this->report_text($row, ['status'], $recommended ? __('Needs attention', 'optivra-image-studio-for-woocommerce') : __('Healthy', 'optivra-image-studio-for-woocommerce'));
+		$queue_payload = isset($row['queuePayload']) && is_array($row['queuePayload']) ? $row['queuePayload'] : (isset($row['queue_payload']) && is_array($row['queue_payload']) ? $row['queue_payload'] : []);
+		$queue_payload = array_merge(
+			[
+				'scan_id'           => $scan_id,
+				'product_id'        => $product_id,
+				'image_id'          => $attachment_id,
+				'attachment_id'     => $attachment_id,
+				'image_role'        => $image_role,
+				'gallery_index'     => $gallery_index,
+				'action_type'       => 'queue_processing',
+				'priority'          => ! empty($issues[0]['severity']) ? sanitize_key((string) $issues[0]['severity']) : 'medium',
+				'background_preset' => 'optivra-default',
+				'job_kind'          => 'image_processing',
+			],
+			$queue_payload
+		);
+		if ($attachment_id > 0) {
+			$queue_payload['image_id'] = $attachment_id;
+			$queue_payload['attachment_id'] = $attachment_id;
+		}
+
+		return [
+			'token'           => $token,
+			'productId'       => $product_id,
+			'productName'     => $this->report_text($row, ['productName', 'product_name'], $product_id > 0 ? get_the_title($product_id) : __('Product image', 'optivra-image-studio-for-woocommerce')),
+			'productUrl'      => esc_url_raw($this->report_text($row, ['productUrl', 'product_url'], $product_id > 0 ? get_permalink($product_id) : '')),
+			'categoryName'    => $this->report_text($row, ['categoryName', 'category_name'], $this->first_category_name($row)),
+			'imageId'         => $attachment_id ?: $image_id_raw,
+			'attachmentId'    => $attachment_id,
+			'imageUrl'        => esc_url_raw($this->report_text($row, ['imageUrl', 'image_url'], $attachment_id > 0 ? (string) wp_get_attachment_url($attachment_id) : '')),
+			'thumbnailUrl'    => esc_url_raw($this->report_text($row, ['thumbnailUrl', 'thumbnail_url'], $attachment_id > 0 ? (string) wp_get_attachment_image_url($attachment_id, 'thumbnail') : '')),
+			'imageRole'       => $image_role,
+			'galleryIndex'    => $gallery_index,
+			'status'          => $status,
+			'issues'          => $issues,
+			'recommendations' => $this->normalize_scan_product_recommendations($row, $issues),
+			'readiness'       => $this->report_text($row, ['readiness'], $recommended ? __('Recommended', 'optivra-image-studio-for-woocommerce') : __('Ready', 'optivra-image-studio-for-woocommerce')),
+			'recommended'     => $recommended,
+			'queuePayload'    => $queue_payload,
+		];
+	}
+
+	/**
+	 * @param array<string,mixed> $row Product/image row.
+	 * @return array<int,array<string,string>>
+	 */
+	private function normalize_scan_product_issues(array $row): array {
+		$issues = [];
+		if (isset($row['issues']) && is_array($row['issues'])) {
+			foreach ($row['issues'] as $issue) {
+				if (! is_array($issue)) {
+					continue;
+				}
+				$type = sanitize_key((string) ($issue['type'] ?? $issue['issue_type'] ?? $issue['filter'] ?? 'manual_review'));
+				$issues[] = [
+					'type'     => $type,
+					'label'    => $this->report_text($issue, ['label', 'title', 'description'], $this->get_issue_type_label($type)),
+					'severity' => sanitize_key((string) ($issue['severity'] ?? 'medium')),
+				];
+			}
+		}
+
+		if (empty($issues) && ! empty($row['issue_count'])) {
+			$type = sanitize_key((string) ($row['top_issue_type'] ?? $row['issue_type'] ?? 'manual_review'));
+			$issues[] = [
+				'type'     => $type,
+				'label'    => $this->report_text($row, ['recommended_action'], $this->get_issue_type_label($type)),
+				'severity' => sanitize_key((string) ($row['highest_severity'] ?? $row['severity'] ?? 'medium')),
+			];
+		}
+
+		return $issues;
+	}
+
+	/**
+	 * @param array<string,mixed>              $row Product/image row.
+	 * @param array<int,array<string,string>> $issues Issues.
+	 * @return array<int,array<string,string>>
+	 */
+	private function normalize_scan_product_recommendations(array $row, array $issues): array {
+		$recommendations = [];
+		if (isset($row['recommendations']) && is_array($row['recommendations'])) {
+			foreach ($row['recommendations'] as $recommendation) {
+				if (is_array($recommendation)) {
+					$recommendations[] = [
+						'label'    => $this->report_text($recommendation, ['label', 'title'], __('Recommended fix', 'optivra-image-studio-for-woocommerce')),
+						'severity' => sanitize_key((string) ($recommendation['severity'] ?? 'info')),
+						'filter'   => sanitize_key((string) ($recommendation['filter'] ?? $recommendation['type'] ?? 'ready_to_optimise')),
+					];
+				}
+			}
+		}
+
+		if (empty($recommendations)) {
+			foreach (array_slice($issues, 0, 3) as $issue) {
+				$recommendations[] = [
+					'label'    => $issue['label'],
+					'severity' => $issue['severity'],
+					'filter'   => $issue['type'],
+				];
+			}
+		}
+
+		return $recommendations;
+	}
+
+	/**
+	 * @param array<string,mixed> $row Product/image row.
+	 */
+	private function first_category_name(array $row): string {
+		foreach (['categoryNames', 'category_names'] as $key) {
+			if (isset($row[$key]) && is_array($row[$key]) && ! empty($row[$key][0]) && is_scalar($row[$key][0])) {
+				return sanitize_text_field((string) $row[$key][0]);
+			}
+		}
+
+		return __('Uncategorised', 'optivra-image-studio-for-woocommerce');
+	}
+
+	/**
+	 * @param array<string,mixed>              $raw Raw report payload.
+	 * @param array<string,mixed>              $metrics Metrics.
+	 * @param array<string,mixed>              $issue_summary Issue summary.
+	 * @param array<int,array<string,mixed>>   $recommendations Recommendations.
+	 * @param array<int,array<string,mixed>>   $products Products.
+	 * @return array<int,array{label:string,count:int,severity:string,filter:string}>
+	 */
+	private function normalize_recommendation_pills(array $raw, array $metrics, array $issue_summary, array $recommendations, array $products): array {
+		if (isset($raw['recommendationPills']) && is_array($raw['recommendationPills'])) {
+			$pills = [];
+			foreach ($raw['recommendationPills'] as $pill) {
+				if (! is_array($pill)) {
+					continue;
+				}
+				$pills[] = [
+					'label'    => $this->report_text($pill, ['label'], __('Recommendation', 'optivra-image-studio-for-woocommerce')),
+					'count'    => max(0, (int) $this->report_number($pill, ['count'], 0)),
+					'severity' => sanitize_key((string) ($pill['severity'] ?? 'info')),
+					'filter'   => sanitize_key((string) ($pill['filter'] ?? 'ready_to_optimise')),
+				];
+			}
+			if (! empty($pills)) {
+				return $pills;
+			}
+		}
+
+		$pills = $this->get_recommendation_pills($metrics, $issue_summary, $recommendations);
+		if (empty($pills) && ! empty($products)) {
+			$recommended = count(array_filter($products, static function ($product) {
+				return ! empty($product['recommended']);
+			}));
+			$pills[] = [
+				'label'    => $recommended > 0 ? __('Ready to optimise', 'optivra-image-studio-for-woocommerce') : __('No major issues found', 'optivra-image-studio-for-woocommerce'),
+				'count'    => $recommended,
+				'severity' => $recommended > 0 ? 'info' : 'good',
+				'filter'   => $recommended > 0 ? 'ready_to_optimise' : 'healthy',
+			];
+		}
+
+		return $pills;
 	}
 
 	/**
@@ -2446,6 +2989,160 @@ class Catalogue_Image_Studio_Admin {
 		<?php
 	}
 
+	/**
+	 * @param array<string,mixed> $scan_result Normalized scan result.
+	 */
+	private function render_scan_results_panel(array $scan_result): void {
+		$products = isset($scan_result['products']) && is_array($scan_result['products']) ? $scan_result['products'] : [];
+		$pills = isset($scan_result['recommendationPills']) && is_array($scan_result['recommendationPills']) ? $scan_result['recommendationPills'] : [];
+		$health = isset($scan_result['healthReport']) && is_array($scan_result['healthReport']) ? $scan_result['healthReport'] : [];
+		$summary = $this->report_text($health, ['summary'], empty($products) ? __('No products found for this scan scope.', 'optivra-image-studio-for-woocommerce') : __('Scan complete. No major issues found.', 'optivra-image-studio-for-woocommerce'));
+		$score = isset($scan_result['overallScore']) && is_numeric($scan_result['overallScore']) ? (float) $scan_result['overallScore'] : 0;
+		$recommended_count = isset($scan_result['recommendedCount']) ? (int) $scan_result['recommendedCount'] : count(array_filter($products, static function ($product) {
+			return is_array($product) && ! empty($product['recommended']);
+		}));
+		?>
+		<div class="catalogue-image-studio-panel optivra-scan-results" data-optivra-scan-results>
+			<section class="optivra-scan-results-summary">
+				<div>
+					<?php $this->render_status_badge(__('Scan complete', 'optivra-image-studio-for-woocommerce'), 'approved'); ?>
+					<h2><?php echo esc_html__('Health Report summary', 'optivra-image-studio-for-woocommerce'); ?></h2>
+					<p><?php echo esc_html($summary); ?></p>
+					<div class="optivra-recommendation-pills">
+						<?php foreach ($pills as $pill) : ?>
+							<?php if (is_array($pill)) : ?>
+								<button type="button" class="optivra-rec-pill is-<?php echo esc_attr(sanitize_key((string) ($pill['severity'] ?? 'info'))); ?>" data-optivra-result-filter="<?php echo esc_attr(sanitize_key((string) ($pill['filter'] ?? ''))); ?>"><?php echo esc_html($this->report_text($pill, ['label'], __('Recommendation', 'optivra-image-studio-for-woocommerce')) . ' · ' . (string) (int) ($pill['count'] ?? 0)); ?></button>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</div>
+				</div>
+				<div class="optivra-hero-score optivra-scan-result-score">
+					<span><?php echo esc_html__('Overall score', 'optivra-image-studio-for-woocommerce'); ?></span>
+					<strong><?php echo esc_html(number_format_i18n($score, 0)); ?></strong>
+					<small><?php echo esc_html($this->get_score_state_label($this->get_score_state($score))); ?></small>
+				</div>
+			</section>
+
+			<div class="optivra-scan-result-counts">
+				<span><strong data-optivra-selected-count>0</strong> <?php echo esc_html__('selected', 'optivra-image-studio-for-woocommerce'); ?></span>
+				<span><strong><?php echo esc_html((string) $recommended_count); ?></strong> <?php echo esc_html__('recommended', 'optivra-image-studio-for-woocommerce'); ?></span>
+				<span><strong><?php echo esc_html((string) count($products)); ?></strong> <?php echo esc_html__('scanned', 'optivra-image-studio-for-woocommerce'); ?></span>
+			</div>
+
+			<?php if (empty($products)) : ?>
+				<?php $this->render_empty_state(__('No products found for this scan scope.', 'optivra-image-studio-for-woocommerce'), __('Try a broader category or run a full store scan.', 'optivra-image-studio-for-woocommerce')); ?>
+			<?php else : ?>
+				<form method="post" action="" class="optivra-scanned-products-form">
+					<?php wp_nonce_field('catalogue_image_studio_action', 'catalogue_image_studio_action_nonce'); ?>
+					<input type="hidden" name="catalogue_image_studio_action" value="queue_selected_scan_results" />
+					<div class="optivra-scanned-products-toolbar">
+						<div>
+							<h3><?php echo esc_html__('Scanned Products', 'optivra-image-studio-for-woocommerce'); ?></h3>
+							<p><?php echo esc_html__('Review scanned products and choose exactly which images to add to the processing queue.', 'optivra-image-studio-for-woocommerce'); ?></p>
+						</div>
+						<div class="optivra-toolbar-controls">
+							<button type="button" class="button" data-optivra-select-recommended><?php echo esc_html__('Select all recommended', 'optivra-image-studio-for-woocommerce'); ?></button>
+							<button type="button" class="button" data-optivra-select-all><?php echo esc_html__('Select all', 'optivra-image-studio-for-woocommerce'); ?></button>
+							<button type="button" class="button" data-optivra-clear-selection><?php echo esc_html__('Clear selection', 'optivra-image-studio-for-woocommerce'); ?></button>
+							<button type="submit" class="button button-primary optivra-action-button is-primary"><?php echo esc_html__('Add Selected to Queue', 'optivra-image-studio-for-woocommerce'); ?></button>
+							<button type="button" class="button optivra-action-button is-secondary" data-optivra-optimise-recommended><?php echo esc_html__('Optimise Recommended Images', 'optivra-image-studio-for-woocommerce'); ?></button>
+						</div>
+					</div>
+					<div class="optivra-scanned-products-table-wrap">
+						<table class="widefat striped optivra-scanned-products-table">
+							<thead>
+								<tr>
+									<th class="check-column"></th>
+									<th><?php echo esc_html__('Image', 'optivra-image-studio-for-woocommerce'); ?></th>
+									<th><?php echo esc_html__('Product', 'optivra-image-studio-for-woocommerce'); ?></th>
+									<th><?php echo esc_html__('Category', 'optivra-image-studio-for-woocommerce'); ?></th>
+									<th><?php echo esc_html__('Current image status', 'optivra-image-studio-for-woocommerce'); ?></th>
+									<th><?php echo esc_html__('Detected issues', 'optivra-image-studio-for-woocommerce'); ?></th>
+									<th><?php echo esc_html__('Recommendation', 'optivra-image-studio-for-woocommerce'); ?></th>
+									<th><?php echo esc_html__('Actions', 'optivra-image-studio-for-woocommerce'); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ($products as $product) : ?>
+									<?php if (is_array($product)) : ?>
+										<?php $this->render_scanned_product_row($product); ?>
+									<?php endif; ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				</form>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * @param array<string,mixed> $product Product row.
+	 */
+	private function render_scanned_product_row(array $product): void {
+		$token = sanitize_key((string) ($product['token'] ?? md5(wp_json_encode($product))));
+		$recommended = ! empty($product['recommended']);
+		$issues = isset($product['issues']) && is_array($product['issues']) ? $product['issues'] : [];
+		$recommendations = isset($product['recommendations']) && is_array($product['recommendations']) ? $product['recommendations'] : [];
+		$queue_payload = isset($product['queuePayload']) && is_array($product['queuePayload']) ? $product['queuePayload'] : [];
+		$queue_json = wp_json_encode($queue_payload);
+		$image_url = $this->report_text($product, ['thumbnailUrl', 'imageUrl'], '');
+		$product_url = $this->report_text($product, ['productUrl'], '');
+		?>
+		<tr data-optivra-product-row data-optivra-recommended="<?php echo esc_attr($recommended ? '1' : '0'); ?>" data-optivra-filters="<?php echo esc_attr(implode(' ', array_map(static function ($issue) { return is_array($issue) ? sanitize_key((string) ($issue['type'] ?? $issue['filter'] ?? '')) : ''; }, $issues))); ?>">
+			<th class="check-column">
+				<input type="checkbox" name="scan_items[]" value="<?php echo esc_attr($token); ?>" data-optivra-scan-item <?php checked($recommended); ?> />
+				<input type="hidden" name="scan_queue_payloads[<?php echo esc_attr($token); ?>]" value="<?php echo esc_attr(is_string($queue_json) ? $queue_json : '{}'); ?>" />
+			</th>
+			<td><?php $this->render_thumbnail($image_url, __('Scanned product image', 'optivra-image-studio-for-woocommerce')); ?></td>
+			<td>
+				<strong><?php echo esc_html($this->report_text($product, ['productName'], __('Product image', 'optivra-image-studio-for-woocommerce'))); ?></strong><br />
+				<small><?php echo esc_html(sprintf(__('ID %s', 'optivra-image-studio-for-woocommerce'), (string) ($product['productId'] ?? ''))); ?> · <?php echo esc_html($this->get_image_role_label((string) ($product['imageRole'] ?? 'main'))); ?></small>
+			</td>
+			<td><?php echo esc_html($this->report_text($product, ['categoryName'], __('Uncategorised', 'optivra-image-studio-for-woocommerce'))); ?></td>
+			<td>
+				<?php $this->render_status_badge($this->report_text($product, ['status'], __('Healthy', 'optivra-image-studio-for-woocommerce')), $recommended ? 'needs-review' : 'approved'); ?>
+				<br /><small><?php echo esc_html($this->report_text($product, ['readiness'], __('Ready', 'optivra-image-studio-for-woocommerce'))); ?></small>
+			</td>
+			<td>
+				<?php if (empty($issues)) : ?>
+					<span class="optivra-rec-pill is-good"><?php echo esc_html__('Healthy', 'optivra-image-studio-for-woocommerce'); ?></span>
+				<?php else : ?>
+					<div class="optivra-mini-pill-list">
+						<?php foreach (array_slice($issues, 0, 3) as $issue) : ?>
+							<?php if (is_array($issue)) : ?>
+								<span class="optivra-rec-pill is-<?php echo esc_attr(sanitize_key((string) ($issue['severity'] ?? 'medium'))); ?>"><?php echo esc_html($this->report_text($issue, ['label'], __('Issue', 'optivra-image-studio-for-woocommerce'))); ?></span>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</div>
+				<?php endif; ?>
+			</td>
+			<td>
+				<div class="optivra-mini-pill-list">
+					<?php if (empty($recommendations)) : ?>
+						<span class="optivra-rec-pill is-info"><?php echo esc_html($recommended ? __('Ready to optimise', 'optivra-image-studio-for-woocommerce') : __('No action needed', 'optivra-image-studio-for-woocommerce')); ?></span>
+					<?php else : ?>
+						<?php foreach (array_slice($recommendations, 0, 3) as $recommendation) : ?>
+							<?php if (is_array($recommendation)) : ?>
+								<span class="optivra-rec-pill is-<?php echo esc_attr(sanitize_key((string) ($recommendation['severity'] ?? 'info'))); ?>"><?php echo esc_html($this->report_text($recommendation, ['label'], __('Recommended fix', 'optivra-image-studio-for-woocommerce'))); ?></span>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</div>
+			</td>
+			<td>
+				<div class="optivra-row-actions">
+					<?php if ('' !== $product_url) : ?><a class="button" href="<?php echo esc_url($product_url); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('View product', 'optivra-image-studio-for-woocommerce'); ?></a><?php endif; ?>
+					<?php if ('' !== $this->report_text($product, ['imageUrl'], '')) : ?><a class="button" href="<?php echo esc_url($this->report_text($product, ['imageUrl'], '')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Preview image', 'optivra-image-studio-for-woocommerce'); ?></a><?php endif; ?>
+					<button type="button" class="button" data-optivra-row-add><?php echo esc_html__('Add to queue', 'optivra-image-studio-for-woocommerce'); ?></button>
+					<button type="button" class="button" data-optivra-row-ignore><?php echo esc_html__('Ignore', 'optivra-image-studio-for-woocommerce'); ?></button>
+				</div>
+			</td>
+		</tr>
+		<?php
+	}
+
 	private function render_scan_tab(): void {
 		$categories = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
 		$progress = $this->get_audit_progress();
@@ -2453,6 +3150,8 @@ class Catalogue_Image_Studio_Admin {
 		$cache = get_option('optivra_report_summary_cache', []);
 		$cache = is_array($cache) ? $cache : [];
 		$history = isset($cache['history']) && is_array($cache['history']) ? $cache['history'] : [];
+		$latest = isset($cache['latest']) && is_array($cache['latest']) ? $cache['latest'] : [];
+		$scan_result = ! empty($latest) ? $this->normalize_scan_result($this->get_report_payload($latest), $latest) : [];
 		?>
 		<div class="catalogue-image-studio-panel optivra-scan-wizard">
 			<div class="optivra-card-header">
@@ -2552,6 +3251,10 @@ class Catalogue_Image_Studio_Admin {
 				<?php endif; ?>
 			</div>
 		</div>
+
+		<?php if (! empty($scan_result)) : ?>
+			<?php $this->render_scan_results_panel($scan_result); ?>
+		<?php endif; ?>
 
 		<div class="catalogue-image-studio-panel optivra-scan-history">
 			<div class="optivra-card-header">
@@ -2881,20 +3584,25 @@ class Catalogue_Image_Studio_Admin {
 		$cache = is_array($cache) ? $cache : [];
 		$latest = isset($cache['latest']) && is_array($cache['latest']) ? $cache['latest'] : [];
 		$report = $this->get_report_payload($latest);
+		$normalized = ! empty($latest) ? $this->normalize_scan_result($report, $latest) : [];
 		$metrics = $this->get_report_metrics($report);
 		$scan = isset($report['scan']) && is_array($report['scan']) ? $report['scan'] : [];
-		$score = $this->report_number($metrics, ['product_image_health_score', 'productImageHealthScore'], isset($latest['health_score']) ? (float) $latest['health_score'] : (float) get_option('optivra_latest_health_score', 0));
+		$score = ! empty($normalized['overallScore']) && is_numeric($normalized['overallScore']) ? (float) $normalized['overallScore'] : $this->report_number($metrics, ['product_image_health_score', 'productImageHealthScore'], isset($latest['health_score']) ? (float) $latest['health_score'] : (float) get_option('optivra_latest_health_score', 0));
 		$last_completed = $this->report_text($scan, ['scan_completed_at', 'updated_at', 'created_at'], (string) get_option('optivra_last_scan_completed_at', ''));
-		$images_scanned = (int) $this->report_number($scan, ['images_scanned'], (float) ($latest['images_scanned'] ?? 0));
-		$products_scanned = (int) $this->report_number($scan, ['products_scanned'], (float) ($latest['products_scanned'] ?? 0));
+		$normalized_products = isset($normalized['products']) && is_array($normalized['products']) ? $normalized['products'] : [];
+		$images_scanned = (int) $this->report_number($scan, ['images_scanned'], (float) ($latest['images_scanned'] ?? count($normalized_products)));
+		$products_scanned = (int) $this->report_number($scan, ['products_scanned'], (float) ($latest['products_scanned'] ?? count($normalized_products)));
 		$issue_summary = isset($report['issue_summary']) && is_array($report['issue_summary']) ? $report['issue_summary'] : [];
 		$issues = $this->extract_issue_count($report);
 		$insights = $this->report_list($report, ['top_insights', 'insights'], 6);
 		$recommendations = $this->report_list($report, ['top_recommendations', 'recommendations'], 6);
+		if (empty($recommendations) && ! empty($normalized['recommendedActions']) && is_array($normalized['recommendedActions'])) {
+			$recommendations = array_slice(array_filter($normalized['recommendedActions'], 'is_array'), 0, 6);
+		}
 		$category_scores = $this->report_list($report, ['category_scores'], 5);
 		$health_categories = $this->get_health_category_cards($metrics);
-		$recommendation_pills = $this->get_recommendation_pills($metrics, $issue_summary, $recommendations);
-		$summary_text = $this->build_simple_health_summary($metrics, $issues);
+		$recommendation_pills = ! empty($normalized['recommendationPills']) && is_array($normalized['recommendationPills']) ? $normalized['recommendationPills'] : $this->get_recommendation_pills($metrics, $issue_summary, $recommendations);
+		$summary_text = isset($normalized['healthReport']) && is_array($normalized['healthReport']) ? $this->report_text($normalized['healthReport'], ['summary'], $this->build_simple_health_summary($metrics, $issues)) : $this->build_simple_health_summary($metrics, $issues);
 		$portal_url = trailingslashit($this->get_app_base_url([], $settings)) . 'dashboard';
 		?>
 		<div class="catalogue-image-studio-panel optivra-health-report">

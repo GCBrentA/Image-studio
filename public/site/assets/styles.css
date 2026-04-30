@@ -173,11 +173,12 @@ a { color: inherit; }
   background-size: 220% 100%;
 }
 .account-dropdown {
-  position: absolute;
-  z-index: 40;
+  position: fixed;
+  z-index: 10000;
   right: 0;
   top: calc(100% + 10px);
   min-width: 240px;
+  max-width: calc(100vw - 24px);
   padding: 8px;
   border-radius: 12px;
   background: #0d1730;
@@ -185,6 +186,7 @@ a { color: inherit; }
   box-shadow: 0 14px 30px rgba(3,8,20,0.45);
 }
 .account-dropdown[hidden] { display: none; }
+.account-dropdown.is-open { display: block; }
 .account-dropdown > a,
 .account-dropdown > button {
   width: 100%;
@@ -2433,13 +2435,28 @@ pre {
   gap: 14px;
   padding: 14px;
 }
-.attention-card img {
+.attention-image-frame,
+.attention-card img,
+.attention-image-fallback {
   width: 110px;
   height: 110px;
+}
+.attention-image-frame {
+  position: relative;
+}
+.attention-card img,
+.attention-image-fallback {
+  display: grid;
+  place-items: center;
   object-fit: contain;
   background: #f8fafc;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+.attention-image-fallback {
+  color: var(--muted);
+  font-size: 28px;
+  font-weight: 900;
 }
 .trend-chart {
   width: 100%;
@@ -2653,7 +2670,9 @@ pre {
     display: grid;
     align-items: start;
   }
-  .attention-card img {
+  .attention-image-frame,
+  .attention-card img,
+  .attention-image-fallback {
     width: 100%;
     height: 160px;
   }

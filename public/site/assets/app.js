@@ -292,9 +292,29 @@ function closeHeaderAccountMenu() {
   if (!headerActionsRoot) return;
   const menu = headerActionsRoot.querySelector("#header-account-menu");
   const trigger = headerActionsRoot.querySelector("#header-account-trigger");
-  if (menu) menu.hidden = true;
+  if (menu) {
+    menu.hidden = true;
+    menu.classList.remove("is-open");
+    menu.style.removeProperty("top");
+    menu.style.removeProperty("right");
+    menu.style.removeProperty("left");
+  }
   if (trigger) trigger.setAttribute("aria-expanded", "false");
   headerAccountMenuOpen = false;
+}
+
+function positionHeaderAccountMenu() {
+  if (!headerActionsRoot || !headerAccountMenuOpen) return;
+  const menu = headerActionsRoot.querySelector("#header-account-menu");
+  const trigger = headerActionsRoot.querySelector("#header-account-trigger");
+  if (!menu || !trigger || menu.hidden) return;
+
+  const rect = trigger.getBoundingClientRect();
+  const width = Math.min(280, Math.max(240, window.innerWidth - 24));
+  const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.right = "auto";
+  menu.style.top = `${Math.round(rect.bottom + 10)}px`;
 }
 
 function toggleHeaderAccountMenu() {
@@ -304,7 +324,9 @@ function toggleHeaderAccountMenu() {
   if (!menu || !trigger) return;
   headerAccountMenuOpen = !headerAccountMenuOpen;
   menu.hidden = !headerAccountMenuOpen;
+  menu.classList.toggle("is-open", headerAccountMenuOpen);
   trigger.setAttribute("aria-expanded", String(headerAccountMenuOpen));
+  positionHeaderAccountMenu();
 }
 
 function updateMobileAuthShortcuts() {
@@ -371,16 +393,16 @@ function updateAuthActions() {
         <span class="account-chip-text" title="${escapeHtml(accountName)}">${escapeHtml(accountLabel)}</span>
         <span class="account-chip-caret" aria-hidden="true">&#9662;</span>
       </button>
-      <div id="${menuId}" class="account-dropdown" hidden>
+      <div id="${menuId}" class="account-dropdown" role="menu" hidden>
         <p class="account-meta">Signed in as</p>
         <p class="account-meta-value" title="${escapeHtml(signedInLine)}">${escapeHtml(signedInLine)}</p>
-        <a href="/account" data-link>My Account</a>
-        <a href="${portalHref}" data-link>Portal / Dashboard</a>
-        <a href="/account/billing" data-link>Billing</a>
-        <a href="/settings" data-link>Connected Stores</a>
-        <a href="/downloads" data-link>Downloads</a>
-        <a href="/support" data-link>Support</a>
-        <button type="button" data-auth-logout>Log out</button>
+        <a href="/account" data-link role="menuitem">My Account</a>
+        <a href="${portalHref}" data-link role="menuitem">Portal / Dashboard</a>
+        <a href="/account/billing" data-link role="menuitem">Billing</a>
+        <a href="/settings" data-link role="menuitem">Connected Stores</a>
+        <a href="/downloads" data-link role="menuitem">Downloads</a>
+        <a href="/support" data-link role="menuitem">Support</a>
+        <button type="button" data-auth-logout role="menuitem">Log out</button>
       </div>
     </div>
   `;
@@ -448,6 +470,9 @@ function routeTo(path) {
   }
   if (normalized === "/queue") {
     loadAuditQueuePage();
+  }
+  if (normalized === "/before-after") {
+    loadBeforeAfterPage();
   }
   if (normalized === "/backgrounds") {
     loadBackgroundsPage();
@@ -536,6 +561,7 @@ function pageTitle(path) {
     "/reports": "Product Image Health Reports | Optivra",
     "/recommendations": "Recommendations | Optivra",
     "/queue": "Queue | Optivra",
+    "/before-after": "Before & After | Optivra",
     "/analytics": "Analytics | Optivra",
     "/backgrounds": "Backgrounds | Optivra",
     "/seo-tools": "SEO Tools | Optivra",
@@ -583,6 +609,7 @@ function pageDescription(path) {
     "/reports": "View Product Image Health Report history and full ecommerce image audit reports in the Optivra portal.",
     "/recommendations": "Review product image recommendations from Optivra Image Health Reports.",
     "/queue": "Review and manage Optivra Image Studio processing queue actions.",
+    "/before-after": "Compare original and processed Optivra Image Studio product images before approval or rollback.",
     "/analytics": "Review Optivra Image Studio catalogue and conversion analytics.",
     "/backgrounds": "Manage Optivra Image Studio background presets.",
     "/seo-tools": "Review Optivra Image Studio image SEO tools.",
@@ -755,6 +782,7 @@ function pageRobots(path) {
     path === "/reports" ||
     path === "/recommendations" ||
     path === "/queue" ||
+    path === "/before-after" ||
     path === "/analytics" ||
     path === "/backgrounds" ||
     path === "/seo-tools" ||
@@ -931,6 +959,9 @@ document.addEventListener("keydown", (event) => {
     closeHeaderAccountMenu();
   }
 });
+
+window.addEventListener("resize", positionHeaderAccountMenu);
+window.addEventListener("scroll", positionHeaderAccountMenu, { passive: true });
 
 document.addEventListener("click", (event) => {
   if (headerAccountMenuOpen && headerActionsRoot && !headerActionsRoot.contains(event.target) && !event.target.closest(".account-dropdown")) {
@@ -1707,6 +1738,61 @@ function renderProcessedImageHistory(imageJobs) {
   `;
 }
 
+async function loadBeforeAfterPage() {
+  const root = document.getElementById("before-after-root");
+  if (!root) return;
+  if (!token()) {
+    root.innerHTML = portalShell("Before & After", "Log in to compare original and processed product images.", "before_after", `
+      <section class="portal-empty-state">
+        <h2>Login required</h2>
+        <p>Your before and after history is connected to your Optivra Image Studio account.</p>
+        <a class="button primary" href="/login" data-link>Login</a>
+      </section>
+    `);
+    return;
+  }
+
+  root.innerHTML = portalShell("Before & After", "Loading processed image comparisons.", "before_after", renderPortalLoading("Loading before and after history..."));
+  try {
+    const account = await api("/account/dashboard");
+    const imageJobs = Array.isArray(account.image_jobs) ? account.image_jobs : [];
+    const compared = imageJobs.filter((job) => job.original_url || job.processed_url);
+    const approved = compared.filter((job) => ["approved", "applied"].includes(String(job.status || ""))).length;
+    const needsReview = compared.filter((job) => ["completed", "needs_review"].includes(String(job.status || ""))).length;
+    root.innerHTML = portalShell("Before & After", "Compare original and processed product images before approval or rollback.", "before_after", `
+      <section class="dashboard-hero-card">
+        <div>
+          <span class="status-badge ready">Review history</span>
+          <h2>Before & After</h2>
+          <p>Inspect processed image outputs alongside their originals. Keep review-first decisions separate from the active processing queue.</p>
+        </div>
+        <div class="dashboard-actions">
+          <a class="button primary" href="/reports" data-link>Open Health Report</a>
+          <a class="button ghost" href="/queue" data-link>Open Queue</a>
+        </div>
+      </section>
+      <section class="dashboard-kpi-grid">
+        ${metricTile("Comparisons", compared.length)}
+        ${metricTile("Approved", approved)}
+        ${metricTile("Needs review", needsReview)}
+        ${metricTile("Safety checked", compared.filter((job) => job.preservation_safety_status).length)}
+      </section>
+      <section class="portal-card">
+        <div class="portal-section-head"><div><h2>Processed Image History</h2><p>Recent original and processed image pairs with safety status and processing mode.</p></div></div>
+        ${renderProcessedImageHistory(imageJobs)}
+      </section>
+    `);
+  } catch (error) {
+    root.innerHTML = portalShell("Before & After", "Something stopped the before and after history from loading.", "before_after", `
+      <section class="portal-empty-state error">
+        <h2>Before & After unavailable</h2>
+        <p>${escapeHtml(error.message)}</p>
+        <button class="button primary" data-before-after-reload>Try again</button>
+      </section>
+    `);
+  }
+}
+
 function renderMiniRecommendations(recommendations) {
   if (!recommendations.length) {
     return `<p class="muted-note">No recommendations are available yet. Run a fresh scan after recommendations are enabled for this store.</p>`;
@@ -2015,7 +2101,7 @@ function renderImageStudioTabs(active) {
     ["reports", "Health Report", "/reports"],
     ["recommendations", "Recommendations", "/recommendations"],
     ["queue", "Queue", "/queue"],
-    ["before_after", "Before & After", "/queue"],
+    ["before_after", "Before & After", "/before-after"],
     ["backgrounds", "Backgrounds", "/backgrounds"],
     ["seo", "SEO", "/seo-tools"],
     ["settings", "Account & Settings", "/settings"]
@@ -2189,7 +2275,7 @@ function renderHealthReportDetail(report) {
   const recommendations = report.recommendations || report.top_recommendations || [];
   const insights = report.insights || report.top_insights || [];
   const categories = report.category_scores || [];
-  const topItems = report.top_items_needing_attention || [];
+  const topItems = normalizeReportTopImages(report);
   const issueSummary = report.issue_summary || {};
   const issueTypes = issueSummary.by_issue_type || {};
   const minutesLow = numeric(metrics.estimated_manual_minutes_low);
@@ -2331,6 +2417,61 @@ function buildExecutiveSummary(report) {
   const minutesLow = numeric(metrics.estimated_manual_minutes_low);
   const minutesHigh = numeric(metrics.estimated_manual_minutes_high);
   return `Your catalogue scored ${health}/100 overall, with SEO at ${seo}/100 and performance at ${performance}/100. Optivra found ${formatNumber(issues)} improvement opportunities and estimates that resolving them manually would take about ${minutesToHours(minutesLow)}-${minutesToHours(minutesHigh)} hours. Start with high-priority main-image and SEO issues, then standardise file size, crop, background and feed-readiness fixes.`;
+}
+
+function normalizeReportTopImages(report) {
+  const source = firstArray(
+    report.products,
+    report.images,
+    report.affectedProducts,
+    report.affected_products,
+    report.top_items_needing_attention,
+    report.recommended_first_50_images
+  );
+  const seen = new Set();
+  return source.map((item) => {
+    const queuePayload = item.queuePayload || item.queue_payload || {};
+    const imageUrl = firstText(
+      item.thumbnailUrl,
+      item.thumbnail_url,
+      item.imageUrl,
+      item.image_url,
+      queuePayload.thumbnailUrl,
+      queuePayload.thumbnail_url,
+      queuePayload.imageUrl,
+      queuePayload.image_url
+    );
+    const productId = firstText(item.productId, item.product_id, queuePayload.product_id);
+    const imageId = firstText(item.imageId, item.image_id, queuePayload.image_id);
+    const key = [productId, imageId, imageUrl, item.product_name || item.productName].join(":");
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return {
+      ...item,
+      product_name: firstText(item.productName, item.product_name) || "Product image",
+      product_url: firstText(item.productUrl, item.product_url),
+      image_url: imageUrl,
+      image_role: firstText(item.imageRole, item.image_role) || "unknown",
+      highest_severity: firstText(item.highest_severity, item.severity) || (item.recommended ? "medium" : "info"),
+      issue_count: numeric(item.issue_count || (Array.isArray(item.issues) ? item.issues.length : 0)),
+      recommended_action: firstText(item.recommended_action, item.recommendedAction, item.status) || "Review this image before processing."
+    };
+  }).filter(Boolean);
+}
+
+function firstArray(...values) {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length) return value;
+  }
+  return [];
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
 }
 
 function buildSimpleHealthSummary(report) {
@@ -2526,7 +2667,7 @@ function renderTopImages(items) {
     <div class="attention-grid">
       ${items.slice(0, 12).map((item) => `
         <article class="attention-card" data-report-filter-key="${escapeHtml([item.issue_type, item.recommended_action, item.highest_severity, item.product_name].filter(Boolean).join(" ").toLowerCase())}">
-          <img src="${escapeHtml(item.image_url || "")}" alt="" loading="lazy" />
+          ${renderAttentionImage(item)}
           <div>
             <h3>${escapeHtml(item.product_name || "Product image")}</h3>
             <div class="badge-row">
@@ -2544,6 +2685,18 @@ function renderTopImages(items) {
           </div>
         </article>
       `).join("")}
+    </div>
+  `;
+}
+
+function renderAttentionImage(item) {
+  const imageUrl = firstText(item.image_url, item.thumbnailUrl, item.thumbnail_url, item.imageUrl);
+  const fallback = `<div class="attention-image-fallback" aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>`;
+  if (!imageUrl) return fallback;
+  return `
+    <div class="attention-image-frame">
+      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.product_name || "Product image")}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false;" />
+      <div class="attention-image-fallback" hidden aria-hidden="true">${escapeHtml((item.product_name || "Image").slice(0, 1).toUpperCase())}</div>
     </div>
   `;
 }
@@ -3962,6 +4115,12 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-queue-reload]")) {
     event.preventDefault();
     await loadAuditQueuePage();
+    return;
+  }
+
+  if (event.target.closest("[data-before-after-reload]")) {
+    event.preventDefault();
+    await loadBeforeAfterPage();
     return;
   }
 });
