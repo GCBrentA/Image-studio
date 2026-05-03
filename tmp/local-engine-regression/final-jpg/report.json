@@ -1,0 +1,14 @@
+[
+  {
+    "case": "colt-main-jpg",
+    "mode": "flexible",
+    "ok": false,
+    "error": "Flexible mode could not produce a product-safe source-pixel mask. AI mask reason: Preserve mode programmatic validation failed: Disconnected Background Artifact; Edge Halo / Background Residue. Local fallback reason: Product cutout failed integrity checks: mask has a large internal transparent dropout through the product. No image was replaced.."
+  },
+  {
+    "case": "colt-main-jpg",
+    "mode": "pixel-perfect",
+    "ok": false,
+    "error": "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output."
+  }
+]

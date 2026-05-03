@@ -1,0 +1,310 @@
+[
+  {
+    "case": "tti-hi-capa-transparent",
+    "mode": "pixel-perfect",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/ec-2011-tti-hi-capa-gbb-pistol-gel-blaster-blaster-pistol-ec-748080.png",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\tti-hi-capa-transparent-pixel-perfect.webp",
+    "validation": {
+      "status": "Passed",
+      "promptVersion": "ecommerce_preserve_v2",
+      "processingMode": "seo_product_feed_safe_preserve_background_replacement",
+      "retryCount": 0,
+      "productCoveragePercent": 85.74,
+      "productCoverageWidthPercent": 85.74,
+      "productCoverageHeightPercent": 62.11,
+      "targetCoverageMinPercent": 82,
+      "targetCoverageMaxPercent": 90,
+      "productOrientation": "horizontal",
+      "autoFixedFraming": false,
+      "checks": {
+        "productPreservation": "Passed",
+        "framing": "Passed",
+        "background": "Passed",
+        "detailPreservation": "Passed",
+        "interiorDropout": "Passed",
+        "edgeQuality": "Passed",
+        "protectedProduct": "Passed",
+        "shadow": "Passed",
+        "programmaticValidation": "Passed",
+        "visionQa": "Passed"
+      },
+      "outcome": "PASS",
+      "protectedProductValidation": {
+        "outcome": "PASS",
+        "passed": true,
+        "failReasons": [],
+        "retryableReasons": [],
+        "metrics": {
+          "silhouetteIoU": 1,
+          "boundsAspectDriftPercent": 0,
+          "centroidDriftPercent": 0,
+          "sourcePixelChangedPercent": 0,
+          "sourcePixelMeanDelta": 0,
+          "histogramDrift": 0,
+          "labelStrokeRetentionPercent": 100,
+          "horizontalStripeScore": 0.4599,
+          "faintProductSharePercent": 0.1506,
+          "bandingScore": 0
+        },
+        "profile": {
+          "width": 881,
+          "height": 639,
+          "foregroundCoveragePercent": 39.16572965349164,
+          "bounds": {
+            "x": 2,
+            "y": 2,
+            "width": 878,
+            "height": 636
+          },
+          "centroid": {
+            "x": 534.234666896461,
+            "y": 239.47072162984665
+          },
+          "aspectRatio": 1.380503144654088,
+          "labelRegion": {
+            "x": 398,
+            "y": 59,
+            "width": 395,
+            "height": 229
+          },
+          "criticalEdgePixels": 3305
+        }
+      },
+      "scores": {
+        "productPreservation": 100,
+        "edgeCleanliness": 23,
+        "backgroundResidue": 95,
+        "alphaConfidence": 99,
+        "dropoutScore": 100,
+        "sourcePixelIntegrity": 100,
+        "commercialReadiness": 88,
+        "visionQaEcommerce": 4,
+        "visionQaTextBranding": 9
+      },
+      "programmaticValidation": {
+        "passed": true,
+        "overallScore": 88,
+        "failReasons": [],
+        "scores": {
+          "productPreservation": 100,
+          "edgeCleanliness": 23,
+          "backgroundResidue": 95,
+          "alphaConfidence": 99,
+          "dropoutScore": 100,
+          "sourcePixelIntegrity": 100,
+          "commercialReadiness": 88
+        },
+        "metrics": {
+          "width": 1024,
+          "height": 1024,
+          "foregroundPixels": 179195,
+          "foregroundCoveragePercent": 17.089,
+          "semiTransparentPixels": 0,
+          "connectedComponentCount": 1,
+          "largestComponentSharePercent": 100,
+          "edgeHaloPixels": 724,
+          "insideEdgePixels": 11737,
+          "backgroundLikeForegroundPixels": 724,
+          "sourcePixelChangedPercent": 0,
+          "sourcePixelMeanDelta": 0,
+          "referenceWidthRatio": 1,
+          "referenceHeightRatio": 1,
+          "referenceAreaRatio": 1,
+          "sourceAlphaAcceptedWithSoftEdgeWarning": true,
+          "originalSoftEdgeFailReasons": "Edge Halo / Background Residue"
+        }
+      },
+      "warnings": [],
+      "failureReasons": [],
+      "visionQa": {
+        "passed": true,
+        "commerciallyUsable": true,
+        "failReasons": [],
+        "scores": {
+          "edgeCleanliness": 4,
+          "productPreservation": 8,
+          "textBrandingConsistency": 9,
+          "backgroundRemoval": 3,
+          "lightingNaturalness": 6,
+          "ecommerceQuality": 4
+        },
+        "ocrComparison": {
+          "originalText": [
+            "TARAN TACTICAL INNOVATIONS"
+          ],
+          "finalText": [
+            "TARAN TACTICAL INNOVATIONS"
+          ],
+          "missingImportantText": [],
+          "alteredBranding": []
+        },
+        "visibleProblems": [],
+        "summary": "Source-alpha preserve mode was accepted by deterministic source-pixel validation. Vision QA advisory notes: The final image fails eCommerce quality standards due to a visible grey halo and remnants of the background around the product, dirty and jagged edges, and a poorly integrated shadow. The product and branding text are well preserved and legible, but the cutout quality and masking prevent commercial usability."
+      }
+    },
+    "preserveDebug": {
+      "provider": "source-alpha:transparent-product-png",
+      "maskSource": "source_alpha",
+      "programmaticPassed": true,
+      "programmaticReasons": [],
+      "visionPassed": true,
+      "sourceAlphaAcceptedWithSoftEdgeWarning": true,
+      "originalSoftEdgeFailReasons": "Edge Halo / Background Residue"
+    }
+  },
+  {
+    "case": "colt-silver-transparent",
+    "mode": "pixel-perfect",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/we-tech-1911-meu-gelsoft-gas-blowback-pistol-classic-grips-blaster-tactical-edge-hobbies-6438666.png",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\colt-silver-transparent-pixel-perfect.webp",
+    "validation": {
+      "status": "Passed",
+      "promptVersion": "ecommerce_preserve_v2",
+      "processingMode": "seo_product_feed_safe_preserve_background_replacement",
+      "retryCount": 0,
+      "productCoveragePercent": 77.83,
+      "productCoverageWidthPercent": 77.83,
+      "productCoverageHeightPercent": 66.8,
+      "targetCoverageMinPercent": 70,
+      "targetCoverageMaxPercent": 84,
+      "productOrientation": "square",
+      "autoFixedFraming": false,
+      "checks": {
+        "productPreservation": "Passed",
+        "framing": "Passed",
+        "background": "Passed",
+        "detailPreservation": "Passed",
+        "interiorDropout": "Passed",
+        "edgeQuality": "Passed",
+        "protectedProduct": "Passed",
+        "shadow": "Passed",
+        "programmaticValidation": "Passed",
+        "visionQa": "Passed"
+      },
+      "outcome": "PASS",
+      "protectedProductValidation": {
+        "outcome": "PASS",
+        "passed": true,
+        "failReasons": [],
+        "retryableReasons": [],
+        "metrics": {
+          "silhouetteIoU": 1,
+          "boundsAspectDriftPercent": 0,
+          "centroidDriftPercent": 0,
+          "sourcePixelChangedPercent": 0,
+          "sourcePixelMeanDelta": 0,
+          "histogramDrift": 0,
+          "labelStrokeRetentionPercent": 100,
+          "horizontalStripeScore": 0.4532,
+          "faintProductSharePercent": 3.7678,
+          "bandingScore": 0
+        },
+        "profile": {
+          "width": 799,
+          "height": 686,
+          "foregroundCoveragePercent": 37.401343516129856,
+          "bounds": {
+            "x": 1,
+            "y": 1,
+            "width": 797,
+            "height": 684
+          },
+          "centroid": {
+            "x": 475.2695876137794,
+            "y": 293.3297333684549
+          },
+          "aspectRatio": 1.1652046783625731,
+          "labelRegion": {
+            "x": 361,
+            "y": 125,
+            "width": 359,
+            "height": 246
+          },
+          "criticalEdgePixels": 2323
+        }
+      },
+      "scores": {
+        "productPreservation": 100,
+        "edgeCleanliness": 0,
+        "backgroundResidue": 75,
+        "alphaConfidence": 99,
+        "dropoutScore": 100,
+        "sourcePixelIntegrity": 100,
+        "commercialReadiness": 88,
+        "visionQaEcommerce": 3,
+        "visionQaTextBranding": 8
+      },
+      "programmaticValidation": {
+        "passed": true,
+        "overallScore": 88,
+        "failReasons": [],
+        "scores": {
+          "productPreservation": 100,
+          "edgeCleanliness": 0,
+          "backgroundResidue": 75,
+          "alphaConfidence": 99,
+          "dropoutScore": 100,
+          "sourcePixelIntegrity": 100,
+          "commercialReadiness": 88
+        },
+        "metrics": {
+          "width": 1024,
+          "height": 1024,
+          "foregroundPixels": 314499,
+          "foregroundCoveragePercent": 29.993,
+          "semiTransparentPixels": 0,
+          "connectedComponentCount": 1,
+          "largestComponentSharePercent": 100,
+          "edgeHaloPixels": 6179,
+          "insideEdgePixels": 14108,
+          "backgroundLikeForegroundPixels": 6179,
+          "sourcePixelChangedPercent": 0,
+          "sourcePixelMeanDelta": 0,
+          "referenceWidthRatio": 1,
+          "referenceHeightRatio": 1,
+          "referenceAreaRatio": 1,
+          "sourceAlphaAcceptedWithSoftEdgeWarning": true,
+          "originalSoftEdgeFailReasons": "Edge Halo / Background Residue"
+        }
+      },
+      "warnings": [],
+      "failureReasons": [],
+      "visionQa": {
+        "passed": true,
+        "commerciallyUsable": true,
+        "failReasons": [],
+        "scores": {
+          "edgeCleanliness": 4,
+          "productPreservation": 9,
+          "textBrandingConsistency": 8,
+          "backgroundRemoval": 4,
+          "lightingNaturalness": 6,
+          "ecommerceQuality": 3
+        },
+        "ocrComparison": {
+          "originalText": [
+            "WE"
+          ],
+          "finalText": [
+            "WE"
+          ],
+          "missingImportantText": [],
+          "alteredBranding": []
+        },
+        "visibleProblems": [],
+        "summary": "Source-alpha preserve mode was accepted by deterministic source-pixel validation. Vision QA advisory notes: The product image fails strict ecommerce requirements due to the presence of a visible grey halo/shadow beneath and around the gun, lack of perfect edge cleanliness, and a not-fully-removed background artifact. Important label/brand text is preserved, but the image is not commercially usable for WooCommerce or similar due to these quality issues."
+      }
+    },
+    "preserveDebug": {
+      "provider": "source-alpha:transparent-product-png",
+      "maskSource": "source_alpha",
+      "programmaticPassed": true,
+      "programmaticReasons": [],
+      "visionPassed": true,
+      "sourceAlphaAcceptedWithSoftEdgeWarning": true,
+      "originalSoftEdgeFailReasons": "Edge Halo / Background Residue"
+    }
+  }
+]

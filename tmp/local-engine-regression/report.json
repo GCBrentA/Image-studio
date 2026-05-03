@@ -1,0 +1,286 @@
+[
+  {
+    "case": "tti-hi-capa-transparent",
+    "mode": "flexible",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/ec-2011-tti-hi-capa-gbb-pistol-gel-blaster-blaster-pistol-ec-748080.png",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\tti-hi-capa-transparent-flexible.webp",
+    "validation": {
+      "status": "Passed",
+      "promptVersion": "ecommerce_preserve_v2",
+      "processingMode": "standard_background_replacement",
+      "retryCount": 0,
+      "productCoveragePercent": 85.94,
+      "productCoverageWidthPercent": 85.94,
+      "productCoverageHeightPercent": 62.21,
+      "targetCoverageMinPercent": 82,
+      "targetCoverageMaxPercent": 90,
+      "productOrientation": "horizontal",
+      "autoFixedFraming": true,
+      "checks": {
+        "productPreservation": "Passed",
+        "framing": "Auto-fixed",
+        "background": "Passed",
+        "detailPreservation": "Passed",
+        "interiorDropout": "Passed",
+        "edgeQuality": "Passed",
+        "protectedProduct": "Passed",
+        "shadow": "Passed"
+      },
+      "outcome": "PASS",
+      "protectedProductValidation": {
+        "outcome": "PASS",
+        "passed": true,
+        "failReasons": [],
+        "retryableReasons": [],
+        "metrics": {
+          "silhouetteIoU": 1,
+          "boundsAspectDriftPercent": 0,
+          "centroidDriftPercent": 0,
+          "sourcePixelChangedPercent": 0,
+          "sourcePixelMeanDelta": 0,
+          "histogramDrift": 0,
+          "labelStrokeRetentionPercent": 100,
+          "horizontalStripeScore": 0.46,
+          "faintProductSharePercent": 0.1637,
+          "bandingScore": 0
+        },
+        "profile": {
+          "width": 881,
+          "height": 638,
+          "foregroundCoveragePercent": 39.55233971085864,
+          "bounds": {
+            "x": 1,
+            "y": 1,
+            "width": 880,
+            "height": 637
+          },
+          "centroid": {
+            "x": 534.2325214223061,
+            "y": 238.47303150934485
+          },
+          "aspectRatio": 1.3814756671899528,
+          "labelRegion": {
+            "x": 397,
+            "y": 58,
+            "width": 396,
+            "height": 229
+          },
+          "criticalEdgePixels": 3320
+        }
+      },
+      "warnings": [
+        "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation."
+      ],
+      "failureReasons": [],
+      "debugAssets": [
+        {
+          "kind": "original_source",
+          "bucket": "original-images",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/original-b0cd22e8-c5e2-41f7-8608-2278efbe92d7.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/original-images/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/original-b0cd22e8-c5e2-41f7-8608-2278efbe92d7.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJvcmlnaW5hbC1pbWFnZXMvbG9jYWwtcmVncmVzc2lvbi9sb2NhbC10dGktaGktY2FwYS10cmFuc3BhcmVudC1mbGV4aWJsZS0xNzc3ODE0MTg4Mjc0L29yaWdpbmFsLWIwY2QyMmU4LWM1ZTItNDFmNy04NjA4LTIyNzhlZmJlOTJkNy5wbmciLCJpYXQiOjE3Nzc4MTQxODksImV4cCI6MTc3ODQxODk4OX0.gp6sUxp2qDXzDqYj-UifAkRiUIiSmswwUrkrzuErQ08",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "debug_cutout",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/cutout-df838a71-2e87-4013-90a4-324d7d170da8.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/cutout-df838a71-2e87-4013-90a4-324d7d170da8.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtdHRpLWhpLWNhcGEtdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDE4ODI3NC9jdXRvdXQtZGY4MzhhNzEtMmU4Ny00MDEzLTkwYTQtMzI0ZDdkMTcwZGE4LnBuZyIsImlhdCI6MTc3NzgxNDE5MSwiZXhwIjoxNzc4NDE4OTkxfQ.DBeEUTdf1PPyKFr9dCy4KljHZlU2k7ZQNltarM6veKA",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "product_diff_heatmap",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-product-diff-heatmap-854eafa8-4565-42bb-b7f1-53a749b7d8e6.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-product-diff-heatmap-854eafa8-4565-42bb-b7f1-53a749b7d8e6.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtdHRpLWhpLWNhcGEtdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDE4ODI3NC9waXBlbGluZS1kZWJ1Zy1wcm9kdWN0LWRpZmYtaGVhdG1hcC04NTRlYWZhOC00NTY1LTQyYmItYjdmMS01M2E3NDliN2Q4ZTYucG5nIiwiaWF0IjoxNzc3ODE0MTkyLCJleHAiOjE3Nzg0MTg5OTJ9.wGI8nuyeJ56r_S4lwb4md2QeLgxacnfwS_wqB9SQt3Y",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "validation_json",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-validation-e1a1a828-6daf-4c4c-880a-a472408d75c4.json",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-validation-e1a1a828-6daf-4c4c-880a-a472408d75c4.json?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtdHRpLWhpLWNhcGEtdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDE4ODI3NC9waXBlbGluZS1kZWJ1Zy12YWxpZGF0aW9uLWUxYTFhODI4LTZkYWYtNGM0Yy04ODBhLWE0NzI0MDhkNzVjNC5qc29uIiwiaWF0IjoxNzc3ODE0MTkyLCJleHAiOjE3Nzg0MTg5OTJ9.QUJURTWBqLXehQzg5cjdxkTwpOPDw89xnghwmfcSSzM",
+          "contentType": "application/json"
+        },
+        {
+          "kind": "generated_background",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-generated-background-abf83010-eef3-4a07-8e45-3fda56a96d8a.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-generated-background-abf83010-eef3-4a07-8e45-3fda56a96d8a.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtdHRpLWhpLWNhcGEtdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDE4ODI3NC9waXBlbGluZS1kZWJ1Zy1nZW5lcmF0ZWQtYmFja2dyb3VuZC1hYmY4MzAxMC1lZWYzLTRhMDctOGU0NS0zZmRhNTZhOTZkOGEucG5nIiwiaWF0IjoxNzc3ODE0MTkzLCJleHAiOjE3Nzg0MTg5OTN9.GXXBjQJ_C3cS0-TKjpuyC-I6zVj36d2xhd3Y-whFGwg",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "shadow_layer",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-shadow-layer-97754cfd-ba70-4086-bbfa-7bb7161facf5.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-shadow-layer-97754cfd-ba70-4086-bbfa-7bb7161facf5.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtdHRpLWhpLWNhcGEtdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDE4ODI3NC9waXBlbGluZS1kZWJ1Zy1zaGFkb3ctbGF5ZXItOTc3NTRjZmQtYmE3MC00MDg2LWJiZmEtN2JiNzE2MWZhY2Y1LnBuZyIsImlhdCI6MTc3NzgxNDE5MywiZXhwIjoxNzc4NDE4OTkzfQ.U8MaL6UIwMgoJ0a5Gd_dUp5uKGVE4XpEXkan-Y2VMhM",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "final_composite",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-final-composite-47d3aa9c-5843-4767-8778-168d14cf26c5.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-tti-hi-capa-transparent-flexible-1777814188274/pipeline-debug-final-composite-47d3aa9c-5843-4767-8778-168d14cf26c5.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtdHRpLWhpLWNhcGEtdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDE4ODI3NC9waXBlbGluZS1kZWJ1Zy1maW5hbC1jb21wb3NpdGUtNDdkM2FhOWMtNTg0My00NzY3LTg3NzgtMTY4ZDE0Y2YyNmM1LnBuZyIsImlhdCI6MTc3NzgxNDE5NCwiZXhwIjoxNzc4NDE4OTk0fQ.gX5WR8-AtE6JS06Zs1eOsxJTQAu7h7SK5vsceldQZ74",
+          "contentType": "image/png"
+        }
+      ]
+    },
+    "preserveDebug": null
+  },
+  {
+    "case": "tti-hi-capa-transparent",
+    "mode": "pixel-perfect",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/ec-2011-tti-hi-capa-gbb-pistol-gel-blaster-blaster-pistol-ec-748080.png",
+    "ok": false,
+    "error": "Visible grey/white halo especially along lower edge and back of grip; Edge cleanliness is not perfect, there is a slight color bleed and glow near the contours; Masking is rough in several areas (front trigger guard, rear safety); Text and branding are well preserved, but image quality and edges are not up to strict ecommerce standards (visible jagged cut); Artificial shadow in composite is low grade and does not match original lighting; Label/text/branding consistency failed vision QA."
+  },
+  {
+    "case": "colt-silver-transparent",
+    "mode": "flexible",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/we-tech-1911-meu-gelsoft-gas-blowback-pistol-classic-grips-blaster-tactical-edge-hobbies-6438666.png",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\colt-silver-transparent-flexible.webp",
+    "validation": {
+      "status": "Passed",
+      "promptVersion": "ecommerce_preserve_v2",
+      "processingMode": "standard_background_replacement",
+      "retryCount": 0,
+      "productCoveragePercent": 77.83,
+      "productCoverageWidthPercent": 77.83,
+      "productCoverageHeightPercent": 66.8,
+      "targetCoverageMinPercent": 70,
+      "targetCoverageMaxPercent": 84,
+      "productOrientation": "square",
+      "autoFixedFraming": false,
+      "checks": {
+        "productPreservation": "Passed",
+        "framing": "Passed",
+        "background": "Passed",
+        "detailPreservation": "Passed",
+        "interiorDropout": "Passed",
+        "edgeQuality": "Passed",
+        "protectedProduct": "Passed",
+        "shadow": "Passed"
+      },
+      "outcome": "PASS",
+      "protectedProductValidation": {
+        "outcome": "PASS",
+        "passed": true,
+        "failReasons": [],
+        "retryableReasons": [],
+        "metrics": {
+          "silhouetteIoU": 1,
+          "boundsAspectDriftPercent": 0,
+          "centroidDriftPercent": 0,
+          "sourcePixelChangedPercent": 0,
+          "sourcePixelMeanDelta": 0,
+          "histogramDrift": 0,
+          "labelStrokeRetentionPercent": 100,
+          "horizontalStripeScore": 0.4539,
+          "faintProductSharePercent": 3.788,
+          "bandingScore": 0
+        },
+        "profile": {
+          "width": 799,
+          "height": 686,
+          "foregroundCoveragePercent": 37.35135391542636,
+          "bounds": {
+            "x": 1,
+            "y": 1,
+            "width": 797,
+            "height": 684
+          },
+          "centroid": {
+            "x": 474.98092591145326,
+            "y": 293.3507531944824
+          },
+          "aspectRatio": 1.1652046783625731,
+          "labelRegion": {
+            "x": 361,
+            "y": 125,
+            "width": 359,
+            "height": 246
+          },
+          "criticalEdgePixels": 2315
+        }
+      },
+      "warnings": [
+        "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation."
+      ],
+      "failureReasons": [],
+      "debugAssets": [
+        {
+          "kind": "original_source",
+          "bucket": "original-images",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/original-376f50a0-7faf-45a8-a7c7-2614ad34aaab.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/original-images/local-regression/local-colt-silver-transparent-flexible-1777814210343/original-376f50a0-7faf-45a8-a7c7-2614ad34aaab.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJvcmlnaW5hbC1pbWFnZXMvbG9jYWwtcmVncmVzc2lvbi9sb2NhbC1jb2x0LXNpbHZlci10cmFuc3BhcmVudC1mbGV4aWJsZS0xNzc3ODE0MjEwMzQzL29yaWdpbmFsLTM3NmY1MGEwLTdmYWYtNDVhOC1hN2M3LTI2MTRhZDM0YWFhYi5wbmciLCJpYXQiOjE3Nzc4MTQyMTAsImV4cCI6MTc3ODQxOTAxMH0.C-p3sWzEONx0fY7Ff3AcihJ5rUZToWRgnuze0_aGR20",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "debug_cutout",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/cutout-012d8151-3f61-4e52-8a4a-44e3b355f0bc.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-colt-silver-transparent-flexible-1777814210343/cutout-012d8151-3f61-4e52-8a4a-44e3b355f0bc.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtY29sdC1zaWx2ZXItdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDIxMDM0My9jdXRvdXQtMDEyZDgxNTEtM2Y2MS00ZTUyLThhNGEtNDRlM2IzNTVmMGJjLnBuZyIsImlhdCI6MTc3NzgxNDIxMiwiZXhwIjoxNzc4NDE5MDEyfQ.YyGwaQhitZWIf6hVCWRaMs0hydq_nWn7qGloJ0or7lw",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "product_diff_heatmap",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-product-diff-heatmap-8c98be1f-ca7f-480b-afe9-ffd296c5463f.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-product-diff-heatmap-8c98be1f-ca7f-480b-afe9-ffd296c5463f.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtY29sdC1zaWx2ZXItdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDIxMDM0My9waXBlbGluZS1kZWJ1Zy1wcm9kdWN0LWRpZmYtaGVhdG1hcC04Yzk4YmUxZi1jYTdmLTQ4MGItYWZlOS1mZmQyOTZjNTQ2M2YucG5nIiwiaWF0IjoxNzc3ODE0MjEzLCJleHAiOjE3Nzg0MTkwMTN9.1oWg5BMaMjQxA8_N2SoBy2QyXuCnsDI9emixXG0Bxqo",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "validation_json",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-validation-21ffb4be-3fc8-4930-9bcf-26170c7f7b62.json",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-validation-21ffb4be-3fc8-4930-9bcf-26170c7f7b62.json?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtY29sdC1zaWx2ZXItdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDIxMDM0My9waXBlbGluZS1kZWJ1Zy12YWxpZGF0aW9uLTIxZmZiNGJlLTNmYzgtNDkzMC05YmNmLTI2MTcwYzdmN2I2Mi5qc29uIiwiaWF0IjoxNzc3ODE0MjE0LCJleHAiOjE3Nzg0MTkwMTR9.AZSwk1F_6O2jUxOd1dJXfyxbpD6d7JXwPbjec8RcubM",
+          "contentType": "application/json"
+        },
+        {
+          "kind": "generated_background",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-generated-background-cb4985f3-aa7c-45ca-8cc8-56c3ad26cf80.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-generated-background-cb4985f3-aa7c-45ca-8cc8-56c3ad26cf80.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtY29sdC1zaWx2ZXItdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDIxMDM0My9waXBlbGluZS1kZWJ1Zy1nZW5lcmF0ZWQtYmFja2dyb3VuZC1jYjQ5ODVmMy1hYTdjLTQ1Y2EtOGNjOC01NmMzYWQyNmNmODAucG5nIiwiaWF0IjoxNzc3ODE0MjE0LCJleHAiOjE3Nzg0MTkwMTR9.g2BSO5st238S8xPNM4c0R-QMF8CVVX03-uiev4YT_SY",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "shadow_layer",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-shadow-layer-c91de3dd-cafe-4f76-ad11-3f5b6130394b.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-shadow-layer-c91de3dd-cafe-4f76-ad11-3f5b6130394b.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtY29sdC1zaWx2ZXItdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDIxMDM0My9waXBlbGluZS1kZWJ1Zy1zaGFkb3ctbGF5ZXItYzkxZGUzZGQtY2FmZS00Zjc2LWFkMTEtM2Y1YjYxMzAzOTRiLnBuZyIsImlhdCI6MTc3NzgxNDIxNSwiZXhwIjoxNzc4NDE5MDE1fQ.eTHMqcxCmOtXhk_x8GXvT1uiBLHmPu19ILMeyOmqA5Q",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "final_composite",
+          "bucket": "debug-cutouts",
+          "path": "local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-final-composite-a6539516-cc50-434b-99cb-71f73be89298.png",
+          "url": "https://qeslaikhhujniqrzxelj.supabase.co/storage/v1/object/sign/debug-cutouts/local-regression/local-colt-silver-transparent-flexible-1777814210343/pipeline-debug-final-composite-a6539516-cc50-434b-99cb-71f73be89298.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8zZmU1NTRhMi0zNDJhLTQ3Y2ItODk5Zi0wYjE2OWU0YzIwMzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkZWJ1Zy1jdXRvdXRzL2xvY2FsLXJlZ3Jlc3Npb24vbG9jYWwtY29sdC1zaWx2ZXItdHJhbnNwYXJlbnQtZmxleGlibGUtMTc3NzgxNDIxMDM0My9waXBlbGluZS1kZWJ1Zy1maW5hbC1jb21wb3NpdGUtYTY1Mzk1MTYtY2M1MC00MzRiLTk5Y2ItNzFmNzNiZTg5Mjk4LnBuZyIsImlhdCI6MTc3NzgxNDIxNSwiZXhwIjoxNzc4NDE5MDE1fQ.Hf3bMujN5srYEO6pD_nWHTob5wD0aSQXJEoWtfCqgdM",
+          "contentType": "image/png"
+        }
+      ]
+    },
+    "preserveDebug": null
+  },
+  {
+    "case": "colt-silver-transparent",
+    "mode": "pixel-perfect",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/we-tech-1911-meu-gelsoft-gas-blowback-pistol-classic-grips-blaster-tactical-edge-hobbies-6438666.png",
+    "ok": false,
+    "error": "Visible red outline on edge debug indicating masking artifacts.; Halo/edge around product visible, especially on upper and back edges.; Some edges appear rough or slightly jagged, failing strict ecommerce criteria.; No missing product parts or AI-redrawn shapes detected but edge cleanliness is not high enough quality.; Brand text ('WE') is preserved but overall mask does not meet strict ecommerce standards.; Label/text/branding consistency failed vision QA."
+  },
+  {
+    "case": "colt-main-jpg",
+    "mode": "flexible",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/cybergun-licenced-colt-1911-gel-blaster-blaster-armourer-works-935713.jpg",
+    "ok": false,
+    "error": "Flexible mode could not produce a product-safe source-pixel mask. AI mask reason: Preserve mode programmatic validation failed: Disconnected Background Artifact; Edge Halo / Background Residue. Local fallback reason: Product cutout failed integrity checks: mask has a large internal transparent dropout through the product. No image was replaced.."
+  },
+  {
+    "case": "colt-main-jpg",
+    "mode": "pixel-perfect",
+    "source": "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/cybergun-licenced-colt-1911-gel-blaster-blaster-armourer-works-935713.jpg",
+    "ok": false,
+    "error": "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output."
+  }
+]

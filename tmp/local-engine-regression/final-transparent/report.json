@@ -1,0 +1,94 @@
+[
+  {
+    "case": "tti-hi-capa-transparent",
+    "mode": "flexible",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\final-transparent\\tti-hi-capa-transparent-flexible.webp",
+    "status": "Passed",
+    "outcome": "PASS",
+    "coverage": 85.94,
+    "metrics": {
+      "silhouetteIoU": 1,
+      "boundsAspectDriftPercent": 0,
+      "centroidDriftPercent": 0,
+      "sourcePixelChangedPercent": 0,
+      "sourcePixelMeanDelta": 0,
+      "histogramDrift": 0,
+      "labelStrokeRetentionPercent": 100,
+      "horizontalStripeScore": 0.46,
+      "faintProductSharePercent": 0.1637,
+      "bandingScore": 0
+    },
+    "provider": null,
+    "modeLabel": "standard_background_replacement"
+  },
+  {
+    "case": "tti-hi-capa-transparent",
+    "mode": "pixel-perfect",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\final-transparent\\tti-hi-capa-transparent-pixel-perfect.webp",
+    "status": "Passed",
+    "outcome": "PASS",
+    "coverage": 85.74,
+    "metrics": {
+      "silhouetteIoU": 1,
+      "boundsAspectDriftPercent": 0,
+      "centroidDriftPercent": 0,
+      "sourcePixelChangedPercent": 0,
+      "sourcePixelMeanDelta": 0,
+      "histogramDrift": 0,
+      "labelStrokeRetentionPercent": 100,
+      "horizontalStripeScore": 0.4599,
+      "faintProductSharePercent": 0.1506,
+      "bandingScore": 0
+    },
+    "provider": "source-alpha:transparent-product-png",
+    "modeLabel": "seo_product_feed_safe_preserve_background_replacement"
+  },
+  {
+    "case": "colt-silver-transparent",
+    "mode": "flexible",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\final-transparent\\colt-silver-transparent-flexible.webp",
+    "status": "Passed",
+    "outcome": "PASS",
+    "coverage": 77.83,
+    "metrics": {
+      "silhouetteIoU": 1,
+      "boundsAspectDriftPercent": 0,
+      "centroidDriftPercent": 0,
+      "sourcePixelChangedPercent": 0,
+      "sourcePixelMeanDelta": 0,
+      "histogramDrift": 0,
+      "labelStrokeRetentionPercent": 100,
+      "horizontalStripeScore": 0.4539,
+      "faintProductSharePercent": 3.788,
+      "bandingScore": 0
+    },
+    "provider": null,
+    "modeLabel": "standard_background_replacement"
+  },
+  {
+    "case": "colt-silver-transparent",
+    "mode": "pixel-perfect",
+    "ok": true,
+    "outputPath": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\local-engine-regression\\final-transparent\\colt-silver-transparent-pixel-perfect.webp",
+    "status": "Passed",
+    "outcome": "PASS",
+    "coverage": 77.83,
+    "metrics": {
+      "silhouetteIoU": 1,
+      "boundsAspectDriftPercent": 0,
+      "centroidDriftPercent": 0,
+      "sourcePixelChangedPercent": 0,
+      "sourcePixelMeanDelta": 0,
+      "histogramDrift": 0,
+      "labelStrokeRetentionPercent": 100,
+      "horizontalStripeScore": 0.4532,
+      "faintProductSharePercent": 3.7678,
+      "bandingScore": 0
+    },
+    "provider": "source-alpha:transparent-product-png",
+    "modeLabel": "seo_product_feed_safe_preserve_background_replacement"
+  }
+]

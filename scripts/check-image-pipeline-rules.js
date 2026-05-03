@@ -45,6 +45,12 @@ assert.match(imageProcessing, /validatePreserveModeProgrammatic/, "preserve mode
 assert.match(imageProcessing, /runPreserveVisionQa/, "preserve mode has strict vision QA");
 assert.match(imageProcessing, /buildCutoutFromExistingSourceAlpha/, "standard/fallback mode uses existing transparent PNG alpha before AI cutout");
 assert.match(imageProcessing, /source-alpha:transparent-product-png/, "source alpha cutouts are tracked as a distinct provider");
+assert.match(imageProcessing, /Image preserve-mode used existing source alpha/, "pixel-perfect mode uses trustworthy existing transparent PNG alpha before AI segmentation");
+assert.match(imageProcessing, /coverage > totalPixels \* 0\.55/, "source-alpha fast path does not mistake rectangular JPEG padding for a transparent product cutout");
+assert.match(imageProcessing, /canTrustExistingSourceAlpha[\s\S]*sourceAlphaSoftEdgeFailReasons[\s\S]*foregroundMeanDelta <= 0\.25/, "pixel-perfect source-alpha path accepts only source-identical soft-edge masks");
+assert.match(imageProcessing, /!cutoutResult\.provider\.startsWith\("source-alpha:"\)[\s\S]*removePalePhotoCardFromProductBuffer/, "source-alpha product pixels are not altered by pale-card cleanup");
+assert.match(imageProcessing, /canAcceptSourceLockedSoftEdgeMask[\s\S]*backgroundResidueRatio <= 0\.16[\s\S]*edgeHaloRatio <= 0\.26/, "source-locked soft-edge masks are bounded before acceptance");
+assert.match(imageProcessing, /isSourceAlphaPreserve[\s\S]*isSourceLockedSoftEdgeAccepted[\s\S]*edgeHaloOverlay:[\s\S]*markSourceLockedVisionQaAdvisory/, "source-locked preserve mode does not let diagnostic edge overlays become blocking vision QA failures");
 assert.match(imageProcessing, /secondOpinionForegroundPercent[\s\S]*productLikePercent[\s\S]*backgroundLikePercent[\s\S]*bridgesForeground/, "interior dropout repair uses structural and second-opinion evidence");
 assert.match(imageProcessing, /originalRgb[\s\S]*repairedAlpha\[pixel\] = 255/, "interior restoration restores original source pixels through the preserve alpha mask");
 assert.match(imageProcessing, /applyApprovedAlphaToOriginalPixels/, "final preserve product layer is original pixels cut by an approved alpha mask");
@@ -52,6 +58,7 @@ assert.match(imageProcessing, /Interior product dropout remains after repair/, "
 assert.match(imageProcessing, /interior_dropout_overlay[\s\S]*restored_region_overlay[\s\S]*final_repaired_cutout/, "preserve debug saves interior dropout repair artifacts");
 assert.match(imageProcessing, /edge_halo_overlay[\s\S]*connected_components_overlay[\s\S]*product_cutout_checkerboard/, "preserve debug saves edge and checkerboard artifacts");
 assert.match(imageProcessing, /getBackgroundMarkSuspicion[\s\S]*background logo or watermark/, "preserve masks with internal background logos are rejected before completion");
+assert.match(imageProcessing, /structuralProductPixels[\s\S]*neutralPercent >= 55[\s\S]*smoothBackdropTone[\s\S]*structuralShare < 0\.28/s, "background-mark rejection avoids false positives on silver or white product structure");
 assert.match(imageProcessing, /openAiImageEditModel[\s\S]*openAiImageEditQuality[\s\S]*openAiImageEditSize/, "model, quality and size are tracked in safe logging");
 assert.doesNotMatch(imageProcessing, /console\.(info|warn|error)\([\s\S]{0,400}openAiApiKey/, "safe logging does not include API key");
 
@@ -80,6 +87,7 @@ assert.match(imageProcessing, /protectedProductValidation/, "output validation s
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
 assert.match(imageProcessing, /preserveMode: true\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation is pixel-strict even when pixel-perfect mode is off");
 assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");
+assert.doesNotMatch(imageProcessing, /linearGradient id="bg"|fill="url\(#bg\)"/, "generated default backgrounds must not introduce horizontal gradient bands");
 assert.match(imageProcessing, /product_diff_heatmap/, "debug artifacts include product diff heatmaps");
 assert.match(imageProcessing, /uploadPipelineDebugAsset[\s\S]*generated_background/, "flexible dev/test debug artifacts include generated backgrounds");
 
