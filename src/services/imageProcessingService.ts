@@ -729,10 +729,9 @@ const processImageFlexibleMode = async (
     }
   }
 
-  const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
-  await validateImage(aiCutout);
-
   try {
+    const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
+    await validateImage(aiCutout);
     const sourceDimensions = await getImageDimensions(openAiInput);
     const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
 
@@ -748,25 +747,30 @@ const processImageFlexibleMode = async (
       }
     );
   } catch (error) {
-    console.warn("Flexible cutout alpha cleanup failed; raw AI product pixels rejected", {
-      reason: error instanceof Error ? error.message : "Unknown alpha cleanup error"
+    console.warn("Flexible AI cutout failed or produced an unsafe alpha mask; raw AI product pixels rejected", {
+      reason: error instanceof Error ? error.message : "Unknown flexible cutout error"
     });
 
-    if (preferLocalForegroundFallback) {
-      try {
-        return await buildFlexibleLocalForegroundCutout(openAiInput, "local-color-segmentation:flexible-alpha-cleanup-fallback", 2);
-      } catch (fallbackError) {
-        throw new Error(
-          `Flexible cutout could not produce a product-safe alpha mask (${error instanceof Error ? error.message : "Unknown alpha cleanup error"}) and local foreground fallback failed: ${
-            fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
-          }`
-        );
-      }
-    }
+    try {
+      return await buildFlexibleLocalForegroundCutout(
+        openAiInput,
+        preferLocalForegroundFallback
+          ? "local-color-segmentation:flexible-alpha-cleanup-fallback"
+          : "local-color-segmentation:flexible-noisy-ai-mask-fallback",
+        2
+      );
+    } catch (fallbackError) {
+      console.warn("Flexible local foreground fallback failed; using review-required source-photo fallback", {
+        aiMaskReason: error instanceof Error ? error.message : "Unknown flexible cutout error",
+        localFallbackReason: fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
+      });
 
-    throw new Error(
-      `Flexible cutout could not produce a product-safe alpha mask: ${error instanceof Error ? error.message : "Unknown alpha cleanup error"}`
-    );
+      return buildFlexibleOriginalImageFallbackCutout(
+        openAiInput,
+        `source-original-review-fallback:no-safe-alpha-mask:${error instanceof Error ? error.message : "unknown-flexible-cutout-error"}`,
+        3
+      );
+    }
   }
 };
 
@@ -787,8 +791,10 @@ const buildFlexibleLocalForegroundCutout = async (
   const alpha = await smoothAlphaMask(buildLocalForegroundAlpha(rgba, width, height), width, height);
   const diagnostics = analyzeAlphaMask(alpha, width, height);
 
-  if (diagnostics.alphaCoverage <= 0) {
-    throw new Error("Local foreground fallback did not find a product foreground.");
+  if (!diagnostics.passed || diagnostics.alphaCoverage <= 0) {
+    throw new Error(
+      `Local foreground fallback did not produce a safe product mask: ${diagnostics.failureReasons.join("; ") || "no product foreground detected"}`
+    );
   }
 
   const productRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), alpha, width, height);
@@ -809,6 +815,49 @@ const buildFlexibleLocalForegroundCutout = async (
     attempts,
     validation: {
       alphaCoverage: diagnostics.alphaCoverage,
+      foregroundMeanDelta: 0
+    }
+  };
+};
+
+const buildFlexibleOriginalImageFallbackCutout = async (
+  sourceBuffer: Buffer,
+  provider: string,
+  attempts: number
+): Promise<CutoutResult> => {
+  const metadata = await sharp(sourceBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Source-photo fallback could not read source image dimensions.");
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = (rgba[pixel * 4 + 3] ?? 0) >= 16 ? 255 : 0;
+  }
+
+  const productRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), alpha, width, height);
+  const cutout = await sharp(productRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return {
+    cutout,
+    debugCutout: cutout,
+    provider,
+    attempts,
+    validation: {
+      alphaCoverage: getAlphaCoverage(alpha),
       foregroundMeanDelta: 0
     }
   };
@@ -4335,6 +4384,24 @@ export const processImageForProduct = async ({
       warnings: Array.from(new Set([
         ...outputValidation.warnings,
         "Strict preserve fallback produced a clean product layer, but product framing needs review before approval."
+      ])),
+      failureReasons: []
+    };
+  }
+  if (cutoutResult.provider.startsWith("source-original-review-fallback:")) {
+    outputValidation = {
+      ...outputValidation,
+      status: "Needs Review",
+      checks: {
+        ...outputValidation.checks,
+        framing: outputValidation.checks.framing === "Failed" ? "Needs Review" : outputValidation.checks.framing,
+        background: "Needs Review",
+        detailPreservation: "Needs Review",
+        protectedProduct: outputValidation.checks.protectedProduct === "Failed" ? "Needs Review" : outputValidation.checks.protectedProduct
+      },
+      warnings: Array.from(new Set([
+        ...outputValidation.warnings,
+        "AI and local alpha extraction could not create a product-safe mask, so Optivra returned a review-required source-photo fallback instead of failing the job."
       ])),
       failureReasons: []
     };

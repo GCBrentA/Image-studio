@@ -64,7 +64,11 @@ assert.match(backgroundRemoval, /openAiImageEditSize = "1024x1024"/, "OpenAI siz
 assert.match(imageProcessing, /const attempts = \[[\s\S]*attempt: 1[\s\S]*attempt: 2[\s\S]*\];/, "preserve mode retry is capped at two attempts");
 assert.match(backgroundRemoval, /processImageFlexibleMode|flexible-cutout|BackgroundRemovalMode/, "standard mode uses the same image model path with one attempt");
 assert.match(imageProcessing, /raw AI product pixels rejected/, "standard mode rejects unsafe raw AI product pixels");
+assert.match(imageProcessing, /Flexible AI cutout failed or produced an unsafe alpha mask/, "standard mode fallback covers AI cutout call failures and unsafe masks");
 assert.doesNotMatch(imageProcessing, /provider:\s*`openai:\$\{openAiImageEditModel\}:flexible-cutout`/, "standard mode must not return raw AI product RGB as the final cutout");
+assert.match(imageProcessing, /flexible-noisy-ai-mask-fallback/, "standard mode retries noisy AI masks with local source-pixel fallback");
+assert.match(imageProcessing, /source-original-review-fallback/, "standard mode degrades to a review-required source-photo fallback instead of surfacing mask errors");
+assert.match(imageProcessing, /AI and local alpha extraction could not create a product-safe mask/, "source-photo fallback is marked review-required in validation warnings");
 assert.match(imageProcessing, /Product cutout is too faint after background removal/, "product visibility validation rejects faint striped cutouts");
 assert.match(imageProcessing, /horizontal scanline artifacts after background removal/, "product visibility validation rejects striped scanline cutouts");
 assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
