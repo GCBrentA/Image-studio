@@ -197,6 +197,9 @@ class Catalogue_Image_Studio_ImageProcessor {
 				'processed_attachment_id' => 0,
 				'processed_storage_bucket' => '',
 				'processed_storage_path' => '',
+				'safety_status'          => 'failed',
+				'safety_metadata'        => '',
+				'processing_mode'        => '',
 			]
 		);
 

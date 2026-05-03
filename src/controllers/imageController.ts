@@ -1,7 +1,7 @@
 import { ImageJobStatus } from "@prisma/client";
 import type { Response } from "express";
 import { deductCredit, getUserCredits } from "../services/creditService";
-import { getPreserveDebugFromError, processImageForProduct, type OutputQualityValidation } from "../services/imageProcessingService";
+import { getPreserveDebugFromError, processImageForProduct } from "../services/imageProcessingService";
 import { prisma } from "../utils/prisma";
 import type { AuthenticatedRequest } from "../middleware/apiTokenAuth";
 
@@ -43,43 +43,6 @@ const decodeInlineImage = (
   return {
     buffer,
     contentType
-  };
-};
-
-const buildPreserveFallbackSettings = (settings: unknown): Record<string, unknown> => ({
-  ...(typeof settings === "object" && settings !== null && !Array.isArray(settings)
-    ? settings as Record<string, unknown>
-    : {}),
-  preserveProductExactly: false,
-  autoFailIfProductAltered: false,
-  processingMode: "standard_ecommerce_cleanup",
-  preserveFallbackFromStrictMode: true
-});
-
-const withPreserveFallbackWarning = (
-  outputValidation: OutputQualityValidation | undefined,
-  reason: string
-): OutputQualityValidation | undefined => {
-  if (!outputValidation) {
-    return outputValidation;
-  }
-
-  const warning = "Strict preserve mode could not complete safely, so Optivra produced a review-required standard output instead. The original image was not replaced automatically.";
-
-  return {
-    ...outputValidation,
-    status: outputValidation.status === "Passed" ? "Needs Review" : outputValidation.status,
-    processingMode: `${outputValidation.processingMode}_preserve_fallback`,
-    checks: {
-      ...outputValidation.checks,
-      productPreservation: "Needs Review",
-      detailPreservation: "Needs Review"
-    },
-    warnings: Array.from(new Set([
-      warning,
-      `Preserve fallback reason: ${reason}`,
-      ...outputValidation.warnings
-    ]))
   };
 };
 
@@ -250,100 +213,12 @@ export const processImage = async (
     const preserveDebug = getPreserveDebugFromError(error);
 
     if (preserveDebug) {
-      const fallbackReason = error instanceof Error ? error.message : "Strict preserve mode failed validation.";
-
-      console.warn("Strict preserve mode failed; retrying with review-required standard output", {
+      console.warn("Strict preserve mode failed; refusing non-pixel-perfect fallback", {
         imageJobId: imageJob.id,
         userId: auth.userId,
         imageUrl: sourceImageUrl,
-        fallbackReason
+        reason: error instanceof Error ? error.message : "Strict preserve mode failed validation."
       });
-
-      try {
-        const fallbackResult = await processImageForProduct({
-          imageJobId: imageJob.id,
-          userId: auth.userId,
-          imageUrl: sourceImageUrl,
-          imageBuffer: inlineImage?.buffer,
-          imageContentType: inlineImage?.contentType,
-          imageFileName: typeof body.image_filename === "string" ? body.image_filename : undefined,
-          background: typeof body.background === "string" ? body.background : undefined,
-          scalePercent: typeof body.scale_percent === "number" ? body.scale_percent : undefined,
-          backgroundImageUrl:
-            typeof body.background_image_url === "string" ? body.background_image_url : undefined,
-          backgroundImageBuffer: inlineBackground?.buffer,
-          backgroundImageContentType: inlineBackground?.contentType,
-          backgroundImageFileName: typeof body.background_image_filename === "string" ? body.background_image_filename : undefined,
-          settings: buildPreserveFallbackSettings(body.settings),
-          jobOverrides: typeof body.jobOverrides === "object" && body.jobOverrides !== null ? body.jobOverrides : undefined
-        });
-        const outputValidation = withPreserveFallbackWarning(fallbackResult.outputValidation, fallbackReason);
-        const seoMetadata = {
-          ...fallbackResult.seoMetadata,
-          preserve_fallback: {
-            strict_preserve_failed: true,
-            reason: fallbackReason,
-            review_required: true
-          },
-          ...(outputValidation ? { output_validation: outputValidation } : {})
-        };
-
-        await prisma.imageJob.update({
-          where: {
-            id: imageJob.id
-          },
-          data: {
-            processed_url: fallbackResult.processedUrl,
-            original_image_hash: fallbackResult.originalImageHash,
-            duplicate_of_job_id: fallbackResult.duplicateOfJobId,
-            original_storage_path: fallbackResult.originalStoragePath,
-            processed_storage_path: fallbackResult.processedStoragePath,
-            debug_cutout_storage_path: fallbackResult.debugCutoutStoragePath,
-            original_uploaded_at: fallbackResult.originalUploadedAt,
-            processed_uploaded_at: fallbackResult.processedUploadedAt,
-            debug_cutout_uploaded_at: fallbackResult.debugCutoutUploadedAt,
-            storage_cleanup_after: fallbackResult.storageCleanupAfter,
-            seo_metadata: seoMetadata,
-            status: ImageJobStatus.completed
-          }
-        });
-
-        const deduction = await deductCredit(auth.userId, {
-          imageJobId: imageJob.id
-        });
-
-        if (deduction.error_if_any) {
-          response.status(402).json({
-            status: "error",
-            processed_url: null,
-            credits_remaining: deduction.credits_remaining,
-            low_credit_thresholds: deduction.low_credit_thresholds,
-            error: deduction.error_if_any
-          });
-          return;
-        }
-
-        response.status(201).json({
-          status: "completed",
-          duplicate: false,
-          preserve_fallback: true,
-          processed_url: fallbackResult.processedUrl,
-          processed_storage_bucket: fallbackResult.processedStoragePath ? "processed-images" : null,
-          processed_storage_path: fallbackResult.processedStoragePath,
-          credits_remaining: deduction.credits_remaining,
-          low_credit_thresholds: deduction.low_credit_thresholds,
-          seo_metadata: seoMetadata,
-          output_validation: outputValidation
-        });
-        return;
-      } catch (fallbackError) {
-        console.error("Preserve fallback processing failed", {
-          imageJobId: imageJob.id,
-          userId: auth.userId,
-          imageUrl: sourceImageUrl,
-          fallbackError
-        });
-      }
     }
 
     console.error("Image processing failed", {

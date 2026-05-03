@@ -92,9 +92,8 @@ assert.match(productProtection, /bandingScore/, "product protection checks poste
 
 assert.match(imageController, /deductCredit[\s\S]*if \(!result\.creditDeductionRequired\)[\s\S]*const deduction = await deductCredit/s, "credits are deducted only after processing success");
 assert.match(imageController, /catch \(error\)[\s\S]*response\.status\(422\)/s, "failed processing returns without deducting credit");
-assert.match(imageController, /Strict preserve mode failed; retrying with review-required standard output/, "strict preserve failures fall back to a review-required output");
-assert.match(imageController, /preserveFallbackFromStrictMode: true/, "preserve fallback is marked in processing settings");
-assert.match(imageController, /preserve_fallback: true/, "preserve fallback responses are explicit");
+assert.match(imageController, /Strict preserve mode failed; refusing non-pixel-perfect fallback/, "strict preserve failures fail safely instead of falling back to standard mode");
+assert.doesNotMatch(imageController, /preserveFallbackFromStrictMode: true|preserve_fallback: true/, "strict preserve responses must not complete as standard-mode fallbacks");
 assert.doesNotMatch(approvalManager, /process\(/, "approval manager does not auto-process or auto-apply failed outputs");
 
 assert.match(pluginAdmin, /Product Preservation:/, "review UI shows product preservation status");
@@ -108,8 +107,11 @@ assert.match(pluginAdmin, /Vision QA text\/branding score:/, "review UI shows vi
 assert.match(pluginAdmin, /normalize_api_token/, "plugin settings extract a pasted cis_ token before saving");
 assert.match(pluginAdmin, /API Base URL override points to a local backend/, "plugin warns when connection failures come from a local API override");
 assert.match(pluginAdmin, /is_local_api_base_url/, "plugin settings reject local API overrides unless debug mode is enabled");
+assert.match(pluginAdmin, /\$strict_preserve_guard = \$preserve_product_exactly;/, "pixel-perfect setting always maps to strict preserve mode");
+assert.match(pluginAdmin, /'preserveFallbackFromStrictMode' => false/, "plugin does not request standard-mode fallback for pixel-perfect jobs");
 assert.match(pluginSaasClient, /normalize_api_token[\s\S]*cis_\[A-Za-z0-9_-\]\{20,\}/, "plugin requests normalize embedded pasted cis_ tokens");
 assert.match(pluginSaasClient, /is_local_api_base_url[\s\S]*127\./, "plugin can detect localhost API overrides");
 assert.match(pluginProcessor, /output_validation/, "plugin stores output validation diagnostics");
+assert.match(pluginProcessor, /'safety_status'\s*=>\s*'failed'[\s\S]*'processing_mode'\s*=>\s*''/, "plugin clears stale safety state when a processing job fails");
 
 console.log("Image pipeline rule checks passed.");
