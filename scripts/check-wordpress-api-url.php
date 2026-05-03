@@ -73,4 +73,19 @@ foreach ($cases as [$base, $endpoint, $expected]) {
 	}
 }
 
+$token = 'cis_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO';
+$token_cases = [
+	$token,
+	"New site token for jarvis-test.local:\n" . $token . "\n\nCopy this token now.",
+	'  ' . $token . '  ',
+];
+
+foreach ($token_cases as $token_case) {
+	$actual = Catalogue_Image_Studio_SaaSClient::normalize_api_token($token_case);
+	if ($actual !== $token) {
+		fwrite(STDERR, sprintf("Token normalisation assertion failed\nExpected: %s\nActual: %s\n", $token, $actual));
+		exit(1);
+	}
+}
+
 echo "WordPress plugin API URL checks passed.\n";

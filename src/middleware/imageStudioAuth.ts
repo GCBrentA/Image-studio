@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { verifyConnectedSite, type SiteMetadata } from "../services/storeClaimService";
-import { hashApiToken } from "../utils/apiToken";
+import { getApiTokenFingerprint, hasEmbeddedApiToken, hashApiTokenCandidates } from "../utils/apiToken";
 import { verifyJwt } from "../utils/jwt";
 import { prisma } from "../utils/prisma";
 
@@ -47,10 +47,12 @@ export const imageStudioAuth = async (
     const apiToken = request.header("x-api-token")?.trim() ?? getBearerToken(request);
 
     if (apiToken) {
-      const tokenHash = hashApiToken(apiToken);
+      const tokenHashes = hashApiTokenCandidates(apiToken);
       const connectedSite = await prisma.connectedSite.findFirst({
         where: {
-          api_token_hash: tokenHash
+          api_token_hash: {
+            in: tokenHashes
+          }
         },
         select: {
           id: true,
@@ -106,12 +108,23 @@ export const imageStudioAuth = async (
       return;
     }
 
+    if (apiToken) {
+      console.warn("Invalid image-studio site API token rejected", {
+        tokenFingerprint: getApiTokenFingerprint(apiToken),
+        embeddedTokenExtracted: hasEmbeddedApiToken(apiToken),
+        authHeaderPresent: Boolean(request.header("authorization")),
+        xApiTokenPresent: Boolean(request.header("x-api-token")),
+        siteUrl: request.header("x-optivra-site-url") ?? null,
+        homeUrl: request.header("x-optivra-home-url") ?? null
+      });
+    }
+
     response.status(401).json({
       status: "error",
-      error: apiToken ? "Invalid API token" : "Missing auth token"
+      error: apiToken ? "Invalid API token" : "Missing auth token",
+      code: apiToken ? "invalid_api_token" : "missing_auth_token"
     });
   } catch (error) {
     next(error);
   }
 };
-

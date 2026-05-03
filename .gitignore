@@ -87,6 +87,7 @@ tmp/local-wc-requirecheck.php
 tmp/local-wc-settings.php
 tmp/openai-binary-mask-test.png
 tmp/openai-binary-preserved-test.png
+tmp/product-protection-regression/
 tmp/preserve-debug-smoke-e318/ai-transparent-cutout.png
 tmp/preserve-debug-smoke-e318/alpha-mask-preview.png
 tmp/preserve-debug-smoke-e318/background-only-comparison.png

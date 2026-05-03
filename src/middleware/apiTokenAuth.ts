@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../utils/prisma";
-import { hashApiToken } from "../utils/apiToken";
+import { getApiTokenFingerprint, hasEmbeddedApiToken, hashApiTokenCandidates } from "../utils/apiToken";
 import { verifyConnectedSite, type SiteMetadata } from "../services/storeClaimService";
 
 export type ApiAuthContext = {
@@ -56,10 +56,12 @@ export const apiTokenAuth = async (
       return;
     }
 
-    const tokenHash = hashApiToken(token);
+    const tokenHashes = hashApiTokenCandidates(token);
     const connectedSite = await prisma.connectedSite.findFirst({
       where: {
-        api_token_hash: tokenHash
+        api_token_hash: {
+          in: tokenHashes
+        }
       },
       select: {
         id: true,
@@ -71,11 +73,20 @@ export const apiTokenAuth = async (
     });
 
     if (!connectedSite) {
+      console.warn("Invalid site API token rejected", {
+        tokenFingerprint: getApiTokenFingerprint(token),
+        embeddedTokenExtracted: hasEmbeddedApiToken(token),
+        authHeaderPresent: Boolean(request.header("authorization")),
+        xApiTokenPresent: Boolean(request.header("x-api-token")),
+        siteUrl: request.header("x-optivra-site-url") ?? null,
+        homeUrl: request.header("x-optivra-home-url") ?? null
+      });
       response.status(401).json({
         status: "error",
         processed_url: null,
         credits_remaining: null,
-        error: "Invalid API token"
+        error: "Invalid API token",
+        code: "invalid_api_token"
       });
       return;
     }

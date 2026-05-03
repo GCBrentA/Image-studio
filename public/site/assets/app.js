@@ -4095,7 +4095,10 @@ document.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({ domain: form.get("domain") })
     });
-    if (output) output.textContent = `New site token for ${body.site.domain}:\n${body.api_token}\n\nCopy this token now. For safety, Optivra will not show it again.`;
+    if (output) {
+      output.textContent = body.api_token || "";
+      output.setAttribute("aria-label", `New site token for ${body.site.domain || "this store"}. Copy this token now; Optivra will not show it again.`);
+    }
     trackConversion("docs_api_token_interest", { cta_location: "site_connect", funnel_stage: "retention" });
   } catch (error) {
     if (output) output.textContent = error.message;

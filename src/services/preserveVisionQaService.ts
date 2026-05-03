@@ -7,9 +7,16 @@ export type PreserveVisionQaResult = {
   scores: {
     edgeCleanliness: number;
     productPreservation: number;
+    textBrandingConsistency: number;
     backgroundRemoval: number;
     lightingNaturalness: number;
     ecommerceQuality: number;
+  };
+  ocrComparison: {
+    originalText: string[];
+    finalText: string[];
+    missingImportantText: string[];
+    alteredBranding: string[];
   };
   visibleProblems: string[];
   summary: string;
@@ -32,9 +39,16 @@ const defaultVisionQa: PreserveVisionQaResult = {
   scores: {
     edgeCleanliness: 0,
     productPreservation: 0,
+    textBrandingConsistency: 0,
     backgroundRemoval: 0,
     lightingNaturalness: 0,
     ecommerceQuality: 0
+  },
+  ocrComparison: {
+    originalText: [],
+    finalText: [],
+    missingImportantText: [],
+    alteredBranding: []
   },
   visibleProblems: ["Vision QA was not completed."],
   summary: "Preserve mode requires strict vision QA before a result can be marked Passed.",
@@ -55,6 +69,7 @@ const coerceScore = (value: unknown): number => {
 const parseVisionQaJson = (text: string): PreserveVisionQaResult => {
   const parsed = JSON.parse(text) as Partial<PreserveVisionQaResult>;
   const scores = (parsed.scores ?? {}) as Partial<PreserveVisionQaResult["scores"]>;
+  const ocrComparison = (parsed.ocrComparison ?? {}) as Partial<PreserveVisionQaResult["ocrComparison"]>;
 
   return {
     passed: parsed.passed === true,
@@ -63,9 +78,16 @@ const parseVisionQaJson = (text: string): PreserveVisionQaResult => {
     scores: {
       edgeCleanliness: coerceScore(scores.edgeCleanliness),
       productPreservation: coerceScore(scores.productPreservation),
+      textBrandingConsistency: coerceScore(scores.textBrandingConsistency),
       backgroundRemoval: coerceScore(scores.backgroundRemoval),
       lightingNaturalness: coerceScore(scores.lightingNaturalness),
       ecommerceQuality: coerceScore(scores.ecommerceQuality)
+    },
+    ocrComparison: {
+      originalText: Array.isArray(ocrComparison.originalText) ? ocrComparison.originalText.map(String).slice(0, 20) : [],
+      finalText: Array.isArray(ocrComparison.finalText) ? ocrComparison.finalText.map(String).slice(0, 20) : [],
+      missingImportantText: Array.isArray(ocrComparison.missingImportantText) ? ocrComparison.missingImportantText.map(String).slice(0, 20) : [],
+      alteredBranding: Array.isArray(ocrComparison.alteredBranding) ? ocrComparison.alteredBranding.map(String).slice(0, 20) : []
     },
     visibleProblems: Array.isArray(parsed.visibleProblems) ? parsed.visibleProblems.map(String).slice(0, 12) : [],
     summary: typeof parsed.summary === "string" ? parsed.summary.slice(0, 800) : ""
@@ -88,7 +110,7 @@ export const runPreserveVisionQa = async ({
     {
       type: "input_text",
       text:
-        "Return strict JSON only. This is for WooCommerce product imagery. Be strict. It is better to fail than approve a visibly imperfect ecommerce product image. Compare the original product to the final composite and cutout/debug images. Any visible grey halo fails. Any leftover floor/background texture attached to the product fails. Any missing product part fails. Any AI-redrawn product shape fails. Any rough/jagged dirty mask fails. A result must not pass unless commercially usable. Do not mention or infer private data."
+        "Return strict JSON only. This is for WooCommerce product imagery. Be strict. It is better to fail than approve a visibly imperfect ecommerce product image. Compare the original product to the final composite and cutout/debug images. Any visible grey halo fails. Any leftover floor/background texture attached to the product fails. Any missing product part fails. Any AI-redrawn product shape fails. Any rough/jagged dirty mask fails. Read visible label/brand text in the original and final product; missing, rewritten, garbled, or altered important text fails. A result must not pass unless commercially usable. Do not mention or infer private data."
     },
     imagePart("original_source", originalSource),
     imagePart("final_composite", finalComposite),
@@ -120,7 +142,7 @@ export const runPreserveVisionQa = async ({
           schema: {
             type: "object",
             additionalProperties: false,
-            required: ["passed", "commerciallyUsable", "failReasons", "scores", "visibleProblems", "summary"],
+            required: ["passed", "commerciallyUsable", "failReasons", "scores", "ocrComparison", "visibleProblems", "summary"],
             properties: {
               passed: { type: "boolean" },
               commerciallyUsable: { type: "boolean" },
@@ -128,13 +150,25 @@ export const runPreserveVisionQa = async ({
               scores: {
                 type: "object",
                 additionalProperties: false,
-                required: ["edgeCleanliness", "productPreservation", "backgroundRemoval", "lightingNaturalness", "ecommerceQuality"],
+                required: ["edgeCleanliness", "productPreservation", "textBrandingConsistency", "backgroundRemoval", "lightingNaturalness", "ecommerceQuality"],
                 properties: {
                   edgeCleanliness: { type: "number" },
                   productPreservation: { type: "number" },
+                  textBrandingConsistency: { type: "number" },
                   backgroundRemoval: { type: "number" },
                   lightingNaturalness: { type: "number" },
                   ecommerceQuality: { type: "number" }
+                }
+              },
+              ocrComparison: {
+                type: "object",
+                additionalProperties: false,
+                required: ["originalText", "finalText", "missingImportantText", "alteredBranding"],
+                properties: {
+                  originalText: { type: "array", items: { type: "string" } },
+                  finalText: { type: "array", items: { type: "string" } },
+                  missingImportantText: { type: "array", items: { type: "string" } },
+                  alteredBranding: { type: "array", items: { type: "string" } }
                 }
               },
               visibleProblems: { type: "array", items: { type: "string" } },
@@ -157,10 +191,22 @@ export const runPreserveVisionQa = async ({
   const body = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
   const text = body.output_text ?? body.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") ?? "";
   const result = parseVisionQaJson(text);
-  const ecommercePass = result.commerciallyUsable && result.scores.ecommerceQuality >= 82 && result.scores.edgeCleanliness >= 85;
+  const textPass =
+    result.scores.textBrandingConsistency >= 84 &&
+    result.ocrComparison.missingImportantText.length === 0 &&
+    result.ocrComparison.alteredBranding.length === 0;
+  const ecommercePass =
+    result.commerciallyUsable &&
+    result.scores.ecommerceQuality >= 82 &&
+    result.scores.edgeCleanliness >= 85 &&
+    textPass;
 
   return {
     ...result,
-    passed: result.passed && ecommercePass
+    passed: result.passed && ecommercePass,
+    failReasons: Array.from(new Set([
+      ...result.failReasons,
+      ...(!textPass ? ["Label/text/branding consistency failed vision QA."] : [])
+    ]))
   };
 };

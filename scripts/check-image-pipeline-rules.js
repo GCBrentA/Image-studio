@@ -6,13 +6,27 @@ const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 const backgroundRemoval = read("src/services/backgroundRemovalService.ts");
+const apiToken = read("src/utils/apiToken.ts");
+const apiTokenAuth = read("src/middleware/apiTokenAuth.ts");
+const imageStudioAuth = read("src/middleware/imageStudioAuth.ts");
 const imageProcessing = read("src/services/imageProcessingService.ts");
+const productProtection = read("src/services/productProtectionValidationService.ts");
 const imageController = read("src/controllers/imageController.ts");
 const pluginAdmin = read("wordpress-plugin/optivra-image-studio-for-woocommerce/admin/class-catalogue-image-studio-admin.php");
 const pluginProcessor = read("wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-image-processor.php");
 const approvalManager = read("wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-approval-manager.php");
+const pluginSaasClient = read("wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-saas-client.php");
 
 assert.match(backgroundRemoval, /ecommerce_preserve_v2/, "prompt version is stored");
+assert.match(apiToken, /normalizeApiTokenInput/, "site token auth normalizes pasted token blocks");
+assert.match(apiToken, /cis_\[A-Za-z0-9_-\]\{20,\}/, "site token auth extracts embedded cis_ tokens");
+assert.match(apiToken, /getApiTokenFingerprint/, "invalid token diagnostics use safe fingerprints");
+assert.match(apiToken, /hashApiTokenCandidates/, "site token auth supports hash candidates");
+assert.match(apiToken, /legacyUnsaltedHash/, "site token auth can verify legacy unsalted token hashes");
+assert.match(apiTokenAuth, /api_token_hash:[\s\S]*in: tokenHashes/, "usage/image routes check all site token hash candidates");
+assert.match(imageStudioAuth, /api_token_hash:[\s\S]*in: tokenHashes/, "audit routes check all site token hash candidates");
+assert.match(apiTokenAuth, /embeddedTokenExtracted/, "usage/image auth logs safe embedded-token diagnostics");
+assert.match(imageStudioAuth, /embeddedTokenExtracted/, "audit auth logs safe embedded-token diagnostics");
 assert.match(backgroundRemoval, /Preserve the product exactly as it appears/, "prompt includes strict preservation wording");
 assert.match(backgroundRemoval, /Do not change the product\. Do not modify the object\. Do not alter the silhouette/, "prompt includes no alteration rules");
 assert.match(backgroundRemoval, /Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret/, "prompt blocks product modification");
@@ -45,6 +59,22 @@ assert.match(backgroundRemoval, /openAiImageEditSize = "1024x1024"/, "OpenAI siz
 
 assert.match(imageProcessing, /const attempts = \[[\s\S]*attempt: 1[\s\S]*attempt: 2[\s\S]*\];/, "preserve mode retry is capped at two attempts");
 assert.match(backgroundRemoval, /processImageFlexibleMode|flexible-cutout|BackgroundRemovalMode/, "standard mode uses the same image model path with one attempt");
+assert.match(imageProcessing, /raw AI product pixels rejected/, "standard mode rejects unsafe raw AI product pixels");
+assert.doesNotMatch(imageProcessing, /provider:\s*`openai:\$\{openAiImageEditModel\}:flexible-cutout`/, "standard mode must not return raw AI product RGB as the final cutout");
+assert.match(imageProcessing, /Product cutout is too faint after background removal/, "product visibility validation rejects faint striped cutouts");
+assert.match(imageProcessing, /horizontal scanline artifacts after background removal/, "product visibility validation rejects striped scanline cutouts");
+assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
+assert.match(imageProcessing, /protectedProductValidation/, "output validation stores protected product metrics");
+assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
+assert.match(imageProcessing, /product_diff_heatmap/, "debug artifacts include product diff heatmaps");
+assert.match(imageProcessing, /uploadPipelineDebugAsset[\s\S]*generated_background/, "flexible dev/test debug artifacts include generated backgrounds");
+
+assert.match(productProtection, /ValidationOutcome = "PASS" \| "SOFT_FAIL_RETRYABLE" \| "HARD_FAIL"/, "product protection has explicit validation outcomes");
+assert.match(productProtection, /silhouetteIoU/, "product protection checks silhouette overlap");
+assert.match(productProtection, /sourcePixelChangedPercent/, "product protection checks product pixel drift");
+assert.match(productProtection, /labelStrokeRetentionPercent/, "product protection checks label/detail retention");
+assert.match(productProtection, /horizontalStripeScore/, "product protection checks scanline artifacts");
+assert.match(productProtection, /bandingScore/, "product protection checks posterization/banding risk");
 
 assert.match(imageController, /deductCredit[\s\S]*if \(!result\.creditDeductionRequired\)[\s\S]*const deduction = await deductCredit/s, "credits are deducted only after processing success");
 assert.match(imageController, /catch \(error\)[\s\S]*response\.status\(422\)/s, "failed processing returns without deducting credit");
@@ -56,9 +86,13 @@ assert.doesNotMatch(approvalManager, /process\(/, "approval manager does not aut
 assert.match(pluginAdmin, /Product Preservation:/, "review UI shows product preservation status");
 assert.match(pluginAdmin, /Framing:/, "review UI shows framing status");
 assert.match(pluginAdmin, /Interior Product Dropout:/, "review UI shows interior dropout status");
+assert.match(pluginAdmin, /Protected Product Region:/, "review UI shows protected product-region status");
 assert.match(pluginAdmin, /Coverage:/, "review UI shows product coverage percentage");
 assert.match(pluginAdmin, /Prompt:/, "review UI shows prompt version");
 assert.match(pluginAdmin, /Retry count:/, "review UI shows retry count");
+assert.match(pluginAdmin, /Vision QA text\/branding score:/, "review UI shows vision QA text/branding score");
+assert.match(pluginAdmin, /normalize_api_token/, "plugin settings extract a pasted cis_ token before saving");
+assert.match(pluginSaasClient, /normalize_api_token[\s\S]*cis_\[A-Za-z0-9_-\]\{20,\}/, "plugin requests normalize embedded pasted cis_ tokens");
 assert.match(pluginProcessor, /output_validation/, "plugin stores output validation diagnostics");
 
 console.log("Image pipeline rule checks passed.");

@@ -18,8 +18,17 @@ class Catalogue_Image_Studio_SaaSClient {
 
 	public function __construct(string $api_base_url, string $api_token, Catalogue_Image_Studio_Logger $logger) {
 		$this->api_base_url = self::normalize_api_base_url($api_base_url);
-		$this->api_token    = $api_token;
+		$this->api_token    = self::normalize_api_token($api_token);
 		$this->logger       = $logger;
+	}
+
+	public static function normalize_api_token(string $api_token): string {
+		$token = trim($api_token);
+		if (preg_match('/cis_[A-Za-z0-9_-]{20,}/', $token, $matches)) {
+			return (string) $matches[0];
+		}
+
+		return $token;
 	}
 
 	/**

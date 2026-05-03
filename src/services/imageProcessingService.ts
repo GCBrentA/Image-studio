@@ -22,6 +22,12 @@ import {
   type PreserveVisionQaResult
 } from "./preserveVisionQaService";
 import {
+  buildProductDiffHeatmap,
+  validateProtectedProductRegion,
+  type ProductProtectionValidation,
+  type ValidationOutcome
+} from "./productProtectionValidationService";
+import {
   createStorageSignedUrl,
   storageBuckets,
   uploadStorageObject
@@ -118,14 +124,19 @@ export type OutputQualityValidation = {
     interiorDropout: ValidationStatus;
     edgeQuality: ValidationStatus;
     shadow: ValidationStatus;
+    protectedProduct: ValidationStatus;
     programmaticValidation?: ValidationStatus;
     visionQa?: ValidationStatus;
   };
+  outcome: ValidationOutcome;
+  protectedProductValidation?: ProductProtectionValidation;
   scores?: Partial<PreserveModeProgrammaticValidation["scores"]> & {
     visionQaEcommerce?: number;
+    visionQaTextBranding?: number;
   };
   programmaticValidation?: Omit<PreserveModeProgrammaticValidation, "overlays">;
   visionQa?: PreserveVisionQaResult;
+  debugAssets?: PreserveDebugAsset[];
   warnings: string[];
   failureReasons: string[];
 };
@@ -163,6 +174,7 @@ type PreserveRgbIntegrity = {
 export type PreserveDebugAsset = {
   kind:
     | "original_source"
+    | "debug_cutout"
     | "ai_cutout"
     | "raw_mask"
     | "cleaned_mask"
@@ -182,6 +194,8 @@ export type PreserveDebugAsset = {
     | "final_composite"
     | "final_qa_comparison"
     | "background_only_comparison"
+    | "product_diff_heatmap"
+    | "retry_metadata_json"
     | "validation_json"
     | "vision_qa_json";
   bucket: string;
@@ -364,8 +378,8 @@ const getStorageCleanupAfter = (): Date => {
   return cleanupAfter;
 };
 
-const addExistingPreserveDebugAsset = async (
-  debug: PreserveDebugInfo,
+const addDebugAssetRecord = async (
+  assets: PreserveDebugAsset[],
   kind: PreserveDebugAsset["kind"],
   bucket: string,
   assetPath: string,
@@ -377,13 +391,23 @@ const addExistingPreserveDebugAsset = async (
     expiresInSeconds: signedUrlExpirySeconds
   }).catch(() => null);
 
-  debug.assets.push({
+  assets.push({
     kind,
     bucket,
     path: assetPath,
     url,
     contentType
   });
+};
+
+const addExistingPreserveDebugAsset = async (
+  debug: PreserveDebugInfo,
+  kind: PreserveDebugAsset["kind"],
+  bucket: string,
+  assetPath: string,
+  contentType: string
+): Promise<void> => {
+  await addDebugAssetRecord(debug.assets, kind, bucket, assetPath, contentType);
 };
 
 const uploadPreserveDebugAsset = async (
@@ -402,6 +426,25 @@ const uploadPreserveDebugAsset = async (
     contentType
   });
   await addExistingPreserveDebugAsset(debug, kind, storageBuckets.debugCutouts, assetPath, contentType);
+};
+
+const uploadPipelineDebugAsset = async (
+  userId: string,
+  imageJobId: string,
+  assets: PreserveDebugAsset[],
+  kind: PreserveDebugAsset["kind"],
+  fileName: string,
+  body: Buffer,
+  contentType: string
+): Promise<void> => {
+  const assetPath = getStoragePath(userId, imageJobId, `pipeline-debug-${fileName}`);
+  await uploadStorageObject({
+    bucket: storageBuckets.debugCutouts,
+    path: assetPath,
+    body,
+    contentType
+  });
+  await addDebugAssetRecord(assets, kind, storageBuckets.debugCutouts, assetPath, contentType);
 };
 
 const getSha256 = (buffer: Buffer): string =>
@@ -705,45 +748,26 @@ const processImageFlexibleMode = async (
       }
     );
   } catch (error) {
-    console.warn("Flexible cutout alpha cleanup fell back to raw AI cutout", {
+    console.warn("Flexible cutout alpha cleanup failed; raw AI product pixels rejected", {
       reason: error instanceof Error ? error.message : "Unknown alpha cleanup error"
     });
-  }
 
-  const rawAiDiagnostics = await getImageAlphaMaskDiagnostics(aiCutout);
-
-  if (!rawAiDiagnostics.passed) {
-    console.warn("Flexible cutout raw AI result rejected; using local foreground fallback", {
-      provider: `openai:${openAiImageEditModel}:flexible-cutout`,
-      failureReasons: rawAiDiagnostics.failureReasons,
-      alphaCoveragePercent: rawAiDiagnostics.alphaCoveragePercent,
-      bboxFillPercent: rawAiDiagnostics.bboxFillPercent,
-      bbox: rawAiDiagnostics.bbox
-    });
-
-    try {
-      const localFallback = await buildFlexibleLocalForegroundCutout(openAiInput, "local-color-segmentation:flexible-fallback", 2);
-
-      return localFallback;
-    } catch (fallbackError) {
-      throw new Error(
-        `Flexible cutout rejected raw AI output (${rawAiDiagnostics.failureReasons.join("; ")}) and local foreground fallback failed: ${
-          fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
-        }`
-      );
+    if (preferLocalForegroundFallback) {
+      try {
+        return await buildFlexibleLocalForegroundCutout(openAiInput, "local-color-segmentation:flexible-alpha-cleanup-fallback", 2);
+      } catch (fallbackError) {
+        throw new Error(
+          `Flexible cutout could not produce a product-safe alpha mask (${error instanceof Error ? error.message : "Unknown alpha cleanup error"}) and local foreground fallback failed: ${
+            fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
+          }`
+        );
+      }
     }
-  }
 
-  return {
-    cutout: aiCutout,
-    debugCutout: aiCutout,
-    provider: `openai:${openAiImageEditModel}:flexible-cutout`,
-    attempts: 1,
-    validation: {
-      alphaCoverage: await getImageAlphaCoverage(aiCutout),
-      foregroundMeanDelta: 0
-    }
-  };
+    throw new Error(
+      `Flexible cutout could not produce a product-safe alpha mask: ${error instanceof Error ? error.message : "Unknown alpha cleanup error"}`
+    );
+  }
 };
 
 const buildFlexibleLocalForegroundCutout = async (
@@ -3537,11 +3561,86 @@ const assertVisibleProductImage = async (productBuffer: Buffer): Promise<void> =
     .extractChannel("alpha")
     .raw()
     .toBuffer();
+  const rgba = await sharp(productBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
   const coverage = getAlphaCoverage(alpha);
   const minCoverage = Math.max(1200, Math.round(metadata.width * metadata.height * 0.004));
 
   if (coverage < minCoverage) {
     throw new Error("Product cutout was empty after background removal. No image was replaced; reprocess this image with preserve product enabled.");
+  }
+
+  const diagnostics = analyzeAlphaMask(alpha, metadata.width, metadata.height);
+  let strongHorizontalRows = 0;
+  let longestStrongHorizontalRun = 0;
+  let currentStrongHorizontalRun = 0;
+  const bboxAspectRatio = diagnostics.bbox.width / Math.max(1, diagnostics.bbox.height);
+
+  for (let y = diagnostics.bbox.y; y < diagnostics.bbox.y + diagnostics.bbox.height; y += 1) {
+    let strongPixels = 0;
+
+    for (let x = diagnostics.bbox.x; x < diagnostics.bbox.x + diagnostics.bbox.width; x += 1) {
+      const pixel = y * metadata.width + x;
+      if ((alpha[pixel] ?? 0) < 24) {
+        continue;
+      }
+
+      const index = pixel * 4;
+      const r = rgba[index] ?? 0;
+      const g = rgba[index + 1] ?? 0;
+      const b = rgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+
+      if (luminance < 190 || saturation > 0.22) {
+        strongPixels += 1;
+      }
+    }
+
+    if (strongPixels / Math.max(1, diagnostics.bbox.width) > 0.24) {
+      strongHorizontalRows += 1;
+      currentStrongHorizontalRun += 1;
+      longestStrongHorizontalRun = Math.max(longestStrongHorizontalRun, currentStrongHorizontalRun);
+    } else {
+      currentStrongHorizontalRun = 0;
+    }
+  }
+
+  if (
+    bboxAspectRatio > 2.4 &&
+    strongHorizontalRows >= 8 &&
+    longestStrongHorizontalRun <= 3 &&
+    strongHorizontalRows / Math.max(1, diagnostics.bbox.height) < 0.28
+  ) {
+    throw new Error("Product cutout appears to be horizontal scanline artifacts after background removal. No image was replaced.");
+  }
+
+  let visibleProductPixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = rgba[index] ?? 0;
+    const g = rgba[index + 1] ?? 0;
+    const b = rgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const saturation = getRgbSaturation(r, g, b);
+    const gradient = getRgbGradientMagnitude(rgba, metadata.width, metadata.height, pixel);
+
+    if (luminance < 232 || saturation > 0.1 || channelSpread > 34 || gradient > 18) {
+      visibleProductPixels += 1;
+    }
+  }
+
+  const visibleProductShare = visibleProductPixels / Math.max(1, coverage);
+  if (visibleProductShare < 0.08) {
+    throw new Error("Product cutout is too faint after background removal. No image was replaced; review the source image or reprocess with pixel-perfect preservation enabled.");
   }
 };
 
@@ -3744,7 +3843,9 @@ const buildOutputQualityValidation = async (
   cutoutResult: CutoutResult,
   preserveProductExactly: boolean,
   shadowEnabled: boolean,
-  autoFixedFraming: boolean
+  autoFixedFraming: boolean,
+  protectedProductValidation: ProductProtectionValidation,
+  productFallbackWarnings: string[] = []
 ): Promise<OutputQualityValidation> => {
   const metadata = await sharp(productBuffer).metadata();
 
@@ -3780,6 +3881,7 @@ const buildOutputQualityValidation = async (
   let framing: OutputQualityValidation["checks"]["framing"] = autoFixedFraming ? "Auto-fixed" : "Passed";
   let edgeQuality: ValidationStatus = "Passed";
   let interiorDropout: ValidationStatus = "Passed";
+  let protectedProduct: ValidationStatus = "Passed";
 
   if (primaryCoverage < target.min) {
     const message = `Product coverage ${(primaryCoverage * 100).toFixed(1)}% is below the ${Math.round(target.min * 100)}-${Math.round(target.max * 100)}% target for ${target.orientation} products.`;
@@ -3852,6 +3954,20 @@ const buildOutputQualityValidation = async (
     warnings.push("Standard mode may adjust product presentation; review before applying to main product images.");
   }
 
+  if (protectedProductValidation.outcome === "HARD_FAIL") {
+    protectedProduct = "Failed";
+    failureReasons.push(...protectedProductValidation.failReasons);
+  } else if (protectedProductValidation.outcome === "SOFT_FAIL_RETRYABLE") {
+    protectedProduct = preserveProductExactly ? "Failed" : "Needs Review";
+    if (preserveProductExactly) {
+      failureReasons.push(...protectedProductValidation.retryableReasons);
+    } else {
+      warnings.push(...protectedProductValidation.retryableReasons);
+    }
+  }
+
+  warnings.push(...productFallbackWarnings);
+
   const shadow: ValidationStatus = shadowEnabled ? "Passed" : "Needs Review";
   if (!shadowEnabled) {
     warnings.push("No contact shadow was added, so the product may appear less grounded.");
@@ -3864,6 +3980,7 @@ const buildOutputQualityValidation = async (
     detailPreservation,
     interiorDropout,
     edgeQuality,
+    protectedProduct,
     shadow,
     programmaticValidation: preserveProductExactly ? (programmaticValidation?.passed ? "Passed" as const : "Failed" as const) : undefined
   };
@@ -3892,6 +4009,8 @@ const buildOutputQualityValidation = async (
     productOrientation: target.orientation,
     autoFixedFraming,
     checks,
+    outcome: protectedProductValidation.outcome,
+    protectedProductValidation,
     scores: programmaticValidation?.scores,
     programmaticValidation: programmaticValidationWithoutOverlays,
     warnings,
@@ -4036,6 +4155,11 @@ export const processImageForProduct = async ({
   });
   const originalUploadedAt = new Date();
   const storageCleanupAfter = getStorageCleanupAfter();
+  const savePipelineDebugAssets = !preserveProductExactly && (env.nodeEnv !== "production" || processingSettings.debugArtifacts === true);
+  const pipelineDebugAssets: PreserveDebugAsset[] = [];
+  if (savePipelineDebugAssets) {
+    await addDebugAssetRecord(pipelineDebugAssets, "original_source", storageBuckets.originalImages, originalStoragePath, originalImage.contentType);
+  }
   const duplicateJob = preserveProductExactly || hasProcessingOptions ? null : await findDuplicateJob(userId, imageJobId, originalImageHash);
 
   if (duplicateJob?.processed_storage_path) {
@@ -4098,6 +4222,9 @@ export const processImageForProduct = async ({
     body: cutoutResult.debugCutout,
     contentType: "image/png"
   });
+  if (savePipelineDebugAssets) {
+    await addDebugAssetRecord(pipelineDebugAssets, "debug_cutout", storageBuckets.debugCutouts, debugCutoutStoragePath, "image/png");
+  }
   const debugCutoutUploadedAt = new Date();
 
   const framingMode = getString(framingSettings.mode, "auto");
@@ -4135,10 +4262,37 @@ export const processImageForProduct = async ({
     productMetadata = await sharp(productBuffer).metadata();
   }
   productBuffer = await removePalePhotoCardFromProductBuffer(productBuffer);
-  productBuffer = preserveProductExactly
-    ? productBuffer
-    : await applyProductLighting(productBuffer, lightingSettings);
+  const protectedSourceProductBuffer = productBuffer;
+  const productFallbackWarnings: string[] = [];
+  if (!preserveProductExactly) {
+    const litProductBuffer = await applyProductLighting(productBuffer, lightingSettings);
+    const litProductProtection = await validateProtectedProductRegion({
+      sourceProductBuffer: protectedSourceProductBuffer,
+      finalProductBuffer: litProductBuffer,
+      preserveMode: false
+    });
+
+    if (litProductProtection.outcome === "PASS") {
+      productBuffer = litProductBuffer;
+    } else {
+      productBuffer = protectedSourceProductBuffer;
+      productFallbackWarnings.push(
+        `Flexible mode fell back to source-locked product pixels after product protection validation: ${[
+          ...litProductProtection.failReasons,
+          ...litProductProtection.retryableReasons
+        ].join("; ") || "product fidelity risk detected"}.`
+      );
+    }
+  }
   await assertVisibleProductImage(productBuffer);
+  const protectedProductValidation = await validateProtectedProductRegion({
+    sourceProductBuffer: protectedSourceProductBuffer,
+    finalProductBuffer: productBuffer,
+    preserveMode: preserveProductExactly
+  });
+  const productDiffHeatmap = savePipelineDebugAssets
+    ? await buildProductDiffHeatmap(protectedSourceProductBuffer, productBuffer)
+    : null;
   const productAlphaCoverage = await getImageAlphaCoverage(productBuffer);
   productMetadata = await sharp(productBuffer).metadata();
 
@@ -4162,7 +4316,9 @@ export const processImageForProduct = async ({
     cutoutResult,
     preserveProductExactly,
     Boolean(shadow),
-    reframedProduct.autoFixedFraming
+    reframedProduct.autoFixedFraming,
+    protectedProductValidation,
+    productFallbackWarnings
   );
   if (
     processingSettings.preserveFallbackFromStrictMode === true &&
@@ -4186,6 +4342,30 @@ export const processImageForProduct = async ({
 
   if (preserveProductExactly && cutoutResult.preserveDebug) {
     cutoutResult.preserveDebug.outputValidation = outputValidation;
+  }
+  if (savePipelineDebugAssets) {
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "product_diff_heatmap",
+      `product-diff-heatmap-${randomUUID()}.png`,
+      productDiffHeatmap ?? Buffer.alloc(0),
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "validation_json",
+      `validation-${randomUUID()}.json`,
+      Buffer.from(JSON.stringify(outputValidation, null, 2)),
+      "application/json"
+    );
+    outputValidation = {
+      ...outputValidation,
+      debugAssets: pipelineDebugAssets
+    };
   }
 
   console.info("Image processing output validation", {
@@ -4230,6 +4410,42 @@ export const processImageForProduct = async ({
     .composite(composites)
     .png()
     .toBuffer();
+
+  if (savePipelineDebugAssets) {
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "generated_background",
+      `generated-background-${randomUUID()}.png`,
+      backgroundBuffer,
+      "image/png"
+    );
+    if (shadow) {
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "shadow_layer",
+        `shadow-layer-${randomUUID()}.png`,
+        shadow,
+        "image/png"
+      );
+    }
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "final_composite",
+      `final-composite-${randomUUID()}.png`,
+      composedImage,
+      "image/png"
+    );
+    outputValidation = {
+      ...outputValidation,
+      debugAssets: pipelineDebugAssets
+    };
+  }
 
   if (preserveProductExactly && cutoutResult.preserveDebug) {
     const preserveContext = {
@@ -4302,7 +4518,8 @@ export const processImageForProduct = async ({
       },
       scores: {
         ...(outputValidation.scores ?? {}),
-        visionQaEcommerce: visionQa.scores.ecommerceQuality
+        visionQaEcommerce: visionQa.scores.ecommerceQuality,
+        visionQaTextBranding: visionQa.scores.textBrandingConsistency
       },
       visionQa,
       failureReasons: Array.from(new Set([

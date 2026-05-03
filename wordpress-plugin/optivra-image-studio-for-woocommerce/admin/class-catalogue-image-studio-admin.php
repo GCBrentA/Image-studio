@@ -1006,7 +1006,7 @@ class Catalogue_Image_Studio_Admin {
 		$settings = wp_parse_args($current, $defaults);
 
 		$settings['enabled']                 = true;
-		$posted_token = isset($input['api_token']) ? trim(sanitize_text_field((string) $input['api_token'])) : '';
+		$posted_token = isset($input['api_token']) ? Catalogue_Image_Studio_SaaSClient::normalize_api_token(sanitize_textarea_field((string) $input['api_token'])) : '';
 		$placeholder_token = __('Token saved - leave blank to keep it', 'optivra-image-studio-for-woocommerce');
 		$settings['api_token'] = ('' !== $posted_token && $posted_token !== $placeholder_token && false === strpos($posted_token, '*'))
 			? $posted_token
@@ -5776,10 +5776,11 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function render_connection_status($usage, bool $connected): void {
 		if (! $connected || is_wp_error($usage)) {
+			$message = is_wp_error($usage) ? $usage->get_error_message() : '';
 			?>
 			<div class="catalogue-image-studio-status-card catalogue-image-studio-status-card-disconnected">
 				<strong><?php echo esc_html__('Not connected', 'optivra-image-studio-for-woocommerce'); ?></strong>
-				<p><?php echo esc_html__('Connect your Optivra account to view credits and process images.', 'optivra-image-studio-for-woocommerce'); ?></p>
+				<p><?php echo esc_html('' !== $message ? $message : __('Connect your Optivra account to view credits and process images.', 'optivra-image-studio-for-woocommerce')); ?></p>
 			</div>
 			<?php
 			return;
@@ -5794,10 +5795,11 @@ class Catalogue_Image_Studio_Admin {
 	 */
 	private function render_usage($usage): void {
 		if (is_wp_error($usage)) {
+			$message = $usage->get_error_message();
 			?>
 			<div class="catalogue-image-studio-status-card catalogue-image-studio-status-card-disconnected">
 				<strong><?php echo esc_html__('Not connected', 'optivra-image-studio-for-woocommerce'); ?></strong>
-				<p><?php echo esc_html__('Connect your Optivra account to view credits and process images.', 'optivra-image-studio-for-woocommerce'); ?></p>
+				<p><?php echo esc_html('' !== $message ? $message : __('Connect your Optivra account to view credits and process images.', 'optivra-image-studio-for-woocommerce')); ?></p>
 			</div>
 			<?php
 			return;
@@ -7053,6 +7055,7 @@ class Catalogue_Image_Studio_Admin {
 			<strong><?php echo esc_html__('Detail Preservation:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['detailPreservation'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Interior Product Dropout:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['interiorDropout'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Edge Cleanliness:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['edgeQuality'] ?? $status)); ?><br />
+			<strong><?php echo esc_html__('Protected Product Region:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['protectedProduct'] ?? $status)); ?><br />
 			<strong><?php echo esc_html__('Vision QA:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($checks['visionQa'] ?? __('Not reached', 'optivra-image-studio-for-woocommerce'))); ?><br />
 			<strong><?php echo esc_html__('Product preservation score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['productPreservation'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
 			<strong><?php echo esc_html__('Edge cleanliness score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['edgeCleanliness'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
@@ -7060,6 +7063,7 @@ class Catalogue_Image_Studio_Admin {
 			<strong><?php echo esc_html__('Alpha mask confidence score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['alphaConfidence'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
 			<strong><?php echo esc_html__('Dropout score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['dropoutScore'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
 			<strong><?php echo esc_html__('Vision QA ecommerce score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['visionQaEcommerce'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
+			<strong><?php echo esc_html__('Vision QA text/branding score:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($scores['visionQaTextBranding'] ?? __('Not stored', 'optivra-image-studio-for-woocommerce'))); ?><br />
 			<strong><?php echo esc_html__('Coverage:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html(isset($validation['productCoveragePercent']) ? sprintf('%.2f%%', (float) $validation['productCoveragePercent']) : __('Not stored', 'optivra-image-studio-for-woocommerce')); ?><br />
 			<strong><?php echo esc_html__('Prompt:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['promptVersion'] ?? '')); ?><br />
 			<strong><?php echo esc_html__('Mode:', 'optivra-image-studio-for-woocommerce'); ?></strong> <?php echo esc_html((string) ($validation['processingMode'] ?? '')); ?><br />
@@ -7072,6 +7076,9 @@ class Catalogue_Image_Studio_Admin {
 			<?php endif; ?>
 			<?php if (in_array((string) ($checks['interiorDropout'] ?? ''), ['Failed', 'Needs Review'], true)) : ?>
 				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Needs Review: Optivra detected possible missing product material inside the object. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
+			<?php endif; ?>
+			<?php if (in_array((string) ($checks['protectedProduct'] ?? ''), ['Failed', 'Needs Review'], true)) : ?>
+				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Needs Review: protected product-region validation detected possible shape, label, pixel, or artifact drift. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
 			<?php endif; ?>
 			<?php if (in_array('Edge Halo / Background Residue', array_map('strval', $failure_reasons), true)) : ?>
 				<p class="catalogue-image-studio-warning"><?php echo esc_html__('Failed: Edge Halo / Background Residue. This image was not applied automatically.', 'optivra-image-studio-for-woocommerce'); ?></p>
