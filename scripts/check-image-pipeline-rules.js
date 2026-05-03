@@ -96,7 +96,10 @@ assert.match(pluginAdmin, /Prompt:/, "review UI shows prompt version");
 assert.match(pluginAdmin, /Retry count:/, "review UI shows retry count");
 assert.match(pluginAdmin, /Vision QA text\/branding score:/, "review UI shows vision QA text/branding score");
 assert.match(pluginAdmin, /normalize_api_token/, "plugin settings extract a pasted cis_ token before saving");
+assert.match(pluginAdmin, /API Base URL override points to a local backend/, "plugin warns when connection failures come from a local API override");
+assert.match(pluginAdmin, /is_local_api_base_url/, "plugin settings reject local API overrides unless debug mode is enabled");
 assert.match(pluginSaasClient, /normalize_api_token[\s\S]*cis_\[A-Za-z0-9_-\]\{20,\}/, "plugin requests normalize embedded pasted cis_ tokens");
+assert.match(pluginSaasClient, /is_local_api_base_url[\s\S]*127\./, "plugin can detect localhost API overrides");
 assert.match(pluginProcessor, /output_validation/, "plugin stores output validation diagnostics");
 
 console.log("Image pipeline rule checks passed.");

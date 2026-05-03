@@ -68,6 +68,22 @@ class Catalogue_Image_Studio_SaaSClient {
 		return untrailingslashit($normalized_base . $base_path);
 	}
 
+	public static function is_local_api_base_url(string $api_base_url): bool {
+		$base = self::normalize_api_base_url($api_base_url);
+		if ('' === $base) {
+			return false;
+		}
+
+		$parts = wp_parse_url($base);
+		if (false === $parts || empty($parts['host'])) {
+			return false;
+		}
+
+		$host = strtolower((string) $parts['host']);
+
+		return 'localhost' === $host || '::1' === $host || 0 === strpos($host, '127.');
+	}
+
 	public static function build_api_url_for_base(string $api_base_url, string $endpoint): string {
 		$base = self::normalize_api_base_url($api_base_url);
 		$base = untrailingslashit(trim($base));

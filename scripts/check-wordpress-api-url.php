@@ -73,6 +73,19 @@ foreach ($cases as [$base, $endpoint, $expected]) {
 	}
 }
 
+$local_cases = [
+	'http://127.0.0.1:3000',
+	'http://localhost:3000/api',
+	'http://127.0.0.2:3000/api/image-studio',
+];
+
+foreach ($local_cases as $local_case) {
+	if (! Catalogue_Image_Studio_SaaSClient::is_local_api_base_url($local_case)) {
+		fwrite(STDERR, sprintf("Local API base assertion failed: %s\n", $local_case));
+		exit(1);
+	}
+}
+
 $token = 'cis_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO';
 $token_cases = [
 	$token,

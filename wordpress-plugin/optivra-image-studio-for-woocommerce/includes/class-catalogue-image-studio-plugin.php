@@ -406,6 +406,9 @@ class Catalogue_Image_Studio_Plugin {
 		$settings = wp_parse_args($settings, $this->get_default_settings());
 
 		$normalized_override = isset($settings['api_base_url_override']) ? Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $settings['api_base_url_override']) : '';
+		if ('' !== $normalized_override && Catalogue_Image_Studio_SaaSClient::is_local_api_base_url($normalized_override) && empty($settings['debug_mode'])) {
+			$normalized_override = '';
+		}
 		$settings['api_base_url_override'] = $normalized_override;
 		$settings['api_base_url']          = '' !== $settings['api_base_url_override']
 			? $settings['api_base_url_override']

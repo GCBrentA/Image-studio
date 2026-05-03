@@ -989,6 +989,9 @@ class Catalogue_Image_Studio_Admin {
 
 			if (is_wp_error($usage)) {
 				$this->queue_notice($usage->get_error_message(), 'error');
+				if (false !== strpos((string) $usage->get_error_message(), '127.0.0.1') || false !== strpos((string) $usage->get_error_message(), 'localhost')) {
+					$this->queue_notice(__('Your API Base URL override points to a local backend. Clear Advanced > API Base URL override, or enable Debug mode only when a local Optivra backend is running.', 'optivra-image-studio-for-woocommerce'), 'error');
+				}
 				if ('' === $submitted_token && ! empty($settings['api_token'])) {
 					$this->queue_notice(__('The saved masked token failed. Generate a fresh Site API Token in Optivra, paste the raw token beginning with cis_ into this field, then click Connect. Leaving the field blank keeps testing the stale saved token.', 'optivra-image-studio-for-woocommerce'), 'error');
 				}
@@ -1018,6 +1021,9 @@ class Catalogue_Image_Studio_Admin {
 		$settings['api_base_url_override'] = isset($input['api_base_url_override'])
 			? Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $input['api_base_url_override'])
 			: Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) ($settings['api_base_url_override'] ?? ''));
+		if ('' !== (string) $settings['api_base_url_override'] && Catalogue_Image_Studio_SaaSClient::is_local_api_base_url((string) $settings['api_base_url_override']) && empty($input['debug_mode'])) {
+			$settings['api_base_url_override'] = '';
+		}
 		$settings['api_base_url']          = '' !== (string) $settings['api_base_url_override']
 			? (string) $settings['api_base_url_override']
 			: Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $defaults['api_base_url']);
