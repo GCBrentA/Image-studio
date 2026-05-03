@@ -1713,7 +1713,7 @@ function renderStoreConnectionPanel(account = {}) {
             <input type="text" name="domain" placeholder="example.com" autocomplete="url" required />
           </label>
           <button class="button primary" type="submit">Generate Site API Token</button>
-          <p class="muted-note">Use your production domain for store verification. Staging and local stores can connect for testing.</p>
+          <p class="muted-note">Generating a token for an existing domain rotates it. Paste the new raw token into WordPress immediately; an old saved token may stop connecting.</p>
           <pre class="token-output" id="new-token" aria-live="polite">Your new token will appear here once. Copy it into the WooCommerce plugin before leaving this page.</pre>
         </form>
         <div class="connected-sites-panel">

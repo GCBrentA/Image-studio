@@ -51,45 +51,65 @@ export const connectSite = async (userId: string, input: ConnectSiteInput): Prom
 
   const apiToken = generateApiToken();
   const apiTokenHash = hashApiToken(apiToken);
-
-  const site = await prisma.connectedSite.upsert({
+  const existingSite = await prisma.connectedSite.findUnique({
     where: {
       user_id_domain: {
         user_id: userId,
         domain: normalizedDomain
       }
     },
-    update: {
-      api_token_hash: apiTokenHash,
-      canonical_domain: canonicalDomain,
-      site_url: input.siteUrl,
-      home_url: input.homeUrl,
-      wordpress_install_id: input.wordpressInstallId,
-      plugin_version: input.pluginVersion,
-      woocommerce_version: input.woocommerceVersion,
-      claim_status: claimStatus,
-      last_seen_at: new Date()
-    },
-    create: {
-      user_id: userId,
-      domain: normalizedDomain,
-      canonical_domain: canonicalDomain,
-      site_url: input.siteUrl,
-      home_url: input.homeUrl,
-      wordpress_install_id: input.wordpressInstallId,
-      plugin_version: input.pluginVersion,
-      woocommerce_version: input.woocommerceVersion,
-      claim_status: claimStatus,
-      last_seen_at: new Date(),
-      api_token_hash: apiTokenHash
-    },
     select: {
       id: true,
-      domain: true,
-      canonical_domain: true,
-      claim_status: true
+      api_token_hash: true
     }
   });
+
+  const site = existingSite
+    ? await prisma.connectedSite.update({
+        where: {
+          id: existingSite.id
+        },
+        data: {
+          api_token_hash: apiTokenHash,
+          previous_api_token_hash: existingSite.api_token_hash,
+          api_token_rotated_at: new Date(),
+          canonical_domain: canonicalDomain,
+          site_url: input.siteUrl,
+          home_url: input.homeUrl,
+          wordpress_install_id: input.wordpressInstallId,
+          plugin_version: input.pluginVersion,
+          woocommerce_version: input.woocommerceVersion,
+          claim_status: claimStatus,
+          last_seen_at: new Date()
+        },
+        select: {
+          id: true,
+          domain: true,
+          canonical_domain: true,
+          claim_status: true
+        }
+      })
+    : await prisma.connectedSite.create({
+        data: {
+          user_id: userId,
+          domain: normalizedDomain,
+          canonical_domain: canonicalDomain,
+          site_url: input.siteUrl,
+          home_url: input.homeUrl,
+          wordpress_install_id: input.wordpressInstallId,
+          plugin_version: input.pluginVersion,
+          woocommerce_version: input.woocommerceVersion,
+          claim_status: claimStatus,
+          last_seen_at: new Date(),
+          api_token_hash: apiTokenHash
+        },
+        select: {
+          id: true,
+          domain: true,
+          canonical_domain: true,
+          claim_status: true
+        }
+      });
 
   return {
     site,

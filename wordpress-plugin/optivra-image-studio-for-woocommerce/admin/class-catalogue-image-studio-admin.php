@@ -979,6 +979,7 @@ class Catalogue_Image_Studio_Admin {
 		}
 
 		if (isset($_POST['test_connection']) || isset($_POST['connect_store'])) {
+			$submitted_token = isset($_POST['api_token']) ? Catalogue_Image_Studio_SaaSClient::normalize_api_token(sanitize_textarea_field((string) wp_unslash($_POST['api_token']))) : '';
 			$client = new Catalogue_Image_Studio_SaaSClient(
 				(string) $settings['api_base_url'],
 				(string) $settings['api_token'],
@@ -988,6 +989,9 @@ class Catalogue_Image_Studio_Admin {
 
 			if (is_wp_error($usage)) {
 				$this->queue_notice($usage->get_error_message(), 'error');
+				if ('' === $submitted_token && ! empty($settings['api_token'])) {
+					$this->queue_notice(__('The saved masked token failed. Generate a fresh Site API Token in Optivra, paste the raw token beginning with cis_ into this field, then click Connect. Leaving the field blank keeps testing the stale saved token.', 'optivra-image-studio-for-woocommerce'), 'error');
+				}
 			} else {
 				$client->send_event(isset($_POST['connect_store']) ? 'plugin_connected' : 'connection_tested', ['connected' => true], $settings);
 				$this->queue_notice(__('Store connected to Optivra.', 'optivra-image-studio-for-woocommerce'), 'success');

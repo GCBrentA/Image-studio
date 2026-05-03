@@ -59,9 +59,18 @@ export const apiTokenAuth = async (
     const tokenHashes = hashApiTokenCandidates(token);
     const connectedSite = await prisma.connectedSite.findFirst({
       where: {
-        api_token_hash: {
-          in: tokenHashes
-        }
+        OR: [
+          {
+            api_token_hash: {
+              in: tokenHashes
+            }
+          },
+          {
+            previous_api_token_hash: {
+              in: tokenHashes
+            }
+          }
+        ]
       },
       select: {
         id: true,
