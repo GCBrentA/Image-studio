@@ -66,14 +66,20 @@ assert.match(backgroundRemoval, /processImageFlexibleMode|flexible-cutout|Backgr
 assert.match(imageProcessing, /raw AI product pixels rejected/, "standard mode rejects unsafe raw AI product pixels");
 assert.match(imageProcessing, /Flexible AI cutout failed or produced an unsafe alpha mask/, "standard mode fallback covers AI cutout call failures and unsafe masks");
 assert.doesNotMatch(imageProcessing, /provider:\s*`openai:\$\{openAiImageEditModel\}:flexible-cutout`/, "standard mode must not return raw AI product RGB as the final cutout");
+assert.match(imageProcessing, /imgly:background-removal-node:flexible-source-pixel/, "standard mode uses specialist segmentation as source-pixel alpha guidance");
+assert.match(imageProcessing, /flexible-source-pixel-first/, "standard mode tries source-pixel local segmentation before AI guidance");
 assert.match(imageProcessing, /flexible-noisy-ai-mask-fallback/, "standard mode retries noisy AI masks with local source-pixel fallback");
-assert.match(imageProcessing, /source-original-review-fallback/, "standard mode degrades to a review-required source-photo fallback instead of surfacing mask errors");
-assert.match(imageProcessing, /AI and local alpha extraction could not create a product-safe mask/, "source-photo fallback is marked review-required in validation warnings");
+assert.doesNotMatch(imageProcessing, /source-original-review-fallback/, "standard mode must not complete by returning a full source-photo fallback");
+assert.match(imageProcessing, /Flexible mode could not produce a product-safe source-pixel mask/, "standard mode fails safely when no product-safe mask exists");
 assert.match(imageProcessing, /Product cutout is too faint after background removal/, "product visibility validation rejects faint striped cutouts");
 assert.match(imageProcessing, /horizontal scanline artifacts after background removal/, "product visibility validation rejects striped scanline cutouts");
+assert.match(imageProcessing, /mask includes a long detached background strip/, "product cutout integrity rejects retained background strips");
+assert.match(imageProcessing, /large internal transparent dropout through the product/, "product cutout integrity rejects missing product interiors");
 assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
 assert.match(imageProcessing, /protectedProductValidation/, "output validation stores protected product metrics");
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
+assert.match(imageProcessing, /preserveMode: true\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation is pixel-strict even when pixel-perfect mode is off");
+assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");
 assert.match(imageProcessing, /product_diff_heatmap/, "debug artifacts include product diff heatmaps");
 assert.match(imageProcessing, /uploadPipelineDebugAsset[\s\S]*generated_background/, "flexible dev/test debug artifacts include generated backgrounds");
 

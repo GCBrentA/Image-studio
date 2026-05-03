@@ -143,6 +143,17 @@ async function main() {
       stripeResult.failReasons.includes("Preserve mode product pixels changed")
   );
 
+  const sourceHasHorizontalProductLines = await validateProtectedProductRegion({
+    sourceProductBuffer: striped,
+    finalProductBuffer: striped,
+    preserveMode: true
+  });
+  assert.equal(
+    sourceHasHorizontalProductLines.outcome,
+    "PASS",
+    "source-locked product pixels with original horizontal detail must not be misclassified as new scanline corruption"
+  );
+
   const flexibleChanged = await makeProduct((rgba, alpha) => {
     for (let pixel = 0; pixel < alpha.length; pixel += 1) {
       if ((alpha[pixel] ?? 0) === 0) continue;
@@ -165,6 +176,7 @@ async function main() {
     labelChanged: labelResult.metrics,
     missingInterior: missingResult.metrics,
     striped: stripeResult.metrics,
+    sourceHasHorizontalProductLines: sourceHasHorizontalProductLines.metrics,
     flexibleChanged: flexibleResult.metrics
   };
   await fs.promises.writeFile(path.join(artifactDir, "validation-report.json"), JSON.stringify(report, null, 2));

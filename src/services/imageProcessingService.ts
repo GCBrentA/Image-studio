@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from "crypto";
-import { existsSync } from "fs";
-import path from "path";
 import sharp from "sharp";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
@@ -81,7 +79,6 @@ const maxImageBytes = 15 * 1024 * 1024;
 const outputSize = 1024;
 const defaultScalePercent = 86;
 const signedUrlExpirySeconds = env.storageSignedUrlExpiresSeconds;
-const defaultBackgroundImagePath = path.resolve(process.cwd(), "public/site/assets/optivra-default-background.png");
 
 type ValidationStatus = "Passed" | "Needs Review" | "Failed";
 type ProductOrientation = "horizontal" | "square" | "tall";
@@ -699,13 +696,15 @@ const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<B
     .toBuffer();
 
 const processImageFlexibleMode = async (
+  sourceInput: Buffer,
   openAiInput: Buffer,
+  sourceContentType: string,
   preferLocalForegroundFallback = false
 ): Promise<CutoutResult> => {
-  const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(openAiInput);
+  const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(sourceInput);
 
   if (sourceAlphaCutout) {
-    return {
+    const result = {
       cutout: sourceAlphaCutout,
       debugCutout: sourceAlphaCutout,
       provider: "source-alpha:transparent-product-png",
@@ -715,28 +714,64 @@ const processImageFlexibleMode = async (
         foregroundMeanDelta: 0
       }
     };
+    await assertVisibleProductImage(result.cutout);
+    return result;
   }
 
-  if (preferLocalForegroundFallback) {
-    try {
-      const localFallback = await buildFlexibleLocalForegroundCutout(openAiInput, "local-color-segmentation:strict-preserve-fallback", 1);
+  try {
+    const specialistCutout = await removeImageBackgroundWithSpecialistModel(sourceInput, sourceContentType);
+    await validateImage(specialistCutout);
+    const sourceDimensions = await getImageDimensions(sourceInput);
+    const specialistAlpha = prepareProviderAlphaForPreserve(
+      "imgly:background-removal-node:flexible-source-pixel",
+      await getSourceAlignedAlpha(specialistCutout, sourceDimensions.width, sourceDimensions.height),
+      sourceDimensions.width,
+      sourceDimensions.height
+    );
 
-      return localFallback;
-    } catch (error) {
-      console.warn("Strict preserve fallback could not use local foreground extraction first; trying AI cutout", {
-        reason: error instanceof Error ? error.message : "Unknown local foreground fallback error"
-      });
-    }
+    const result = await buildPreservedProductCutoutFromAlpha(
+      sourceInput,
+      specialistAlpha,
+      "imgly:background-removal-node:flexible-source-pixel",
+      1,
+      {
+        allowLocalAssist: true,
+        maskSource: "ai_mask",
+        removeBackgroundRemnants: true
+      }
+    );
+    await assertVisibleProductImage(result.cutout);
+    return result;
+  } catch (specialistError) {
+    console.warn("Flexible specialist source-pixel segmentation failed; trying local foreground extraction", {
+      reason: specialistError instanceof Error ? specialistError.message : "Unknown specialist segmentation error"
+    });
+  }
+
+  try {
+    const result = await buildFlexibleLocalForegroundCutout(
+      sourceInput,
+      preferLocalForegroundFallback
+        ? "local-color-segmentation:strict-preserve-fallback"
+        : "local-color-segmentation:flexible-source-pixel-first",
+      1
+    );
+    await assertVisibleProductImage(result.cutout);
+    return result;
+  } catch (localFirstError) {
+    console.warn("Flexible source-pixel local foreground extraction failed; trying AI alpha guidance only", {
+      reason: localFirstError instanceof Error ? localFirstError.message : "Unknown local foreground fallback error"
+    });
   }
 
   try {
     const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
     await validateImage(aiCutout);
-    const sourceDimensions = await getImageDimensions(openAiInput);
+    const sourceDimensions = await getImageDimensions(sourceInput);
     const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
 
-    return await buildPreservedProductCutoutFromAlpha(
-      openAiInput,
+    const result = await buildPreservedProductCutoutFromAlpha(
+      sourceInput,
       aiAlpha,
       `openai:${openAiImageEditModel}:flexible-cutout-clean-alpha`,
       1,
@@ -746,29 +781,35 @@ const processImageFlexibleMode = async (
         removeBackgroundRemnants: true
       }
     );
+    await assertVisibleProductImage(result.cutout);
+    return result;
   } catch (error) {
     console.warn("Flexible AI cutout failed or produced an unsafe alpha mask; raw AI product pixels rejected", {
       reason: error instanceof Error ? error.message : "Unknown flexible cutout error"
     });
 
     try {
-      return await buildFlexibleLocalForegroundCutout(
-        openAiInput,
+      const result = await buildFlexibleLocalForegroundCutout(
+        sourceInput,
         preferLocalForegroundFallback
           ? "local-color-segmentation:flexible-alpha-cleanup-fallback"
           : "local-color-segmentation:flexible-noisy-ai-mask-fallback",
         2
       );
+      await assertVisibleProductImage(result.cutout);
+      return result;
     } catch (fallbackError) {
-      console.warn("Flexible local foreground fallback failed; using review-required source-photo fallback", {
+      console.warn("Flexible local foreground fallback failed; refusing unsafe processed output", {
         aiMaskReason: error instanceof Error ? error.message : "Unknown flexible cutout error",
         localFallbackReason: fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
       });
 
-      return buildFlexibleOriginalImageFallbackCutout(
-        openAiInput,
-        `source-original-review-fallback:no-safe-alpha-mask:${error instanceof Error ? error.message : "unknown-flexible-cutout-error"}`,
-        3
+      throw new Error(
+        `Flexible mode could not produce a product-safe source-pixel mask. AI mask reason: ${
+          error instanceof Error ? error.message : "unknown flexible cutout error"
+        }. Local fallback reason: ${
+          fallbackError instanceof Error ? fallbackError.message : "unknown local fallback error"
+        }.`
       );
     }
   }
@@ -815,49 +856,6 @@ const buildFlexibleLocalForegroundCutout = async (
     attempts,
     validation: {
       alphaCoverage: diagnostics.alphaCoverage,
-      foregroundMeanDelta: 0
-    }
-  };
-};
-
-const buildFlexibleOriginalImageFallbackCutout = async (
-  sourceBuffer: Buffer,
-  provider: string,
-  attempts: number
-): Promise<CutoutResult> => {
-  const metadata = await sharp(sourceBuffer).metadata();
-
-  if (!metadata.width || !metadata.height) {
-    throw new Error("Source-photo fallback could not read source image dimensions.");
-  }
-
-  const width = metadata.width;
-  const height = metadata.height;
-  const rgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
-  const alpha = Buffer.alloc(width * height);
-
-  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
-    alpha[pixel] = (rgba[pixel * 4 + 3] ?? 0) >= 16 ? 255 : 0;
-  }
-
-  const productRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), alpha, width, height);
-  const cutout = await sharp(productRgba, {
-    raw: {
-      width,
-      height,
-      channels: 4
-    }
-  })
-    .png()
-    .toBuffer();
-
-  return {
-    cutout,
-    debugCutout: cutout,
-    provider,
-    attempts,
-    validation: {
-      alphaCoverage: getAlphaCoverage(alpha),
       foregroundMeanDelta: 0
     }
   };
@@ -2399,8 +2397,28 @@ const removeBackgroundLikePixelsFromMask = (
   return refined;
 };
 
+const normalizeAlphaBufferLength = (alpha: Buffer, width: number, height: number): Buffer => {
+  const pixelCount = width * height;
+
+  if (alpha.length === pixelCount) {
+    return alpha;
+  }
+
+  const channels = alpha.length / Math.max(1, pixelCount);
+  if (!Number.isInteger(channels) || channels < 1) {
+    return alpha.subarray(0, pixelCount);
+  }
+
+  const normalized = Buffer.alloc(pixelCount);
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    normalized[pixel] = alpha[pixel * channels] ?? 0;
+  }
+
+  return normalized;
+};
+
 const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Promise<Buffer> =>
-  thresholdAlphaMask(await sharp(alpha, {
+  thresholdAlphaMask(normalizeAlphaBufferLength(await sharp(alpha, {
     raw: {
       width,
       height,
@@ -2409,7 +2427,7 @@ const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Pr
   })
     .blur(0.35)
     .raw()
-    .toBuffer(), 140);
+    .toBuffer(), width, height), 140);
 
 const getSafeAlphaMask = (fallbackAlpha: Buffer, candidateAlpha: Buffer, minCoverageRatio = 0.65): Buffer => {
   const fallbackCoverage = getAlphaCoverage(fallbackAlpha);
@@ -3691,6 +3709,98 @@ const assertVisibleProductImage = async (productBuffer: Buffer): Promise<void> =
   if (visibleProductShare < 0.08) {
     throw new Error("Product cutout is too faint after background removal. No image was replaced; review the source image or reprocess with pixel-perfect preservation enabled.");
   }
+
+  const integrityIssues = getProductCutoutIntegrityIssues(alpha, metadata.width, metadata.height, diagnostics.bbox);
+  if (integrityIssues.length > 0) {
+    throw new Error(`Product cutout failed integrity checks: ${integrityIssues.join("; ")}. No image was replaced.`);
+  }
+};
+
+const getProductCutoutIntegrityIssues = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  bbox: PreserveMaskDiagnostics["bbox"]
+): string[] => {
+  if (bbox.width <= 0 || bbox.height <= 0) {
+    return ["empty product bounds"];
+  }
+
+  const issues: string[] = [];
+  const components = getConnectedMaskComponents(thresholdAlphaMask(alpha, 24), width, height);
+  if (components.length > 1) {
+    const largest = components.reduce((best, component) => component.length > best.length ? component : best, components[0] as number[]);
+    for (const component of components) {
+      if (component === largest || component.length < Math.max(300, largest.length * 0.025)) {
+        continue;
+      }
+
+      const bounds = getPixelComponentBounds(component, width, height);
+      const componentWidth = bounds.maxX - bounds.minX + 1;
+      const componentHeight = bounds.maxY - bounds.minY + 1;
+      const aspect = componentWidth / Math.max(1, componentHeight);
+      const longDetachedStrip =
+        aspect > 5 &&
+        componentWidth > bbox.width * 0.55 &&
+        componentHeight < bbox.height * 0.16;
+
+      if (longDetachedStrip) {
+        issues.push("mask includes a long detached background strip");
+        break;
+      }
+    }
+  }
+
+  let widestGapPercent = 0;
+  let longestGapRun = 0;
+  let currentGapRun = 0;
+  const minGapWidth = Math.max(36, Math.round(bbox.width * 0.18));
+  const minGapRows = Math.max(8, Math.round(bbox.height * 0.035));
+
+  for (let y = bbox.y; y < bbox.y + bbox.height; y += 1) {
+    let first = -1;
+    let last = -1;
+    for (let x = bbox.x; x < bbox.x + bbox.width; x += 1) {
+      if ((alpha[y * width + x] ?? 0) >= 24) {
+        if (first < 0) first = x;
+        last = x;
+      }
+    }
+
+    let rowHasLargeGap = false;
+    if (first >= 0 && last > first) {
+      let runStart = -1;
+      for (let x = first; x <= last; x += 1) {
+        const opaque = (alpha[y * width + x] ?? 0) >= 24;
+        if (!opaque && runStart < 0) {
+          runStart = x;
+        } else if ((opaque || x === last) && runStart >= 0) {
+          const runEnd = opaque ? x - 1 : x;
+          const gapWidth = runEnd - runStart + 1;
+          const leftSupport = runStart - first;
+          const rightSupport = last - runEnd;
+          if (gapWidth >= minGapWidth && leftSupport >= bbox.width * 0.08 && rightSupport >= bbox.width * 0.08) {
+            rowHasLargeGap = true;
+            widestGapPercent = Math.max(widestGapPercent, gapWidth / Math.max(1, bbox.width));
+          }
+          runStart = -1;
+        }
+      }
+    }
+
+    if (rowHasLargeGap) {
+      currentGapRun += 1;
+      longestGapRun = Math.max(longestGapRun, currentGapRun);
+    } else {
+      currentGapRun = 0;
+    }
+  }
+
+  if (longestGapRun >= minGapRows && widestGapPercent >= 0.22) {
+    issues.push("mask has a large internal transparent dropout through the product");
+  }
+
+  return issues;
 };
 
 const removePalePhotoCardFromProductBuffer = async (productBuffer: Buffer): Promise<Buffer> => {
@@ -3986,9 +4096,9 @@ const buildOutputQualityValidation = async (
     warnings.push("Interior product dropout was detected and repaired from original source pixels.");
   }
 
-  const productPreservation: ValidationStatus = preserveProductExactly && !Number.isFinite(cutoutResult.validation.foregroundMeanDelta)
+  const productPreservation: ValidationStatus = !Number.isFinite(cutoutResult.validation.foregroundMeanDelta)
     ? "Needs Review"
-    : preserveProductExactly && cutoutResult.validation.foregroundMeanDelta > 3
+    : cutoutResult.validation.foregroundMeanDelta > 3
       ? "Failed"
       : "Passed";
 
@@ -3998,21 +4108,17 @@ const buildOutputQualityValidation = async (
     warnings.push("Product preservation could not be fully verified.");
   }
 
-  const detailPreservation: ValidationStatus = preserveProductExactly ? productPreservation : "Needs Review";
+  const detailPreservation: ValidationStatus = productPreservation;
   if (!preserveProductExactly) {
-    warnings.push("Standard mode may adjust product presentation; review before applying to main product images.");
+    warnings.push("Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.");
   }
 
   if (protectedProductValidation.outcome === "HARD_FAIL") {
     protectedProduct = "Failed";
     failureReasons.push(...protectedProductValidation.failReasons);
   } else if (protectedProductValidation.outcome === "SOFT_FAIL_RETRYABLE") {
-    protectedProduct = preserveProductExactly ? "Failed" : "Needs Review";
-    if (preserveProductExactly) {
-      failureReasons.push(...protectedProductValidation.retryableReasons);
-    } else {
-      warnings.push(...protectedProductValidation.retryableReasons);
-    }
+    protectedProduct = "Failed";
+    failureReasons.push(...protectedProductValidation.retryableReasons);
   }
 
   warnings.push(...productFallbackWarnings);
@@ -4082,16 +4188,6 @@ const buildBrandedBackground = async (background: string): Promise<Buffer> => {
         }
       }
     })
-      .png()
-      .toBuffer();
-  }
-
-  if (background === "optivra-default" && existsSync(defaultBackgroundImagePath)) {
-    return sharp(defaultBackgroundImagePath)
-      .resize(outputSize, outputSize, {
-        fit: "cover",
-        position: "centre"
-      })
       .png()
       .toBuffer();
   }
@@ -4260,7 +4356,12 @@ export const processImageForProduct = async ({
         sourceDimensions: originalImageDimensions,
         fallbackMode: preserveModeFallback
       })
-    : await processImageFlexibleMode(openAiInput, processingSettings.preserveFallbackFromStrictMode === true);
+    : await processImageFlexibleMode(
+        originalImage.buffer,
+        openAiInput,
+        originalImage.contentType,
+        processingSettings.preserveFallbackFromStrictMode === true
+      );
   const cutout = cutoutResult.cutout;
   await validateImage(cutout);
 
@@ -4337,7 +4438,7 @@ export const processImageForProduct = async ({
   const protectedProductValidation = await validateProtectedProductRegion({
     sourceProductBuffer: protectedSourceProductBuffer,
     finalProductBuffer: productBuffer,
-    preserveMode: preserveProductExactly
+    preserveMode: true
   });
   const productDiffHeatmap = savePipelineDebugAssets
     ? await buildProductDiffHeatmap(protectedSourceProductBuffer, productBuffer)
@@ -4388,25 +4489,6 @@ export const processImageForProduct = async ({
       failureReasons: []
     };
   }
-  if (cutoutResult.provider.startsWith("source-original-review-fallback:")) {
-    outputValidation = {
-      ...outputValidation,
-      status: "Needs Review",
-      checks: {
-        ...outputValidation.checks,
-        framing: outputValidation.checks.framing === "Failed" ? "Needs Review" : outputValidation.checks.framing,
-        background: "Needs Review",
-        detailPreservation: "Needs Review",
-        protectedProduct: outputValidation.checks.protectedProduct === "Failed" ? "Needs Review" : outputValidation.checks.protectedProduct
-      },
-      warnings: Array.from(new Set([
-        ...outputValidation.warnings,
-        "AI and local alpha extraction could not create a product-safe mask, so Optivra returned a review-required source-photo fallback instead of failing the job."
-      ])),
-      failureReasons: []
-    };
-  }
-
   if (preserveProductExactly && cutoutResult.preserveDebug) {
     cutoutResult.preserveDebug.outputValidation = outputValidation;
   }

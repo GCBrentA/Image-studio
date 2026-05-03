@@ -69,29 +69,31 @@ export const validateProtectedProductRegion = async ({
   const pixelFidelity = compareSourcePixels(source.data, finalImage.data, finalAlpha);
   const histogramDrift = getHistogramDrift(source.data, finalImage.data, finalAlpha);
   const labelStrokeRetentionPercent = getLabelStrokeRetentionPercent(source.data, finalImage.data, sourceAlpha, finalAlpha, sourceProfile.labelRegion, source.width, source.height);
+  const sourceArtifactMetrics = detectProductArtifacts(source.data, sourceAlpha, source.width, source.height, sourceProfile.bounds);
   const artifactMetrics = detectProductArtifacts(finalImage.data, finalAlpha, finalImage.width, finalImage.height, finalProfile.bounds);
+  const horizontalStripeIncrease = artifactMetrics.horizontalStripeScore - sourceArtifactMetrics.horizontalStripeScore;
   const failReasons: string[] = [];
   const retryableReasons: string[] = [];
 
-  if (silhouetteIoU < (preserveMode ? 0.94 : 0.82)) {
+  if (silhouetteIoU < (preserveMode ? 0.94 : 0.9)) {
     failReasons.push("Product silhouette changed beyond tolerance");
   }
-  if (boundsAspectDriftPercent > (preserveMode ? 4 : 12)) {
+  if (boundsAspectDriftPercent > (preserveMode ? 4 : 6)) {
     failReasons.push("Product geometry/aspect ratio drift exceeded tolerance");
   }
-  if (centroidDriftPercent > (preserveMode ? 3 : 8)) {
+  if (centroidDriftPercent > (preserveMode ? 3 : 5)) {
     retryableReasons.push("Product placement drift exceeded target");
   }
   if (preserveMode && (pixelFidelity.changedPercent > 0.8 || pixelFidelity.meanDelta > 1.5)) {
     failReasons.push("Preserve mode product pixels changed");
   }
-  if (!preserveMode && (pixelFidelity.changedPercent > 16 || pixelFidelity.meanDelta > 18 || histogramDrift > 22)) {
+  if (!preserveMode && (pixelFidelity.changedPercent > 3 || pixelFidelity.meanDelta > 5 || histogramDrift > 8)) {
     retryableReasons.push("Flexible output changed product appearance too much");
   }
-  if (labelStrokeRetentionPercent < (preserveMode ? 92 : 78)) {
+  if (labelStrokeRetentionPercent < (preserveMode ? 92 : 88)) {
     failReasons.push("Label/text/branding detail was lost or degraded");
   }
-  if (artifactMetrics.horizontalStripeScore >= 0.35) {
+  if (artifactMetrics.horizontalStripeScore >= 0.35 && horizontalStripeIncrease >= 0.16) {
     failReasons.push("Horizontal stripe/scanline corruption detected");
   }
   if (artifactMetrics.faintProductSharePercent > 92) {
