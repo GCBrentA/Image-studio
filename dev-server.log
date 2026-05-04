@@ -1,0 +1,35 @@
+
+> optivra-backend@1.0.0 dev
+> tsx watch src/server.ts
+
+Optivra Image Studio listening on port 3000
+Runtime URL configuration {
+  appBaseUrl: 'missing',
+  stripeSuccessUrlConfigured: false,
+  stripeCancelUrlConfigured: false,
+  webhookRouteMounted: '/api/stripe/webhook'
+}
+Email configuration {
+  mailProvider: 'missing',
+  downloadEmailEnabled: false,
+  feedbackEmailEnabled: false,
+  smtpHostPresent: false,
+  smtpUserPresent: false,
+  mailFromEmailPresent: false,
+  smtpReady: false
+}
+Billing configuration {
+  stripeSecretKey: false,
+  stripePublishableKey: false,
+  stripeWebhookSecret: false,
+  stripePrices: {
+    starter: 'missing',
+    growth: 'missing',
+    pro: 'missing',
+    agency: 'missing'
+  },
+  stripeSuccessUrl: false,
+  stripeCancelUrl: false,
+  appBaseUrl: false,
+  billingCurrency: 'usd'
+}

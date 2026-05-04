@@ -39,6 +39,7 @@ console.warn = () => undefined;
 
 const storageObjects = new Map<string, Buffer>();
 const storageContentTypes = new Map<string, string>();
+const openAiFullEditPrompts: string[] = [];
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -89,6 +90,64 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
   }
 
   if (url.includes("api.openai.com/v1/images/edits")) {
+    const form = init?.body instanceof FormData ? init.body : null;
+    const prompt = String(form?.get("prompt") ?? "");
+    const isMaskRequest = /transparent-background PNG|alpha channel|alpha mask|mask\/cutout|foreground segmentation|isolate only the actual product/i.test(prompt);
+
+    if (!isMaskRequest) {
+      openAiFullEditPrompts.push(prompt);
+      const cleanEditedImage = await sharp({
+        create: {
+          width: 1024,
+          height: 1024,
+          channels: 4,
+          background: { r: 247, g: 247, b: 244, alpha: 1 }
+        }
+      })
+        .composite([
+          {
+            input: Buffer.from(`
+              <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <radialGradient id="metal" cx="36%" cy="22%" r="78%">
+                    <stop offset="0%" stop-color="#f7d09d"/>
+                    <stop offset="54%" stop-color="#a16431"/>
+                    <stop offset="100%" stop-color="#5c351c"/>
+                  </radialGradient>
+                </defs>
+                <ellipse cx="512" cy="738" rx="250" ry="42" fill="#000000" opacity="0.14"/>
+                <g transform="translate(512 470)">
+                  <ellipse cx="0" cy="0" rx="205" ry="154" fill="url(#metal)"/>
+                  <ellipse cx="0" cy="-8" rx="180" ry="126" fill="#cb8a4b"/>
+                  <ellipse cx="0" cy="108" rx="182" ry="58" fill="#87502a"/>
+                  <circle cx="-104" cy="-58" r="32" fill="#5f321c"/>
+                  <circle cx="-36" cy="-78" r="32" fill="#5f321c"/>
+                  <circle cx="48" cy="-78" r="32" fill="#5f321c"/>
+                  <circle cx="118" cy="-50" r="32" fill="#5f321c"/>
+                  <circle cx="-110" cy="36" r="35" fill="#5f321c"/>
+                  <circle cx="-32" cy="58" r="35" fill="#5f321c"/>
+                  <circle cx="52" cy="58" r="35" fill="#5f321c"/>
+                  <circle cx="126" cy="32" r="35" fill="#5f321c"/>
+                  <text x="8" y="10" font-family="Arial Black, Arial, Helvetica, sans-serif" text-anchor="middle" font-size="72" font-weight="900" fill="#344047" transform="rotate(22)">A7</text>
+                </g>
+              </svg>
+            `),
+            top: 0,
+            left: 0
+          }
+        ])
+        .png()
+        .toBuffer();
+
+      return jsonResponse({
+        data: [
+          {
+            b64_json: cleanEditedImage.toString("base64")
+          }
+        ]
+      });
+    }
+
     const transparentCutout = await sharp({
       create: {
         width: 1024,
@@ -354,6 +413,8 @@ const assertPromptPolicy = (): void => {
   assert.doesNotMatch(backgroundRemoval, /freely redesign|make it look better however/i);
 
   assert.match(imageProcessing, /preserveProductExactly\s+\?\s+await processImagePreserveMode/);
+  assert.match(imageProcessing, /editProductImageWithOpenAi/);
+  assert.match(imageProcessing, /OpenAI flexible image edit failed; falling back to source-locked local composite path/);
   assert.match(imageProcessing, /:\s+await processImageFlexibleMode/);
   assert.match(imageProcessing, /const webpOptions = preserveProductExactly/);
   assert.match(imageProcessing, /quality: 100,\s+lossless: true/s);
@@ -527,6 +588,11 @@ const run = async (): Promise<void> => {
           assert.equal(result.outputValidation.processingMode, "standard_background_replacement", `${label}: flexible validation mode mismatch`);
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: flexible protected product check should pass`);
           assert.doesNotMatch(result.outputValidation.failureReasons.join(" "), /failed|could not generate|processing error/i, `${label}: flexible mode should not return generic give-up errors`);
+          assert.match(
+            result.outputValidation.warnings.join(" "),
+            /OpenAI image editing as the primary background replacement and enhancement path/i,
+            `${label}: flexible mode should use OpenAI image editing before local cutout fallback`
+          );
         }
 
         const processed = getUploadedObject("processed-images", result.processedStoragePath);
@@ -547,6 +613,11 @@ const run = async (): Promise<void> => {
 
   assert.deepEqual(failures, [], `Normal product matrix failures:\n${failures.join("\n")}`);
   assert.equal(outputs.length, products.length * matrixModes.length, "Every normal product/mode combination should produce output");
+  assert.ok(openAiFullEditPrompts.length >= products.length * 4, "Flexible product matrix should exercise OpenAI full image edit prompts");
+  assert.ok(
+    openAiFullEditPrompts.every((prompt) => /Preserve the product identity and design/i.test(prompt) && /Only minor adjustments/i.test(prompt)),
+    "Flexible OpenAI full edit prompts must preserve product identity and allow only minor realism/compositing adjustments"
+  );
 
   const fallbackCutout = await __optiimstImageProcessingTestHooks.buildFlexibleFullSourceReviewCutout(
     fixtureBuffers.get("plain-bottle") ?? Buffer.alloc(0),

@@ -18,13 +18,13 @@ export const openAiImageEditQuality = "high";
 export const openAiImageEditSize = "1024x1024";
 
 const negativeProductInstructionBlock =
-  "Do not change the product. Do not modify the object. Do not alter the silhouette. Do not redraw the item. Do not invent details. Do not remove details. Do not crop the product. Do not change, rewrite, blur, distort, remove, add, or reinterpret any product logos, labels, visible text, markings, branding, graphics, packaging design, texture, reflections, materials, proportions, or sellable features. Do not leave excessive whitespace. Do not make the background dark, textured, wooden, lifestyle, dramatic, cluttered, or busy. Do not add logos, text, labels, watermarks, reflections, props, hands, people, packaging, smoke, glow, or extra objects.";
+  "Do not change the product. Do not modify the object. Do not alter the silhouette. Do not redraw the item. Do not invent details. Do not remove details. Do not crop the product. Do not change, rewrite, blur, distort, remove, add, or reinterpret any product logos, labels, visible text, markings, branding, graphics, packaging design, texture, reflections, materials, proportions, or sellable features that are physically printed on or attached to the product. Remove all source background text, background logos, background watermarks, background graphics, floor/wall marks, and detached brand marks that are behind, around, under, or separate from the actual product. Do not preserve large background brand graphics as part of the product. Do not leave excessive whitespace. Do not make the background dark, textured, wooden, lifestyle, dramatic, cluttered, or busy. Do not add logos, text, labels, watermarks, reflections, props, hands, people, packaging, smoke, glow, or extra objects.";
 
 const strictProductPreservationBlock =
-  "Do not alter the product. Preserve the exact product pixels, shape, silhouette, design, logos, visible text, labels, colours, proportions, geometry, branding, packaging, texture, reflections, materials, markings, surface details, holes, screws, seams, highlights, and all visible sellable details. Only the background/environment may change according to the selected background settings. Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret the product. Do not add or remove any product parts. Do not change the product geometry. Do not change the product colour. Do not make the product look like a different item.";
+  "Do not alter the product. Preserve the exact product pixels, shape, silhouette, design, logos, visible text, labels, colours, proportions, geometry, branding, packaging, texture, reflections, materials, markings, surface details, holes, screws, seams, highlights, and all visible sellable details that are physically part of the product. Only the background/environment may change according to the selected background settings. Remove background-only watermarks, text, logos, graphics, floor/wall marks, and detached brand marks even if they resemble product branding. Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret the product. Do not add or remove any product parts. Do not change the product geometry. Do not change the product colour. Do not make the product look like a different item.";
 
 const flexibleProductPreservationBlock =
-  "Preserve the product identity and design. Keep the same product shape, silhouette, proportions, branding, logos, visible text, labels, packaging design, colours, texture, materials, markings, and sellable appearance. Only minor adjustments needed for realistic background integration are allowed: subtle lighting harmonisation, soft shadow generation, slight edge blending, minor reflection adaptation, and small colour-temperature balancing. Do not redesign, redraw, recolour, simplify, invent features, remove details, change text or logos, alter geometry, or make the product look like a different item.";
+  "Preserve the product identity and design. Keep the same product shape, silhouette, proportions, branding, logos, visible text, labels, packaging design, colours, texture, materials, markings, and sellable appearance that are physically part of the product. Remove all background-only text, background logos, background watermarks, background graphics, floor/wall marks, and detached brand marks. Only minor adjustments needed for realistic background integration are allowed: subtle lighting harmonisation, soft shadow generation, slight edge blending, minor reflection adaptation, and small colour-temperature balancing. Do not redesign, redraw, recolour, simplify, invent features, remove details, change text or logos that are physically on the product, alter geometry, or make the product look like a different item.";
 
 const preserveBackgroundReplacementPrompt =
   `Edit this image as a professional ecommerce product photo. ${strictProductPreservationBlock} Only remove the original background and replace it with a clean premium studio background. Create a clean light ecommerce background suitable for WooCommerce product pages and shopping feeds. Use an off-white or very light neutral grey background, not pure harsh white. Add a subtle realistic soft contact shadow beneath the product so it feels grounded, but do not obscure or alter the product. Keep the product horizontally aligned and centred. Crop and scale the final image so the product fills approximately 82-90% of the image width while maintaining comfortable margins. Do not crop any part of the product. Keep the entire product visible. Maintain natural contrast and detail, especially in black/dark parts. Do not crush shadows. Do not over-brighten. Do not over-sharpen. Do not blur edges. Preserve fine details around thin parts. Final output should look like a premium catalogue product image: clean, sharp, realistic, accurately preserved, well centred, correctly scaled, and ready for ecommerce use. ${negativeProductInstructionBlock}`;
@@ -147,6 +147,56 @@ export const removeImageBackground = async (
 
   if (!imageBase64) {
     throw new Error("OpenAI background removal did not return image data");
+  }
+
+  return Buffer.from(imageBase64, "base64");
+};
+
+export const editProductImageWithOpenAi = async (
+  imageBuffer: Buffer,
+  prompt: string
+): Promise<Buffer> => {
+  if (!env.openAiApiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  const formData = new FormData();
+  formData.append(
+    "image",
+    new Blob([new Uint8Array(imageBuffer)], {
+      type: "image/png"
+    }),
+    "product.png"
+  );
+  formData.append("model", openAiImageEditModel);
+  formData.append("prompt", prompt);
+  formData.append("input_fidelity", "high");
+  formData.append("output_format", "png");
+  formData.append("quality", openAiImageEditQuality);
+  formData.append("size", openAiImageEditSize);
+
+  const response = await fetch(openAiImageEditEndpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.openAiApiKey}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.text().catch(() => "");
+    throw new Error(`OpenAI image edit failed with ${response.status}: ${responseBody}`);
+  }
+
+  const body = await response.json() as {
+    data?: Array<{
+      b64_json?: string;
+    }>;
+  };
+  const imageBase64 = body.data?.[0]?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error("OpenAI image edit did not return image data");
   }
 
   return Buffer.from(imageBase64, "base64");
