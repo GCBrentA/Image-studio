@@ -13,6 +13,7 @@ const siteService = read("src/services/siteService.ts");
 const imageProcessing = read("src/services/imageProcessingService.ts");
 const productProtection = read("src/services/productProtectionValidationService.ts");
 const imageController = read("src/controllers/imageController.ts");
+const creditService = read("src/services/creditService.ts");
 const pluginAdmin = read("wordpress-plugin/optivra-image-studio-for-woocommerce/admin/class-catalogue-image-studio-admin.php");
 const pluginProcessor = read("wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-image-processor.php");
 const approvalManager = read("wordpress-plugin/optivra-image-studio-for-woocommerce/includes/class-catalogue-image-studio-approval-manager.php");
@@ -100,6 +101,7 @@ assert.match(productProtection, /bandingScore/, "product protection checks poste
 
 assert.match(imageController, /deductCredit[\s\S]*if \(!result\.creditDeductionRequired\)[\s\S]*const deduction = await deductCredit/s, "credits are deducted only after processing success");
 assert.match(imageController, /catch \(error\)[\s\S]*response\.status\(422\)/s, "failed processing returns without deducting credit");
+assert.match(creditService, /const getCurrentBalance[\s\S]*getCreditTotals\(userId, client\)[\s\S]*return totals\.credits_remaining;/, "credit deductions use ledger totals rather than the stale user mirror");
 assert.match(imageController, /Strict preserve mode failed; refusing non-pixel-perfect fallback/, "strict preserve failures fail safely instead of falling back to standard mode");
 assert.doesNotMatch(imageController, /preserveFallbackFromStrictMode: true|preserve_fallback: true/, "strict preserve responses must not complete as standard-mode fallbacks");
 assert.doesNotMatch(approvalManager, /process\(/, "approval manager does not auto-process or auto-apply failed outputs");

@@ -175,16 +175,9 @@ const getCurrentBalance = async (
   userId: string,
   client: Prisma.TransactionClient | typeof prisma
 ): Promise<number> => {
-  const user = await client.user.findUnique({
-    where: {
-      id: userId
-    },
-    select: {
-      credits_remaining: true
-    }
-  });
+  const totals = await getCreditTotals(userId, client);
 
-  return Number.isInteger(user?.credits_remaining) ? user?.credits_remaining ?? 0 : 0;
+  return totals.credits_remaining;
 };
 
 export const getLowCreditThresholds = (
