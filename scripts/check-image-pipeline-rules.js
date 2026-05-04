@@ -72,11 +72,11 @@ assert.match(backgroundRemoval, /openAiImageEditSize = "1024x1024"/, "OpenAI siz
 assert.match(imageProcessing, /const attempts = \[[\s\S]*attempt: 1[\s\S]*attempt: 2[\s\S]*\];/, "preserve mode retry is capped at two attempts");
 assert.match(backgroundRemoval, /processImageFlexibleMode|flexible-cutout|BackgroundRemovalMode/, "standard mode uses the same image model path with one attempt");
 assert.match(imageProcessing, /raw AI product pixels rejected/, "standard mode rejects unsafe raw AI product pixels");
-assert.match(imageProcessing, /Flexible AI cutout failed or produced an unsafe alpha mask/, "standard mode fallback covers AI cutout call failures and unsafe masks");
+assert.match(imageProcessing, /Flexible OpenAI alpha guidance failed/, "standard mode fallback covers AI cutout call failures and unsafe masks");
 assert.doesNotMatch(imageProcessing, /provider:\s*`openai:\$\{openAiImageEditModel\}:flexible-cutout`/, "standard mode must not return raw AI product RGB as the final cutout");
 assert.match(imageProcessing, /imgly:background-removal-node:flexible-source-pixel/, "standard mode uses specialist segmentation as source-pixel alpha guidance");
-assert.match(imageProcessing, /flexible-source-pixel-first/, "standard mode tries source-pixel local segmentation before AI guidance");
-assert.match(imageProcessing, /flexible-noisy-ai-mask-fallback/, "standard mode retries noisy AI masks with local source-pixel fallback");
+assert.match(imageProcessing, /flexible-preserve-source-mask/, "standard mode uses OpenAI alpha only as source-pixel mask guidance");
+assert.match(imageProcessing, /flexible-source-pixel-first/, "standard mode retains source-pixel local segmentation as a fallback");
 assert.match(imageProcessing, /flexible-full-source-review-fallback/, "standard mode completes with a review-only full-source fallback when no product-safe mask exists");
 assert.match(imageProcessing, /Flexible mode could not isolate the product safely/, "standard mode flags full-source fallback outputs for review");
 assert.doesNotMatch(imageProcessing, /Flexible mode could not produce a product-safe source-pixel mask/, "standard mode must not fail outright when pixel-perfect preservation is off");
@@ -89,6 +89,8 @@ assert.match(imageProcessing, /Remove[d]? low-saturation background marks outsid
 assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
 assert.match(imageProcessing, /protectedProductValidation/, "output validation stores protected product metrics");
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
+assert.match(imageProcessing, /buildAiAssistedStudioBackground/, "flexible mode uses OpenAI scene guidance only for the background layer");
+assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/, "flexible mode validates product detail preservation before accepting output");
 assert.match(imageProcessing, /preserveMode: preserveProductExactly\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation uses strict thresholds only in pixel-perfect mode");
 assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");
 assert.doesNotMatch(imageProcessing, /linearGradient id="bg"|fill="url\(#bg\)"/, "generated default backgrounds must not introduce horizontal gradient bands");

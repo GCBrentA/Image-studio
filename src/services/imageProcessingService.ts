@@ -173,10 +173,13 @@ type PreserveRgbIntegrity = {
 export type PreserveDebugAsset = {
   kind:
     | "original_source"
+    | "source_normalized"
     | "debug_cutout"
     | "ai_cutout"
+    | "ai_scene"
     | "raw_mask"
     | "cleaned_mask"
+    | "product_mask"
     | "alpha_mask"
     | "alpha_mask_preview"
     | "product_cutout_checkerboard"
@@ -188,6 +191,8 @@ export type PreserveDebugAsset = {
     | "restored_region_overlay"
     | "final_repaired_cutout"
     | "preserved_cutout"
+    | "source_product_layer"
+    | "extracted_background"
     | "generated_background"
     | "shadow_layer"
     | "final_composite"
@@ -851,7 +856,7 @@ const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<B
     .png()
     .toBuffer();
 
-const processImageFlexibleMode = async (
+const processImageFlexiblePreserveMode = async (
   sourceInput: Buffer,
   openAiInput: Buffer,
   sourceContentType: string,
@@ -872,6 +877,31 @@ const processImageFlexibleMode = async (
     };
     await assertVisibleProductImage(result.cutout);
     return result;
+  }
+
+  try {
+    const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
+    await validateImage(aiCutout);
+    const sourceDimensions = await getImageDimensions(sourceInput);
+    const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
+
+    const result = await buildPreservedProductCutoutFromAlpha(
+      sourceInput,
+      aiAlpha,
+      `openai:${openAiImageEditModel}:flexible-preserve-source-mask`,
+      1,
+      {
+        allowLocalAssist: true,
+        maskSource: "ai_mask",
+        removeBackgroundRemnants: true
+      }
+    );
+    await assertVisibleProductImage(result.cutout);
+    return result;
+  } catch (error) {
+    console.warn("Flexible OpenAI alpha guidance failed; raw AI product pixels rejected and source pixels will remain authoritative", {
+      reason: error instanceof Error ? error.message : "Unknown flexible cutout error"
+    });
   }
 
   try {
@@ -914,59 +944,19 @@ const processImageFlexibleMode = async (
     );
     return result;
   } catch (localFirstError) {
-    console.warn("Flexible source-pixel local foreground extraction failed; trying AI alpha guidance only", {
+    console.warn("Flexible source-pixel local foreground extraction failed; using full-source review fallback", {
       reason: localFirstError instanceof Error ? localFirstError.message : "Unknown local foreground fallback error"
-    });
-  }
-
-  try {
-    const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
-    await validateImage(aiCutout);
-    const sourceDimensions = await getImageDimensions(sourceInput);
-    const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
-
-    const result = await buildPreservedProductCutoutFromAlpha(
-      sourceInput,
-      aiAlpha,
-      `openai:${openAiImageEditModel}:flexible-cutout-clean-alpha`,
-      1,
-      {
-        allowLocalAssist: true,
-        maskSource: "ai_mask",
-        removeBackgroundRemnants: true
-      }
-    );
-    await assertVisibleProductImage(result.cutout);
-    return result;
-  } catch (error) {
-    console.warn("Flexible AI cutout failed or produced an unsafe alpha mask; raw AI product pixels rejected", {
-      reason: error instanceof Error ? error.message : "Unknown flexible cutout error"
     });
 
     try {
-      const result = await buildFlexibleLocalForegroundCutout(
-        sourceInput,
-        preferLocalForegroundFallback
-          ? "local-color-segmentation:flexible-alpha-cleanup-fallback"
-          : "local-color-segmentation:flexible-noisy-ai-mask-fallback",
-        2
-      );
-      return result;
-    } catch (fallbackError) {
-      console.warn("Flexible local foreground fallback failed; using full-source review fallback", {
-        aiMaskReason: error instanceof Error ? error.message : "Unknown flexible cutout error",
-        localFallbackReason: fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
-      });
-
       const result = await buildFlexibleFullSourceReviewCutout(
         sourceInput,
-        [
-          `AI mask reason: ${error instanceof Error ? error.message : "unknown flexible cutout error"}.`,
-          `Local fallback reason: ${fallbackError instanceof Error ? fallbackError.message : "unknown local fallback error"}.`
-        ]
+        [`Local fallback reason: ${localFirstError instanceof Error ? localFirstError.message : "unknown local fallback error"}.`]
       );
       await assertVisibleProductImage(result.cutout);
       return result;
+    } catch (fallbackError) {
+      throw new Error(`Flexible preserve mode could not create a review-safe source product layer: ${fallbackError instanceof Error ? fallbackError.message : "unknown fallback error"}.`);
     }
   }
 };
@@ -1067,7 +1057,8 @@ const buildFlexibleLocalForegroundCutout = async (
 
 export const __optiimstImageProcessingTestHooks = {
   buildFlexibleFullSourceReviewCutout,
-  buildFlexibleLocalForegroundCutout
+  buildFlexibleLocalForegroundCutout,
+  processImageFlexiblePreserveMode
 };
 
 const getImageAlphaMaskDiagnostics = async (imageBuffer: Buffer): Promise<PreserveMaskDiagnostics> => {
@@ -2078,10 +2069,10 @@ const normalizeOpenAiEditedProductImage = async (imageBuffer: Buffer): Promise<B
     .png()
     .toBuffer();
 
-const assertUsableOpenAiEditedProductImage = async (imageBuffer: Buffer): Promise<void> => {
+const assertUsableOpenAiStudioScene = async (imageBuffer: Buffer): Promise<void> => {
   const metadata = await sharp(imageBuffer).metadata();
   if (metadata.width !== outputSize || metadata.height !== outputSize) {
-    throw new Error("OpenAI image edit returned an invalid output size.");
+    throw new Error("OpenAI studio scene returned an invalid output size.");
   }
 
   const raw = await sharp(imageBuffer)
@@ -2111,45 +2102,179 @@ const assertUsableOpenAiEditedProductImage = async (imageBuffer: Buffer): Promis
 
   const totalPixels = outputSize * outputSize;
   if (meaningfulPixels / totalPixels < 0.012 || strongEdgePixels < 600) {
-    throw new Error("OpenAI image edit did not return a visibly usable product image.");
+    throw new Error("OpenAI studio scene did not return a visibly usable background reference.");
   }
 };
 
-const buildOpenAiFlexibleOutputValidation = async (
-  imageBuffer: Buffer,
-  settings: Record<string, unknown>,
-  warnings: string[] = []
-): Promise<OutputQualityValidation> => {
-  await assertUsableOpenAiEditedProductImage(imageBuffer);
+const buildAiAssistedStudioBackground = async (
+  aiSceneBuffer: Buffer,
+  fallbackBackgroundBuffer: Buffer
+): Promise<Buffer> => {
+  const [sceneWash, fallbackBackground] = await Promise.all([
+    sharp(aiSceneBuffer)
+      .rotate()
+      .resize(outputSize, outputSize, {
+        fit: "cover",
+        position: "centre"
+      })
+      .blur(36)
+      .modulate({
+        saturation: 0.16,
+        brightness: 1.08
+      })
+      .removeAlpha()
+      .joinChannel(Buffer.alloc(outputSize * outputSize, 58), {
+        raw: {
+          width: outputSize,
+          height: outputSize,
+          channels: 1
+        }
+      })
+      .png()
+      .toBuffer(),
+    sharp(fallbackBackgroundBuffer)
+      .resize(outputSize, outputSize, {
+        fit: "cover",
+        position: "centre"
+      })
+      .ensureAlpha()
+      .png()
+      .toBuffer()
+  ]);
+  const neutralWash = await sharp({
+    create: {
+      width: outputSize,
+      height: outputSize,
+      channels: 4,
+      background: {
+        r: 249,
+        g: 249,
+        b: 246,
+        alpha: 0.62
+      }
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return sharp(fallbackBackground)
+    .composite([
+      { input: sceneWash, blend: "over" },
+      { input: neutralWash, blend: "over" }
+    ])
+    .png()
+    .toBuffer();
+};
+
+const buildProductAlphaMaskPreview = async (productBuffer: Buffer): Promise<Buffer> =>
+  sharp(productBuffer)
+    .ensureAlpha()
+    .extractChannel("alpha")
+    .png()
+    .toBuffer();
+
+const getFlexibleProductDetailMetrics = async (
+  productBuffer: Buffer
+): Promise<{
+  visiblePixels: number;
+  strongEdgePixels: number;
+  sharpnessScore: number;
+  internalTransparentPixels: number;
+}> => {
+  const metadata = await sharp(productBuffer).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error("Flexible product detail validation could not read product dimensions.");
+  }
+
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  let visiblePixels = 0;
+  let strongEdgePixels = 0;
+  let edgeTotal = 0;
+  let internalTransparentPixels = 0;
+  const alpha = Buffer.alloc(metadata.width * metadata.height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    const currentAlpha = rgba[pixel * 4 + 3] ?? 0;
+    alpha[pixel] = currentAlpha;
+    if (currentAlpha >= 96) {
+      visiblePixels += 1;
+      const gradient = getRgbGradientMagnitude(rgba, metadata.width, metadata.height, pixel);
+      edgeTotal += gradient;
+      if (gradient > 18) {
+        strongEdgePixels += 1;
+      }
+    }
+  }
+
+  const bounds = getAlphaBounds(alpha, metadata.width, metadata.height, 24);
+  if (bounds) {
+    for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+        const pixel = y * metadata.width + x;
+        if ((alpha[pixel] ?? 0) < 24) {
+          internalTransparentPixels += 1;
+        }
+      }
+    }
+  }
 
   return {
-    status: "Passed",
-    promptVersion: ecommercePreservePromptVersion,
-    processingMode: "standard_background_replacement",
-    retryCount: 0,
-    productCoveragePercent: 0,
-    productCoverageWidthPercent: 0,
-    productCoverageHeightPercent: 0,
-    targetCoverageMinPercent: 70,
-    targetCoverageMaxPercent: 90,
-    productOrientation: "square",
-    autoFixedFraming: false,
-    checks: {
-      productPreservation: "Passed",
-      framing: "Passed",
-      background: "Passed",
-      detailPreservation: "Passed",
-      interiorDropout: "Passed",
-      edgeQuality: "Passed",
-      shadow: getString(getObject(settings.shadow).mode, "under") === "off" ? "Needs Review" : "Passed",
-      protectedProduct: "Passed"
-    },
-    outcome: "PASS",
-    warnings: Array.from(new Set([
-      "Flexible mode used OpenAI image editing as the primary background replacement and enhancement path.",
-      ...warnings
-    ])),
-    failureReasons: []
+    visiblePixels,
+    strongEdgePixels,
+    sharpnessScore: visiblePixels > 0 ? edgeTotal / visiblePixels : 0,
+    internalTransparentPixels
+  };
+};
+
+const validateFlexibleProductDetailPreservation = async (
+  sourceProductBuffer: Buffer,
+  finalProductBuffer: Buffer
+): Promise<{ passed: boolean; warnings: string[]; failureReasons: string[]; metrics: Record<string, number> }> => {
+  const [sourceMetrics, finalMetrics] = await Promise.all([
+    getFlexibleProductDetailMetrics(sourceProductBuffer),
+    getFlexibleProductDetailMetrics(finalProductBuffer)
+  ]);
+  const warnings: string[] = [];
+  const failureReasons: string[] = [];
+  const visibleRatio = finalMetrics.visiblePixels / Math.max(1, sourceMetrics.visiblePixels);
+  const edgeRatio = finalMetrics.strongEdgePixels / Math.max(1, sourceMetrics.strongEdgePixels);
+  const sharpnessRatio = finalMetrics.sharpnessScore / Math.max(0.001, sourceMetrics.sharpnessScore);
+  const holeRatio = finalMetrics.internalTransparentPixels / Math.max(1, sourceMetrics.internalTransparentPixels);
+
+  if (visibleRatio < 0.92 || visibleRatio > 1.08) {
+    failureReasons.push(`Flexible product visible area changed too much (${(visibleRatio * 100).toFixed(1)}% of source layer).`);
+  }
+  if (edgeRatio < 0.74) {
+    failureReasons.push(`Flexible product edge detail dropped below the safe threshold (${(edgeRatio * 100).toFixed(1)}% of source edge pixels).`);
+  }
+  if (sharpnessRatio < 0.78) {
+    failureReasons.push(`Flexible product sharpness dropped below the safe threshold (${(sharpnessRatio * 100).toFixed(1)}% of source sharpness).`);
+  }
+  if (sourceMetrics.internalTransparentPixels > 500 && holeRatio < 0.7) {
+    failureReasons.push(`Flexible product internal cutouts/holes changed too much (${(holeRatio * 100).toFixed(1)}% of source transparent interior).`);
+  }
+  if (edgeRatio < 0.9 || sharpnessRatio < 0.92) {
+    warnings.push("Flexible product detail validation detected minor edge/sharpness change; source-locked product pixels were retained.");
+  }
+
+  return {
+    passed: failureReasons.length === 0,
+    warnings,
+    failureReasons,
+    metrics: {
+      sourceVisiblePixels: sourceMetrics.visiblePixels,
+      finalVisiblePixels: finalMetrics.visiblePixels,
+      visibleRatio,
+      sourceStrongEdgePixels: sourceMetrics.strongEdgePixels,
+      finalStrongEdgePixels: finalMetrics.strongEdgePixels,
+      edgeRatio,
+      sourceSharpnessScore: sourceMetrics.sharpnessScore,
+      finalSharpnessScore: finalMetrics.sharpnessScore,
+      sharpnessRatio,
+      sourceInternalTransparentPixels: sourceMetrics.internalTransparentPixels,
+      finalInternalTransparentPixels: finalMetrics.internalTransparentPixels,
+      holeRatio
+    }
   };
 };
 
@@ -5354,6 +5479,17 @@ export const processImageForProduct = async ({
     normalizeImageForOpenAi(originalImage.buffer),
     normalizeImageForPreservedProduct(originalImage.buffer)
   ]);
+  if (savePipelineDebugAssets) {
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "source_normalized",
+      `source-normalized-${randomUUID()}.png`,
+      openAiInput,
+      "image/png"
+    );
+  }
 
   console.info("Image processing cutout mode selected", {
     imageJobId,
@@ -5365,111 +5501,52 @@ export const processImageForProduct = async ({
     originalHeight: originalImageDimensions.height
   });
 
+  let flexibleAiStudioScene: Buffer | null = null;
+  const flexiblePipelineWarnings: string[] = [];
   if (!preserveProductExactly) {
     if (requiresCustomBackground && !effectiveBackgroundImageUrl && !backgroundImageBuffer) {
       throw new Error("Custom background is selected but no custom background image was received. Save the background setting and reprocess this image.");
     }
 
-    try {
-      const backgroundDescription = describeBackgroundForOpenAiPrompt(
-        background,
-        processingSettings,
-        Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer)
-      );
-      const prompt = buildProductImageProcessingPrompt({
-        preserveProductExactly: false,
-        processingMode: getString(processingSettings.processingMode, "standard_background_replacement"),
-        backgroundDescription
-      });
-      const openAiEdited = await editProductImageWithOpenAi(openAiInput, prompt);
-      const composedImage = await normalizeOpenAiEditedProductImage(openAiEdited);
-      await validateImage(composedImage);
-      let outputValidation = await buildOpenAiFlexibleOutputValidation(composedImage, processingSettings);
+    const backgroundIsTransparent = getString(getObject(processingSettings.background).preset, background) === "transparent" || background === "transparent";
+    const useOpenAiBackgroundScene = !backgroundIsTransparent && !effectiveBackgroundImageUrl && !backgroundImageBuffer;
 
-      if (savePipelineDebugAssets) {
-        await uploadPipelineDebugAsset(
-          userId,
+    if (useOpenAiBackgroundScene) {
+      try {
+        const backgroundDescription = describeBackgroundForOpenAiPrompt(background, processingSettings, false);
+        const prompt = buildProductImageProcessingPrompt({
+          preserveProductExactly: false,
+          processingMode: getString(processingSettings.processingMode, "standard_background_replacement"),
+          backgroundDescription
+        });
+        const openAiEdited = await editProductImageWithOpenAi(openAiInput, prompt);
+        flexibleAiStudioScene = await normalizeOpenAiEditedProductImage(openAiEdited);
+        await validateImage(flexibleAiStudioScene);
+        await assertUsableOpenAiStudioScene(flexibleAiStudioScene);
+
+        if (savePipelineDebugAssets) {
+          await uploadPipelineDebugAsset(
+            userId,
+            imageJobId,
+            pipelineDebugAssets,
+            "ai_scene",
+            `openai-studio-scene-${randomUUID()}.png`,
+            flexibleAiStudioScene,
+            "image/png"
+          );
+        }
+      } catch (openAiEditError) {
+        const reason = openAiEditError instanceof Error ? openAiEditError.message : "Unknown OpenAI image edit error";
+        console.warn("OpenAI flexible studio scene failed; final image will still use source-locked product compositing", {
           imageJobId,
-          pipelineDebugAssets,
-          "final_composite",
-          `openai-flexible-final-${randomUUID()}.png`,
-          composedImage,
-          "image/png"
-        );
-        await uploadPipelineDebugAsset(
-          userId,
-          imageJobId,
-          pipelineDebugAssets,
-          "validation_json",
-          `openai-flexible-validation-${randomUUID()}.json`,
-          Buffer.from(JSON.stringify({
-            ...outputValidation,
-            openAiPrimary: true,
-            promptVersion: ecommercePreservePromptVersion,
-            model: openAiImageEditModel,
-            quality: openAiImageEditQuality,
-            size: openAiImageEditSize
-          }, null, 2)),
-          "application/json"
-        );
-        outputValidation = {
-          ...outputValidation,
-          debugAssets: pipelineDebugAssets
-        };
+          reason
+        });
+        flexiblePipelineWarnings.push(`OpenAI studio background guidance was unavailable, so the source-locked local studio background was used: ${reason}.`);
       }
-
-      console.info("Image processing completed with OpenAI flexible image edit", {
-        imageJobId,
-        productId: getString(getObject(jobOverrides).productId, ""),
-        imageId: getString(getObject(jobOverrides).imageId, ""),
-        mode: outputValidation.processingMode,
-        promptVersion: ecommercePreservePromptVersion,
-        model: openAiImageEditModel,
-        quality: openAiImageEditQuality,
-        size: openAiImageEditSize
-      });
-
-      const processedImage = await sharp(composedImage)
-        .webp({
-          quality: 94,
-          smartSubsample: true
-        })
-        .toBuffer();
-
-      const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.webp`);
-      await uploadStorageObject({
-        bucket: storageBuckets.processedImages,
-        path: processedStoragePath,
-        body: processedImage,
-        contentType: "image/webp"
-      });
-      const processedUploadedAt = new Date();
-      const processedUrl = await createStorageSignedUrl({
-        bucket: storageBuckets.processedImages,
-        path: processedStoragePath,
-        expiresInSeconds: env.storageSignedUrlExpiresSeconds
-      });
-
-      return {
-        processedUrl,
-        originalImageHash,
-        originalStoragePath,
-        processedStoragePath,
-        debugCutoutStoragePath: null,
-        originalUploadedAt,
-        processedUploadedAt,
-        debugCutoutUploadedAt: null,
-        storageCleanupAfter,
-        duplicateOfJobId: null,
-        creditDeductionRequired: true,
-        seoMetadata,
-        outputValidation
-      };
-    } catch (openAiEditError) {
-      console.warn("OpenAI flexible image edit failed; falling back to source-locked local composite path", {
-        imageJobId,
-        reason: openAiEditError instanceof Error ? openAiEditError.message : "Unknown OpenAI image edit error"
-      });
+    } else if (backgroundIsTransparent) {
+      flexiblePipelineWarnings.push("Transparent background selected; OpenAI studio background generation was skipped and the product layer was composited onto transparency.");
+    } else {
+      flexiblePipelineWarnings.push("Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.");
     }
   }
 
@@ -5484,7 +5561,7 @@ export const processImageForProduct = async ({
         sourceDimensions: originalImageDimensions,
         fallbackMode: preserveModeFallback
       })
-    : await processImageFlexibleMode(
+    : await processImageFlexiblePreserveMode(
         originalImage.buffer,
         openAiInput,
         originalImage.contentType,
@@ -5571,6 +5648,15 @@ export const processImageForProduct = async ({
     finalProductBuffer: productBuffer,
     preserveMode: preserveProductExactly
   });
+  if (!preserveProductExactly) {
+    const flexibleDetailValidation = await validateFlexibleProductDetailPreservation(protectedSourceProductBuffer, productBuffer);
+    productFallbackWarnings.push(...flexibleDetailValidation.warnings);
+    if (!flexibleDetailValidation.passed) {
+      productFallbackWarnings.push(
+        `Flexible product detail regression check retained source-locked product pixels and flagged review: ${flexibleDetailValidation.failureReasons.join("; ")}`
+      );
+    }
+  }
   const productDiffHeatmap = savePipelineDebugAssets
     ? await buildProductDiffHeatmap(protectedSourceProductBuffer, productBuffer)
     : null;
@@ -5599,7 +5685,7 @@ export const processImageForProduct = async ({
     Boolean(shadow),
     reframedProduct.autoFixedFraming,
     protectedProductValidation,
-    productFallbackWarnings
+    [...flexiblePipelineWarnings, ...productFallbackWarnings]
   );
   if (
     processingSettings.preserveFallbackFromStrictMode === true &&
@@ -5624,6 +5710,24 @@ export const processImageForProduct = async ({
     cutoutResult.preserveDebug.outputValidation = outputValidation;
   }
   if (savePipelineDebugAssets) {
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "source_product_layer",
+      `source-product-layer-${randomUUID()}.png`,
+      productBuffer,
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "product_mask",
+      `product-mask-${randomUUID()}.png`,
+      await buildProductAlphaMaskPreview(productBuffer),
+      "image/png"
+    );
     await uploadPipelineDebugAsset(
       userId,
       imageJobId,
@@ -5678,9 +5782,12 @@ export const processImageForProduct = async ({
     throw new Error("Custom background is selected but no custom background image was received. Save the background setting and reprocess this image.");
   }
 
-  const backgroundBuffer = effectiveBackgroundImageUrl || backgroundImageBuffer
+  const baseBackgroundBuffer = effectiveBackgroundImageUrl || backgroundImageBuffer
     ? await buildBackgroundFromImage(effectiveBackgroundImageUrl, backgroundImageBuffer, backgroundImageContentType)
     : await buildBrandedBackground(background);
+  const backgroundBuffer = flexibleAiStudioScene && !preserveProductExactly && background !== "transparent"
+    ? await buildAiAssistedStudioBackground(flexibleAiStudioScene, baseBackgroundBuffer)
+    : baseBackgroundBuffer;
 
   const composites = [
     ...(shadow ? [{ input: shadow, top: 0, left: 0 }] : []),
@@ -5692,6 +5799,15 @@ export const processImageForProduct = async ({
     .toBuffer();
 
   if (savePipelineDebugAssets) {
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "extracted_background",
+      `extracted-background-${randomUUID()}.png`,
+      backgroundBuffer,
+      "image/png"
+    );
     await uploadPipelineDebugAsset(
       userId,
       imageJobId,

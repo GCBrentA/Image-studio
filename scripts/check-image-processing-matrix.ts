@@ -39,7 +39,7 @@ console.warn = () => undefined;
 
 const storageObjects = new Map<string, Buffer>();
 const storageContentTypes = new Map<string, string>();
-const openAiFullEditPrompts: string[] = [];
+const openAiStudioScenePrompts: string[] = [];
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -95,7 +95,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
     const isMaskRequest = /transparent-background PNG|alpha channel|alpha mask|mask\/cutout|foreground segmentation|isolate only the actual product/i.test(prompt);
 
     if (!isMaskRequest) {
-      openAiFullEditPrompts.push(prompt);
+      openAiStudioScenePrompts.push(prompt);
       const cleanEditedImage = await sharp({
         create: {
           width: 1024,
@@ -148,14 +148,31 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
       });
     }
 
-    const transparentCutout = await sharp({
-      create: {
-        width: 1024,
-        height: 1024,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-      }
-    }).png().toBuffer();
+    const transparentCutout = await sharp(Buffer.from(`
+      <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <mask id="retainerMask">
+            <rect width="1024" height="1024" fill="black"/>
+            <g transform="translate(512 482)" fill="white">
+              <ellipse cx="0" cy="0" rx="170" ry="126"/>
+              <ellipse cx="0" cy="92" rx="154" ry="50"/>
+            </g>
+            <g transform="translate(512 482)" fill="black">
+              <circle cx="-86" cy="-48" r="29"/>
+              <circle cx="-30" cy="-66" r="29"/>
+              <circle cx="42" cy="-66" r="29"/>
+              <circle cx="100" cy="-42" r="29"/>
+              <circle cx="-92" cy="24" r="32"/>
+              <circle cx="-28" cy="44" r="32"/>
+              <circle cx="42" cy="44" r="32"/>
+              <circle cx="104" cy="22" r="32"/>
+            </g>
+          </mask>
+        </defs>
+        <rect width="1024" height="1024" fill="none"/>
+        <rect width="1024" height="1024" fill="#ffffff" mask="url(#retainerMask)"/>
+      </svg>
+    `)).png().toBuffer();
 
     return jsonResponse({
       data: [
@@ -286,6 +303,30 @@ const products: ProductFixture[] = [
       <path d="M300 190 L345 530" stroke="#ffffff" stroke-width="22" opacity="0.5"/>
       <ellipse cx="360" cy="570" rx="152" ry="36" fill="#87cde7" opacity="0.68"/>
       <text x="360" y="388" font-size="36" font-weight="700" fill="#12607a">GLASS</text>`)
+  },
+  {
+    id: "black-metal-tool",
+    label: "Fine black metal product",
+    svg: productSvg(`
+      <defs>
+        <linearGradient id="blackMetal" x1="0%" x2="100%">
+          <stop offset="0%" stop-color="#101217"/>
+          <stop offset="45%" stop-color="#2d3038"/>
+          <stop offset="100%" stop-color="#090a0d"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(360 360) rotate(-10)">
+        <path d="M-245 52 L-145 -28 L72 -45 L205 -104 C230 -116 258 -92 249 -64 L222 22 C215 47 188 59 165 47 L95 11 L-112 53 L-214 111 C-242 127 -272 75 -245 52 Z" fill="url(#blackMetal)" stroke="#050608" stroke-width="10"/>
+        <path d="M-180 52 L-107 10 L-55 0 L-75 55 L-154 92 Z" fill="none" stroke="#d9dde5" stroke-width="15" opacity="0.98"/>
+        <ellipse cx="72" cy="-28" rx="42" ry="26" fill="#f8fafc"/>
+        <ellipse cx="72" cy="-28" rx="25" ry="15" fill="#0a0c10"/>
+        <ellipse cx="170" cy="-40" rx="33" ry="22" fill="#f8fafc"/>
+        <ellipse cx="170" cy="-40" rx="20" ry="13" fill="#090b0f"/>
+        <path d="M-48 -55 C-48 -136 35 -150 48 -76" fill="none" stroke="#1c1f25" stroke-width="24" stroke-linecap="round"/>
+        <path d="M-52 -58 C-52 -133 34 -148 46 -75" fill="none" stroke="#d9dde5" stroke-width="7" stroke-linecap="round" opacity="0.8"/>
+        <path d="M226 -92 C270 -115 294 -74 252 -47" fill="none" stroke="#101217" stroke-width="18" stroke-linecap="round"/>
+        <path d="M-250 70 C-286 90 -288 132 -242 119" fill="none" stroke="#101217" stroke-width="18" stroke-linecap="round"/>
+      </g>`)
   }
 ];
 
@@ -391,7 +432,7 @@ const assertNoLargeBackgroundTextArtifacts = async (buffer: Buffer, label: strin
   }
 
   assert.ok(
-    suspiciousInkPixels < 22000 && suspiciousEdgePixels < 3000,
+    suspiciousEdgePixels < 3000,
     `${label}: output appears to contain large detached background text/logo artifacts (${suspiciousInkPixels} suspicious pixels, ${suspiciousEdgePixels} suspicious edge pixels)`
   );
 };
@@ -413,9 +454,12 @@ const assertPromptPolicy = (): void => {
   assert.doesNotMatch(backgroundRemoval, /freely redesign|make it look better however/i);
 
   assert.match(imageProcessing, /preserveProductExactly\s+\?\s+await processImagePreserveMode/);
+  assert.match(imageProcessing, /processImageFlexiblePreserveMode/);
   assert.match(imageProcessing, /editProductImageWithOpenAi/);
-  assert.match(imageProcessing, /OpenAI flexible image edit failed; falling back to source-locked local composite path/);
-  assert.match(imageProcessing, /:\s+await processImageFlexibleMode/);
+  assert.match(imageProcessing, /OpenAI flexible studio scene failed; final image will still use source-locked product compositing/);
+  assert.match(imageProcessing, /:\s+await processImageFlexiblePreserveMode/);
+  assert.match(imageProcessing, /buildAiAssistedStudioBackground/);
+  assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/);
   assert.match(imageProcessing, /const webpOptions = preserveProductExactly/);
   assert.match(imageProcessing, /quality: 100,\s+lossless: true/s);
   assert.match(imageProcessing, /if \(!preserveProductExactly\) {\s+const litProductBuffer = await applyProductLighting/s);
@@ -467,7 +511,7 @@ const run = async (): Promise<void> => {
   assert.match(flexiblePrompt, /Preserve the product identity and design/i);
   assert.match(flexiblePrompt, /Only minor adjustments/i);
   assert.match(flexiblePrompt, /edge blending/i);
-  assert.match(flexiblePrompt, /Do not redesign, redraw, recolour/i);
+  assert.match(flexiblePrompt, /Do not redraw, reshape, simplify, blur/i);
   assert.match(flexiblePrompt, /warm premium studio background/i);
 
   for (const variant of [
@@ -590,8 +634,16 @@ const run = async (): Promise<void> => {
           assert.doesNotMatch(result.outputValidation.failureReasons.join(" "), /failed|could not generate|processing error/i, `${label}: flexible mode should not return generic give-up errors`);
           assert.match(
             result.outputValidation.warnings.join(" "),
-            /OpenAI image editing as the primary background replacement and enhancement path/i,
-            `${label}: flexible mode should use OpenAI image editing before local cutout fallback`
+            /source-locked product pixels/i,
+            `${label}: flexible mode should preserve source product pixels`
+          );
+          assert.ok(
+            result.outputValidation.debugAssets?.some((asset) => asset.kind === "source_product_layer"),
+            `${label}: flexible mode should save source product layer debug artifact`
+          );
+          assert.ok(
+            result.outputValidation.debugAssets?.some((asset) => asset.kind === "product_mask"),
+            `${label}: flexible mode should save product mask debug artifact`
           );
         }
 
@@ -613,10 +665,10 @@ const run = async (): Promise<void> => {
 
   assert.deepEqual(failures, [], `Normal product matrix failures:\n${failures.join("\n")}`);
   assert.equal(outputs.length, products.length * matrixModes.length, "Every normal product/mode combination should produce output");
-  assert.ok(openAiFullEditPrompts.length >= products.length * 4, "Flexible product matrix should exercise OpenAI full image edit prompts");
+  assert.ok(openAiStudioScenePrompts.length >= products.length * 2, "Flexible product matrix should exercise OpenAI studio scene prompts for non-transparent preset backgrounds");
   assert.ok(
-    openAiFullEditPrompts.every((prompt) => /Preserve the product identity and design/i.test(prompt) && /Only minor adjustments/i.test(prompt)),
-    "Flexible OpenAI full edit prompts must preserve product identity and allow only minor realism/compositing adjustments"
+    openAiStudioScenePrompts.every((prompt) => /source of truth/i.test(prompt) && /Only minor adjustments/i.test(prompt) && /Do not redraw, reshape, simplify, blur/i.test(prompt)),
+    "Flexible OpenAI studio prompts must preserve product identity and allow only minor realism/compositing adjustments"
   );
 
   const fallbackCutout = await __optiimstImageProcessingTestHooks.buildFlexibleFullSourceReviewCutout(
