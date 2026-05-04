@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 define('ABSPATH', __DIR__);
-define('CIS_VERSION', 'test');
+define('OPTIIMST_VERSION', 'test');
 
 class WP_Error {
 	private string $code;
@@ -24,7 +24,7 @@ class WP_Error {
 	}
 }
 
-class Catalogue_Image_Studio_Logger {
+class Optiimst_Logger {
 	public function info(string $message, array $context = []): void {}
 	public function warning(string $message, array $context = []): void {}
 	public function error(string $message, array $context = []): void {}
@@ -123,7 +123,7 @@ if ('' === $base || '' === $token) {
 	exit(1);
 }
 
-$client = new Catalogue_Image_Studio_SaaSClient($base, $token, new Catalogue_Image_Studio_Logger());
+$client = new Optiimst_SaaSClient($base, $token, new Optiimst_Logger());
 $usage = $client->get_usage();
 if (is_wp_error($usage)) {
 	fwrite(STDERR, "Usage failed: " . $usage->get_error_message() . "\n");

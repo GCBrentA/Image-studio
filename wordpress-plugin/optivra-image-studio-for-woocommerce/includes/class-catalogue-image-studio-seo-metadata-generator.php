@@ -9,7 +9,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_SEO_Metadata_Generator {
+class Optiimst_SEO_Metadata_Generator {
 	/**
 	 * Generate SEO metadata from WooCommerce product context.
 	 *

@@ -9,12 +9,12 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_ProductScanner {
-	private Catalogue_Image_Studio_Job_Repository $jobs;
+class Optiimst_ProductScanner {
+	private Optiimst_Job_Repository $jobs;
 
-	private Catalogue_Image_Studio_Logger $logger;
+	private Optiimst_Logger $logger;
 
-	public function __construct(Catalogue_Image_Studio_Job_Repository $jobs, Catalogue_Image_Studio_Logger $logger) {
+	public function __construct(Optiimst_Job_Repository $jobs, Optiimst_Logger $logger) {
 		$this->jobs   = $jobs;
 		$this->logger = $logger;
 	}

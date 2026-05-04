@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Optivra Image Studio for WooCommerce
  * Plugin URI:  https://www.optivra.app/docs/optivra-image-studio
- * Description: AI-powered product image optimisation, background replacement, review workflow, and SEO metadata for WooCommerce.
+ * Description: AI product image studio for WooCommerce with product-preserve background replacement, lighting enhancement, health scanning, review queues, and SEO recommendations.
  * Version:     1.0.0
  * Author:      Optivra
  * Author URI:  https://www.optivra.app
@@ -11,39 +11,40 @@
  * Text Domain: optivra-image-studio-for-woocommerce
  * Requires at least: 6.3
  * Requires PHP: 8.0
+ * Requires Plugins: woocommerce
  * WC requires at least: 8.0
  * WC tested up to: 10.5.3
  *
- * @package CatalogueImageStudio
+ * @package Optiimst
  */
 
 if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('CIS_VERSION', '1.0.0');
-define('CIS_FILE', __FILE__);
-define('CIS_PATH', plugin_dir_path(__FILE__));
-define('CIS_URL', plugin_dir_url(__FILE__));
-define('OPTIVRA_PRODUCT_NAME', 'Optivra Image Studio');
-define('OPTIVRA_PLUGIN_DISPLAY_NAME', 'Optivra Image Studio for WooCommerce');
-define('OPTIVRA_PRODUCT_TAGLINE', 'AI-powered product image optimisation for WooCommerce.');
-define('CIS_TERMS_URL', 'https://www.optivra.app/terms');
-define('CIS_PRIVACY_URL', 'https://www.optivra.app/privacy');
-define('CIS_DATA_URL', 'https://www.optivra.app/docs/ai-image-studio');
-define('CIS_SUPPORT_URL', 'https://www.optivra.app/support');
-define('CIS_SUPPORT_EMAIL', 'support@optivra.app');
+define('OPTIIMST_VERSION', '1.0.0');
+define('OPTIIMST_FILE', __FILE__);
+define('OPTIIMST_PATH', plugin_dir_path(__FILE__));
+define('OPTIIMST_URL', plugin_dir_url(__FILE__));
+define('OPTIIMST_PRODUCT_NAME', 'Optivra Image Studio');
+define('OPTIIMST_PLUGIN_DISPLAY_NAME', 'Optivra Image Studio for WooCommerce');
+define('OPTIIMST_PRODUCT_TAGLINE', 'AI product image studio for WooCommerce.');
+define('OPTIIMST_TERMS_URL', 'https://www.optivra.app/terms');
+define('OPTIIMST_PRIVACY_URL', 'https://www.optivra.app/privacy');
+define('OPTIIMST_DATA_URL', 'https://www.optivra.app/docs/ai-image-studio');
+define('OPTIIMST_SUPPORT_URL', 'https://www.optivra.app/support');
+define('OPTIIMST_SUPPORT_EMAIL', 'support@optivra.app');
 
 /**
  * Minimum supported PHP version for the plugin runtime.
  */
-define('CIS_MINIMUM_PHP_VERSION', '8.0');
+define('OPTIIMST_MINIMUM_PHP_VERSION', '8.0');
 
 add_action(
 	'before_woocommerce_init',
 	static function () {
 		if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
-			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', CIS_FILE, true);
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', OPTIIMST_FILE, true);
 		}
 	}
 );
@@ -53,12 +54,31 @@ add_action(
  *
  * @return bool
  */
-function catalogue_image_studio_requirements_met() {
-	return version_compare(PHP_VERSION, CIS_MINIMUM_PHP_VERSION, '>=');
+function optiimst_requirements_met() {
+	return version_compare(PHP_VERSION, OPTIIMST_MINIMUM_PHP_VERSION, '>=');
 }
 
-function catalogue_image_studio_is_woocommerce_active(): bool {
+function optiimst_is_woocommerce_active(): bool {
 	return class_exists('WooCommerce') && function_exists('wc_get_products');
+}
+
+/**
+ * Determine whether a dependency notice belongs on the current admin screen.
+ *
+ * @return bool
+ */
+function optiimst_is_dependency_notice_screen(): bool {
+	$screen = function_exists('get_current_screen') ? get_current_screen() : null;
+	if (! $screen) {
+		return false;
+	}
+
+	if ('plugins' === $screen->base) {
+		return true;
+	}
+
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen routing for scoped dependency notices.
+	return isset($_GET['page']) && 0 === strpos(sanitize_key(wp_unslash($_GET['page'])), 'optivra-image-studio');
 }
 
 /**
@@ -66,7 +86,7 @@ function catalogue_image_studio_is_woocommerce_active(): bool {
  *
  * @return void
  */
-function catalogue_image_studio_render_php_notice() {
+function optiimst_render_php_notice() {
 	if (! current_user_can('activate_plugins')) {
 		return;
 	}
@@ -78,19 +98,19 @@ function catalogue_image_studio_render_php_notice() {
 				/* translators: 1: current PHP version, 2: required PHP version */
 				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra-image-studio-for-woocommerce'),
 				PHP_VERSION,
-				CIS_MINIMUM_PHP_VERSION
+				OPTIIMST_MINIMUM_PHP_VERSION
 			)
 		)
 	);
 }
 
-function catalogue_image_studio_render_woocommerce_notice(): void {
-	if (! current_user_can('activate_plugins')) {
+function optiimst_render_woocommerce_notice(): void {
+	if (! current_user_can('activate_plugins') || ! optiimst_is_dependency_notice_screen()) {
 		return;
 	}
 
 	printf(
-		'<div class="notice notice-warning"><p>%s</p></div>',
+		'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
 		esc_html__('Optivra requires WooCommerce to scan, queue, process, and replace product images. Activate WooCommerce before using Optivra.', 'optivra-image-studio-for-woocommerce')
 	);
 }
@@ -100,17 +120,18 @@ function catalogue_image_studio_render_woocommerce_notice(): void {
  *
  * @return void
  */
-function catalogue_image_studio_activate() {
-	if (catalogue_image_studio_requirements_met()) {
-		if ('' === (string) get_option('optivra_image_studio_install_id', '')) {
-			update_option('optivra_image_studio_install_id', wp_generate_uuid4(), false);
+function optiimst_activate() {
+	if (optiimst_requirements_met()) {
+		optiimst_migrate_legacy_stored_data();
+		if ('' === (string) optiimst_get_option('optiimst_image_studio_install_id', '')) {
+			optiimst_update_option('optiimst_image_studio_install_id', wp_generate_uuid4(), false);
 		}
 
-		Catalogue_Image_Studio_Plugin::activate();
+		Optiimst_Plugin::activate();
 		return;
 	}
 
-	deactivate_plugins(plugin_basename(CIS_FILE));
+	deactivate_plugins(plugin_basename(OPTIIMST_FILE));
 
 	wp_die(
 		esc_html(
@@ -118,7 +139,7 @@ function catalogue_image_studio_activate() {
 				/* translators: 1: current PHP version, 2: required PHP version */
 				__('Optivra Image Studio requires PHP %2$s or newer. This site is running PHP %1$s.', 'optivra-image-studio-for-woocommerce'),
 				PHP_VERSION,
-				CIS_MINIMUM_PHP_VERSION
+				OPTIIMST_MINIMUM_PHP_VERSION
 			)
 		),
 		esc_html__('Plugin activation failed', 'optivra-image-studio-for-woocommerce'),
@@ -126,44 +147,46 @@ function catalogue_image_studio_activate() {
 	);
 }
 
-if (! catalogue_image_studio_requirements_met()) {
-	add_action('admin_notices', 'catalogue_image_studio_render_php_notice');
+if (! optiimst_requirements_met()) {
+	add_action('admin_notices', 'optiimst_render_php_notice');
 	return;
 }
 
-require_once CIS_PATH . 'includes/functions.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-logger.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-job-repository.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-saas-client.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-product-scanner.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-media-manager.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-seo-metadata-generator.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-approval-manager.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-image-processor.php';
-require_once CIS_PATH . 'includes/class-catalogue-image-studio-plugin.php';
-require_once CIS_PATH . 'admin/class-catalogue-image-studio-admin.php';
+require_once OPTIIMST_PATH . 'includes/functions.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-logger.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-job-repository.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-saas-client.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-product-scanner.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-media-manager.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-seo-metadata-generator.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-approval-manager.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-image-processor.php';
+require_once OPTIIMST_PATH . 'includes/class-catalogue-image-studio-plugin.php';
+require_once OPTIIMST_PATH . 'admin/class-catalogue-image-studio-admin.php';
 
-register_activation_hook(CIS_FILE, 'catalogue_image_studio_activate');
+register_activation_hook(OPTIIMST_FILE, 'optiimst_activate');
 
 add_action(
 	'plugins_loaded',
 	static function () {
 		if (is_admin()) {
-			Catalogue_Image_Studio_Plugin::maybe_upgrade_schema();
+			optiimst_migrate_legacy_stored_data();
+			Optiimst_Plugin::maybe_upgrade_schema();
 		}
 
-		$plugin = Catalogue_Image_Studio_Plugin::instance();
+		$plugin = Optiimst_Plugin::instance();
 
-		if ('' === (string) get_option('optivra_image_studio_install_id', '')) {
-			update_option('optivra_image_studio_install_id', wp_generate_uuid4(), false);
+		if ('' === (string) optiimst_get_option('optiimst_image_studio_install_id', '')) {
+			optiimst_update_option('optiimst_image_studio_install_id', wp_generate_uuid4(), false);
 		}
 
 		if (is_admin()) {
-			if (! catalogue_image_studio_is_woocommerce_active()) {
-				add_action('admin_notices', 'catalogue_image_studio_render_woocommerce_notice');
+			if (! optiimst_is_woocommerce_active()) {
+				add_action('admin_notices', 'optiimst_render_woocommerce_notice');
+				return;
 			}
 
-			new Catalogue_Image_Studio_Admin($plugin);
+			new Optiimst_Admin($plugin);
 		}
 	}
 );

@@ -1,6 +1,6 @@
 === Optivra Image Studio for WooCommerce ===
 Contributors: optivra
-Tags: woocommerce, product images, image seo, background replacement, ecommerce
+Tags: woocommerce, ai product images, background replacement, product image seo, image review workflow
 Requires at least: 6.3
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -9,26 +9,26 @@ Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-AI-powered product image optimisation, background replacement, review workflow, and SEO metadata for WooCommerce.
+AI product image studio for WooCommerce with product-preserve background replacement, health scans, review queues, and SEO recommendations.
 
 == Description ==
 
-Optivra Image Studio for WooCommerce connects your store to Optivra Image Studio, an external service for WooCommerce product image optimisation, AI-powered background replacement, review workflows, and product-aware image SEO metadata.
+Optivra Image Studio for WooCommerce connects your store to Optivra Image Studio, an external service for WooCommerce-native product image workflows. It focuses on product-preserve background replacement, lighting enhancement, product image health scanning, review queues, and SEO-focused image recommendations rather than generic compression or resizing.
 
 An Optivra account and Site API Token are required. Processing uses credits from your Optivra account. Billing is handled through Optivra-hosted pages and Stripe, not inside WordPress. This plugin does not include Stripe secret keys, Supabase service role keys, or private backend credentials.
 
 = Features =
 
 * Connect a WooCommerce store with an Optivra Site API Token.
-* Scan WooCommerce featured and gallery product images.
+* Scan WooCommerce featured, gallery, variation, and supported category product images for image health issues.
 * Queue selected product images for processing.
-* Process images through Optivra Image Studio for background replacement and optimisation.
+* Process images through Optivra Image Studio for product-preserve background replacement and lighting enhancement.
 * Review before approval so product images are not replaced automatically.
 * Import approved processed images into the WordPress Media Library.
 * Replace featured images and gallery images only after approval.
 * Revert product images to the original attachment where history is available.
 * Generate product-aware SEO filenames, alt text, titles, captions, and descriptions.
-* Use image framing, scaling, shadow, lighting, and background settings.
+* Use image framing, scaling, shadow, lighting, and background settings with credit-aware processing controls.
 * View credits, plan status, and billing links from your Optivra account.
 
 == External Service Disclosure ==

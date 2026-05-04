@@ -10,14 +10,109 @@ if (! defined('ABSPATH')) {
 }
 
 /**
+ * Return legacy option names for migrated stored data.
+ *
+ * @return array<string,string>
+ */
+function optiimst_legacy_option_map(): array {
+	return [
+		'optiimst_settings'                    => 'catalogue_image_studio_settings',
+		'optiimst_schema_version'              => 'catalogue_image_studio_schema_version',
+		'optiimst_image_studio_install_id'     => 'optivra_image_studio_install_id',
+		'optiimst_latest_scan_id'              => 'optivra_latest_scan_id',
+		'optiimst_latest_audit_store_id'       => 'optivra_latest_audit_store_id',
+		'optiimst_latest_audit_remote_enabled' => 'optivra_latest_audit_remote_enabled',
+		'optiimst_scan_in_progress'            => 'optivra_scan_in_progress',
+		'optiimst_latest_audit_items'          => 'optivra_latest_audit_items',
+		'optiimst_latest_health_score'         => 'optivra_latest_health_score',
+		'optiimst_last_scan_completed_at'      => 'optivra_last_scan_completed_at',
+		'optiimst_scan_progress'               => 'optivra_scan_progress',
+		'optiimst_report_summary_cache'        => 'optivra_report_summary_cache',
+		'optiimst_dismissed_recommendations'   => 'optivra_dismissed_recommendations',
+		'optiimst_scheduled_scan_state'        => 'optivra_scheduled_scan_state',
+		'optiimst_monthly_report_summary'      => 'optivra_monthly_report_summary',
+	];
+}
+
+/**
+ * Get a plugin option with one-way fallback migration from legacy names.
+ *
+ * @param string $option Option name.
+ * @param mixed  $default Default value.
+ * @return mixed
+ */
+function optiimst_get_option(string $option, $default = false) {
+	$missing = '__optiimst_missing_option__';
+	$value   = get_option($option, $missing);
+
+	if ($missing !== $value) {
+		return $value;
+	}
+
+	$legacy_map = optiimst_legacy_option_map();
+	if (! isset($legacy_map[$option])) {
+		return $default;
+	}
+
+	$legacy_value = get_option($legacy_map[$option], $missing);
+	if ($missing === $legacy_value) {
+		return $default;
+	}
+
+	update_option($option, $legacy_value, false);
+
+	return $legacy_value;
+}
+
+/**
+ * Update a plugin option using the current prefixed option name.
+ *
+ * @param string $option Option name.
+ * @param mixed  $value Option value.
+ * @param bool   $autoload Whether to autoload the option.
+ * @return bool
+ */
+function optiimst_update_option(string $option, $value, bool $autoload = false): bool {
+	return update_option($option, $value, $autoload);
+}
+
+/**
+ * Delete a plugin option using the current prefixed option name.
+ *
+ * @param string $option Option name.
+ * @return bool
+ */
+function optiimst_delete_option(string $option): bool {
+	return delete_option($option);
+}
+
+/**
+ * Migrate legacy options and scheduled hooks without deleting old data.
+ *
+ * @return void
+ */
+function optiimst_migrate_legacy_stored_data(): void {
+	foreach (optiimst_legacy_option_map() as $new_option => $legacy_option) {
+		optiimst_get_option($new_option, null);
+	}
+
+	$legacy_hook = 'optivra_image_studio_scheduled_audit_tick';
+	$new_hook    = 'optiimst_image_studio_scheduled_audit_tick';
+	$legacy_next = wp_next_scheduled($legacy_hook);
+	if ($legacy_next && ! wp_next_scheduled($new_hook)) {
+		wp_schedule_single_event($legacy_next, $new_hook);
+	}
+}
+
+/**
  * Return the processing jobs table name.
  *
  * @return string
  */
-function catalogue_image_studio_table_name(): string {
+function optiimst_table_name(): string {
 	global $wpdb;
 
-	return $wpdb->prefix . 'catalogue_image_studio_jobs';
+	return $wpdb->prefix . 'optiimst_jobs';
 }
 
 /**
@@ -25,10 +120,10 @@ function catalogue_image_studio_table_name(): string {
  *
  * @return string
  */
-function catalogue_image_studio_versions_table_name(): string {
+function optiimst_versions_table_name(): string {
 	global $wpdb;
 
-	return $wpdb->prefix . 'catalogue_image_studio_versions';
+	return $wpdb->prefix . 'optiimst_versions';
 }
 
 /**
@@ -37,7 +132,7 @@ function catalogue_image_studio_versions_table_name(): string {
  * @param array<string,mixed> $job Job row.
  * @return array<string,mixed>
  */
-function catalogue_image_studio_get_job_diagnostics(array $job): array {
+function optiimst_get_job_diagnostics(array $job): array {
 	$raw = isset($job['processing_diagnostics']) ? (string) $job['processing_diagnostics'] : '';
 
 	if ('' === trim($raw)) {
@@ -55,8 +150,8 @@ function catalogue_image_studio_get_job_diagnostics(array $job): array {
  * @param array<string,mixed> $job Job row.
  * @return array<string,mixed>
  */
-function catalogue_image_studio_get_output_validation(array $job): array {
-	$diagnostics = catalogue_image_studio_get_job_diagnostics($job);
+function optiimst_get_output_validation(array $job): array {
+	$diagnostics = optiimst_get_job_diagnostics($job);
 
 	if (isset($diagnostics['output_validation']) && is_array($diagnostics['output_validation'])) {
 		return $diagnostics['output_validation'];
@@ -75,9 +170,9 @@ function catalogue_image_studio_get_output_validation(array $job): array {
  * @param array<string,mixed> $job Job row.
  * @return array{status:string,label:string,metadata:array<string,mixed>,blocking:bool,requires_review:bool}
  */
-function catalogue_image_studio_get_preservation_safety(array $job): array {
-	$validation = catalogue_image_studio_get_output_validation($job);
-	$diagnostics = catalogue_image_studio_get_job_diagnostics($job);
+function optiimst_get_preservation_safety(array $job): array {
+	$validation = optiimst_get_output_validation($job);
+	$diagnostics = optiimst_get_job_diagnostics($job);
 	$status = isset($job['safety_status']) && '' !== (string) $job['safety_status'] ? sanitize_key((string) $job['safety_status']) : '';
 	$reasons = [];
 	$metadata = [
@@ -119,6 +214,20 @@ function catalogue_image_studio_get_preservation_safety(array $job): array {
 		$failure_text = strtolower(implode(' ', $failure_reasons));
 		if (false !== strpos($failure_text, 'pixel drift') || false !== strpos($failure_text, 'integrity') || false !== strpos($failure_text, 'ai product pixel')) {
 			$status = 'failed';
+		}
+
+		$warning_text = strtolower(implode(' ', $warnings));
+		if (
+			'passed' === $status
+			&& (
+				false !== strpos($warning_text, 'dropout')
+				|| false !== strpos($warning_text, 'repaired')
+				|| false !== strpos($warning_text, 'flexible mode')
+				|| false !== strpos($warning_text, 'manual review')
+			)
+		) {
+			$status = 'needs_review';
+			$reasons = array_merge($reasons, $warnings);
 		}
 	}
 

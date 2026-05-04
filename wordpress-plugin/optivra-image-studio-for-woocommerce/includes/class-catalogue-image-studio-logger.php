@@ -9,7 +9,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_Logger {
+class Optiimst_Logger {
 	/**
 	 * Log an informational event.
 	 *

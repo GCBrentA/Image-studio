@@ -9,23 +9,23 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_ApprovalManager {
-	private Catalogue_Image_Studio_Job_Repository $jobs;
+class Optiimst_ApprovalManager {
+	private Optiimst_Job_Repository $jobs;
 
-	private Catalogue_Image_Studio_MediaManager $media;
+	private Optiimst_MediaManager $media;
 
 	/**
 	 * @var array<string,mixed>
 	 */
 	private array $settings;
 
-	private Catalogue_Image_Studio_Logger $logger;
+	private Optiimst_Logger $logger;
 
 	public function __construct(
-		Catalogue_Image_Studio_Job_Repository $jobs,
-		Catalogue_Image_Studio_MediaManager $media,
+		Optiimst_Job_Repository $jobs,
+		Optiimst_MediaManager $media,
 		array $settings,
-		Catalogue_Image_Studio_Logger $logger
+		Optiimst_Logger $logger
 	) {
 		$this->jobs     = $jobs;
 		$this->media    = $media;
@@ -40,15 +40,15 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
+			return new WP_Error('optiimst_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
-		$safety = catalogue_image_studio_get_preservation_safety($job);
+		$safety = optiimst_get_preservation_safety($job);
 		$is_preserve_job = $this->is_preserve_mode_job($job);
 
 		if ('failed' === $safety['status']) {
 			$error = new WP_Error(
-				'catalogue_image_studio_product_preservation_failed',
+				'optiimst_product_preservation_failed',
 				__('This processed image failed product preservation safety checks and cannot be applied. Reprocess it or contact Optivra support.', 'optivra-image-studio-for-woocommerce')
 			);
 			$this->mark_approval_error((int) $job_id, $error);
@@ -57,7 +57,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 
 		if ($is_preserve_job && 'not_assessed' === $safety['status']) {
 			$error = new WP_Error(
-				'catalogue_image_studio_product_preservation_not_assessed',
+				'optiimst_product_preservation_not_assessed',
 				__('This preserve-mode image was not assessed by the current product preservation safety checks. Reprocess it before applying.', 'optivra-image-studio-for-woocommerce')
 			);
 			$this->mark_approval_error((int) $job_id, $error);
@@ -73,7 +73,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		if (! $processed_attachment_id) {
 			$processed_url = $this->normalize_supabase_storage_url((string) ($job['processed_url'] ?? ''));
 			if ('' === $processed_url || ! wp_http_validate_url($processed_url)) {
-				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image missing. Reprocess before approving.', 'optivra-image-studio-for-woocommerce'));
+				$error = new WP_Error('optiimst_missing_processed_image', __('Processed image missing. Reprocess before approving.', 'optivra-image-studio-for-woocommerce'));
 				$this->mark_approval_error((int) $job_id, $error);
 				return $error;
 			}
@@ -87,7 +87,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 			);
 
 			if (is_wp_error($processed_attachment_id)) {
-				$error = new WP_Error('catalogue_image_studio_missing_processed_image', __('Processed image could not be found. Reprocess this image.', 'optivra-image-studio-for-woocommerce'));
+				$error = new WP_Error('optiimst_missing_processed_image', __('Processed image could not be found. Reprocess this image.', 'optivra-image-studio-for-woocommerce'));
 				$this->mark_approval_error((int) $job_id, $error);
 				return $error;
 			}
@@ -137,7 +137,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
+			return new WP_Error('optiimst_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
 		$this->jobs->update(
@@ -160,14 +160,14 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
+			return new WP_Error('optiimst_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
 		$version = $this->get_latest_applied_version($job_id);
 		$original_attachment_id = (int) ($version['original_attachment_id'] ?? $job['original_attachment_id'] ?? 0);
 
 		if (! $original_attachment_id) {
-			return new WP_Error('catalogue_image_studio_missing_original_image', __('The original image is missing and cannot be restored.', 'optivra-image-studio-for-woocommerce'));
+			return new WP_Error('optiimst_missing_original_image', __('The original image is missing and cannot be restored.', 'optivra-image-studio-for-woocommerce'));
 		}
 
 		$this->replace_product_image($job, $original_attachment_id);
@@ -205,7 +205,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 			return sanitize_text_field((string) $job['processing_mode']);
 		}
 
-		$validation = catalogue_image_studio_get_output_validation($job);
+		$validation = optiimst_get_output_validation($job);
 		if (! empty($validation['processingMode']) && is_scalar($validation['processingMode'])) {
 			return sanitize_text_field((string) $validation['processingMode']);
 		}
@@ -249,7 +249,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		];
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin version history insert.
-		$wpdb->insert(catalogue_image_studio_versions_table_name(), $data);
+		$wpdb->insert(optiimst_versions_table_name(), $data);
 
 		return (int) $wpdb->insert_id;
 	}
@@ -264,7 +264,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				'SELECT * FROM %i WHERE job_id = %d AND approval_status = %s ORDER BY approved_at DESC, id DESC LIMIT 1',
-				catalogue_image_studio_versions_table_name(),
+				optiimst_versions_table_name(),
 				$job_id,
 				'approved'
 			),
@@ -282,7 +282,7 @@ class Catalogue_Image_Studio_ApprovalManager {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin version history update.
 		$wpdb->update(
-			catalogue_image_studio_versions_table_name(),
+			optiimst_versions_table_name(),
 			[
 				'approval_status' => 'reverted',
 				'reverted_by'     => get_current_user_id(),

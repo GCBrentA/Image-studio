@@ -1,0 +1,119 @@
+﻿{
+    "ok":  true,
+    "source":  {
+                   "product_id":  2778,
+                   "attachment_id":  2780,
+                   "file":  "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/test-cytac-accessories.webp",
+                   "width":  1024,
+                   "height":  1024,
+                   "bytes":  63438,
+                   "mime":  "image/webp"
+               },
+    "visual_review":  {
+                          "strict_on":  "Both strict-preservation scenarios failed safely before producing an applyable image because the backend could not create a trustworthy product mask.",
+                          "strict_off":  "Two non-strict scenarios produced local processed images; both were visually inspected and showed product/detail degradation, so the plugin-side safety interpretation was tightened to surface warning-bearing flexible outputs as Needs Review."
+                      },
+    "results":  [
+                    {
+                        "id":  "strict_on_preserve_white_auto",
+                        "ok":  false,
+                        "error_code":  "optiimst_api_error",
+                        "error_message":  "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output.",
+                        "processed_attachment_id":  null,
+                        "processed_file":  null,
+                        "processing_mode_recorded":  null,
+                        "validation_status":  null,
+                        "validation_checks":  null,
+                        "validation_warnings":  null,
+                        "safety_status":  null,
+                        "safety_label":  null,
+                        "safety_requires_review":  null,
+                        "width":  null,
+                        "height":  null,
+                        "bytes":  null,
+                        "mime":  null
+                    },
+                    {
+                        "id":  "strict_off_standard_softwhite_balanced",
+                        "ok":  true,
+                        "error_code":  null,
+                        "error_message":  null,
+                        "processed_attachment_id":  2868,
+                        "processed_file":  "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/test-cytac-accessories-1.webp",
+                        "processing_mode_recorded":  "standard_background_replacement",
+                        "validation_status":  "Passed",
+                        "validation_checks":  {
+                                                  "productPreservation":  "Passed",
+                                                  "framing":  "Auto-fixed",
+                                                  "background":  "Passed",
+                                                  "detailPreservation":  "Passed",
+                                                  "interiorDropout":  "Passed",
+                                                  "edgeQuality":  "Passed",
+                                                  "protectedProduct":  "Passed",
+                                                  "shadow":  "Passed"
+                                              },
+                        "validation_warnings":  [
+                                                    "Interior product dropout was detected and repaired from original source pixels.",
+                                                    "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation."
+                                                ],
+                        "safety_status":  "passed",
+                        "safety_label":  "Passed",
+                        "safety_requires_review":  false,
+                        "width":  1024,
+                        "height":  1024,
+                        "bytes":  50686,
+                        "mime":  "image/webp"
+                    },
+                    {
+                        "id":  "strict_on_premium_cool_tight",
+                        "ok":  false,
+                        "error_code":  "optiimst_api_error",
+                        "error_message":  "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output.",
+                        "processed_attachment_id":  null,
+                        "processed_file":  null,
+                        "processing_mode_recorded":  null,
+                        "validation_status":  null,
+                        "validation_checks":  null,
+                        "validation_warnings":  null,
+                        "safety_status":  null,
+                        "safety_label":  null,
+                        "safety_requires_review":  null,
+                        "width":  null,
+                        "height":  null,
+                        "bytes":  null,
+                        "mime":  null
+                    },
+                    {
+                        "id":  "strict_off_premium_warm_wide",
+                        "ok":  true,
+                        "error_code":  null,
+                        "error_message":  null,
+                        "processed_attachment_id":  2869,
+                        "processed_file":  "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04/test-cytac-accessories-2.webp",
+                        "processing_mode_recorded":  "standard_background_replacement",
+                        "validation_status":  "Needs Review",
+                        "validation_checks":  {
+                                                  "productPreservation":  "Passed",
+                                                  "framing":  "Needs Review",
+                                                  "background":  "Passed",
+                                                  "detailPreservation":  "Passed",
+                                                  "interiorDropout":  "Passed",
+                                                  "edgeQuality":  "Passed",
+                                                  "protectedProduct":  "Passed",
+                                                  "shadow":  "Passed"
+                                              },
+                        "validation_warnings":  [
+                                                    "Product coverage 71.7% is below the 76-88% target for tall products.",
+                                                    "Interior product dropout was detected and repaired from original source pixels.",
+                                                    "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation."
+                                                ],
+                        "safety_status":  "needs_review",
+                        "safety_label":  "Needs Review",
+                        "safety_requires_review":  true,
+                        "width":  1024,
+                        "height":  1024,
+                        "bytes":  43970,
+                        "mime":  "image/webp"
+                    }
+                ]
+}

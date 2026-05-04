@@ -9,7 +9,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_Job_Repository {
+class Optiimst_Job_Repository {
 	/**
 	 * @return array<string,string>
 	 */
@@ -35,10 +35,10 @@ class Catalogue_Image_Studio_Job_Repository {
 	public function upsert_from_slot(array $slot): int {
 		global $wpdb;
 
-		$table = catalogue_image_studio_table_name();
+		$table = optiimst_table_name();
 		$now   = current_time('mysql', true);
 		$cache_key = 'slot_' . md5(wp_json_encode([(int) $slot['product_id'], sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]));
-		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
+		$cached    = wp_cache_get($cache_key, 'optiimst_image_studio_jobs');
 
 		if (false !== $cached) {
 			$existing = is_array($cached) ? $cached : null;
@@ -54,7 +54,7 @@ class Catalogue_Image_Studio_Job_Repository {
 				),
 				ARRAY_A
 			);
-			wp_cache_set($cache_key, $existing ?: [], 'optivra_image_studio_jobs', 300);
+			wp_cache_set($cache_key, $existing ?: [], 'optiimst_image_studio_jobs', 300);
 		}
 
 		$data = [
@@ -101,9 +101,9 @@ class Catalogue_Image_Studio_Job_Repository {
 	public function find(int $job_id): ?array {
 		global $wpdb;
 
-		$table = catalogue_image_studio_table_name();
+		$table = optiimst_table_name();
 		$cache_key = 'job_' . absint($job_id);
-		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
+		$cached    = wp_cache_get($cache_key, 'optiimst_image_studio_jobs');
 
 		if (false !== $cached) {
 			return is_array($cached) ? $cached : null;
@@ -112,7 +112,7 @@ class Catalogue_Image_Studio_Job_Repository {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table query, cached above.
 		$job = $wpdb->get_row($wpdb->prepare('SELECT * FROM %i WHERE id = %d LIMIT 1', $table, $job_id), ARRAY_A);
 
-		wp_cache_set($cache_key, $job ?: [], 'optivra_image_studio_jobs', 300);
+		wp_cache_set($cache_key, $job ?: [], 'optiimst_image_studio_jobs', 300);
 
 		return $job ?: null;
 	}
@@ -126,9 +126,9 @@ class Catalogue_Image_Studio_Job_Repository {
 	public function find_by_slot(array $slot): ?array {
 		global $wpdb;
 
-		$table = catalogue_image_studio_table_name();
+		$table = optiimst_table_name();
 		$cache_key = 'slot_' . md5(wp_json_encode([(int) $slot['product_id'], sanitize_key((string) $slot['image_role']), (int) $slot['gallery_index']]));
-		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
+		$cached    = wp_cache_get($cache_key, 'optiimst_image_studio_jobs');
 
 		if (false !== $cached) {
 			return is_array($cached) ? $cached : null;
@@ -145,7 +145,7 @@ class Catalogue_Image_Studio_Job_Repository {
 			),
 			ARRAY_A
 		);
-		wp_cache_set($cache_key, $job ?: [], 'optivra_image_studio_jobs', 300);
+		wp_cache_set($cache_key, $job ?: [], 'optiimst_image_studio_jobs', 300);
 
 		return $job ?: null;
 	}
@@ -158,7 +158,7 @@ class Catalogue_Image_Studio_Job_Repository {
 	public function find_by_product_attachment(int $product_id, int $attachment_id, string $image_role = ''): ?array {
 		global $wpdb;
 
-		$table  = catalogue_image_studio_table_name();
+		$table  = optiimst_table_name();
 		$params = [$table, absint($product_id), absint($attachment_id)];
 		$where  = 'product_id = %d AND attachment_id = %d';
 
@@ -170,7 +170,7 @@ class Catalogue_Image_Studio_Job_Repository {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE fragment is fixed above and values are prepared in $params.
 		$sql = $wpdb->prepare("SELECT * FROM %i WHERE {$where} LIMIT 1", $params);
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Custom plugin queue table lookup.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Custom plugin queue table lookup uses prepared SQL built immediately above.
 		$job = $wpdb->get_row($sql, ARRAY_A);
 
 		return $job ?: null;
@@ -235,8 +235,8 @@ class Catalogue_Image_Studio_Job_Repository {
 
 		$data['updated_at'] = current_time('mysql', true);
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom plugin queue table update; cache invalidated immediately after.
-		$wpdb->update(catalogue_image_studio_table_name(), $data, ['id' => $job_id]);
-		wp_cache_delete('job_' . absint($job_id), 'optivra_image_studio_jobs');
+		$wpdb->update(optiimst_table_name(), $data, ['id' => $job_id]);
+		wp_cache_delete('job_' . absint($job_id), 'optiimst_image_studio_jobs');
 		$this->flush_cache();
 	}
 
@@ -272,7 +272,7 @@ class Catalogue_Image_Studio_Job_Repository {
 	public function query(array $filters = [], int $limit = 50, int $offset = 0): array {
 		global $wpdb;
 
-		$table  = catalogue_image_studio_table_name();
+		$table  = optiimst_table_name();
 		$where  = ['1=1'];
 		$params = [];
 
@@ -291,7 +291,7 @@ class Catalogue_Image_Studio_Job_Repository {
 		$params[] = max(0, $offset);
 
 		$cache_key = 'query_' . md5(wp_json_encode([$filters, $limit, $offset]));
-		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
+		$cached    = wp_cache_get($cache_key, 'optiimst_image_studio_jobs');
 
 		if (false !== $cached) {
 			return is_array($cached) ? $cached : [];
@@ -305,7 +305,7 @@ class Catalogue_Image_Studio_Job_Repository {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.PreparedSQL.NotPrepared -- Custom plugin queue table query uses prepared SQL built immediately above and is cached.
 		$results = (array) $wpdb->get_results($prepared_sql, ARRAY_A);
-		wp_cache_set($cache_key, $results, 'optivra_image_studio_jobs', 300);
+		wp_cache_set($cache_key, $results, 'optiimst_image_studio_jobs', 300);
 
 		return $results;
 	}
@@ -319,21 +319,21 @@ class Catalogue_Image_Studio_Job_Repository {
 		global $wpdb;
 
 		$cache_key = 'counts_by_status';
-		$cached    = wp_cache_get($cache_key, 'optivra_image_studio_jobs');
+		$cached    = wp_cache_get($cache_key, 'optiimst_image_studio_jobs');
 
 		if (false !== $cached) {
 			return is_array($cached) ? $cached : [];
 		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin queue table aggregate, cached above.
-		$rows   = (array) $wpdb->get_results($wpdb->prepare('SELECT status, COUNT(*) AS total FROM %i GROUP BY status', catalogue_image_studio_table_name()), ARRAY_A);
+		$rows   = (array) $wpdb->get_results($wpdb->prepare('SELECT status, COUNT(*) AS total FROM %i GROUP BY status', optiimst_table_name()), ARRAY_A);
 		$counts = [];
 
 		foreach ($rows as $row) {
 			$counts[(string) $row['status']] = (int) $row['total'];
 		}
 
-		wp_cache_set($cache_key, $counts, 'optivra_image_studio_jobs', 300);
+		wp_cache_set($cache_key, $counts, 'optiimst_image_studio_jobs', 300);
 
 		return $counts;
 	}
@@ -353,7 +353,7 @@ class Catalogue_Image_Studio_Job_Repository {
 			return 0;
 		}
 
-		$table        = catalogue_image_studio_table_name();
+		$table        = optiimst_table_name();
 		$placeholders = implode(',', array_fill(0, count($job_ids), '%d'));
 		$params       = array_merge([$table, sanitize_key($status), current_time('mysql', true)], $job_ids);
 
@@ -376,11 +376,11 @@ class Catalogue_Image_Studio_Job_Repository {
 		global $wpdb;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Support action for clearing the plugin's local queue table only; cache flushed immediately after.
-		$wpdb->query($wpdb->prepare('DELETE FROM %i', catalogue_image_studio_table_name()));
+		$wpdb->query($wpdb->prepare('DELETE FROM %i', optiimst_table_name()));
 		$this->flush_cache();
 	}
 
 	private function flush_cache(): void {
-		wp_cache_flush_group('optivra_image_studio_jobs');
+		wp_cache_flush_group('optiimst_image_studio_jobs');
 	}
 }

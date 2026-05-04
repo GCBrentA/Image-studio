@@ -9,37 +9,37 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_ImageProcessor {
-	private Catalogue_Image_Studio_Job_Repository $jobs;
+class Optiimst_ImageProcessor {
+	private Optiimst_Job_Repository $jobs;
 
-	private Catalogue_Image_Studio_SaaSClient $client;
+	private Optiimst_SaaSClient $client;
 
-	private Catalogue_Image_Studio_MediaManager $media;
+	private Optiimst_MediaManager $media;
 
-	private Catalogue_Image_Studio_SEO_Metadata_Generator $seo_generator;
+	private Optiimst_SEO_Metadata_Generator $seo_generator;
 
 	/**
 	 * @var array<string,mixed>
 	 */
 	private array $settings;
 
-	private Catalogue_Image_Studio_Logger $logger;
+	private Optiimst_Logger $logger;
 
 	/**
-	 * @param Catalogue_Image_Studio_Job_Repository $jobs Job repository.
-	 * @param Catalogue_Image_Studio_SaaSClient     $client SaaS client.
-	 * @param Catalogue_Image_Studio_MediaManager   $media Media manager.
-	 * @param Catalogue_Image_Studio_SEO_Metadata_Generator $seo_generator SEO generator.
+	 * @param Optiimst_Job_Repository $jobs Job repository.
+	 * @param Optiimst_SaaSClient     $client SaaS client.
+	 * @param Optiimst_MediaManager   $media Media manager.
+	 * @param Optiimst_SEO_Metadata_Generator $seo_generator SEO generator.
 	 * @param array<string,mixed>                   $settings Plugin settings.
-	 * @param Catalogue_Image_Studio_Logger         $logger Logger.
+	 * @param Optiimst_Logger         $logger Logger.
 	 */
 	public function __construct(
-		Catalogue_Image_Studio_Job_Repository $jobs,
-		Catalogue_Image_Studio_SaaSClient $client,
-		Catalogue_Image_Studio_MediaManager $media,
-		Catalogue_Image_Studio_SEO_Metadata_Generator $seo_generator,
+		Optiimst_Job_Repository $jobs,
+		Optiimst_SaaSClient $client,
+		Optiimst_MediaManager $media,
+		Optiimst_SEO_Metadata_Generator $seo_generator,
 		array $settings,
-		Catalogue_Image_Studio_Logger $logger
+		Optiimst_Logger $logger
 	) {
 		$this->jobs          = $jobs;
 		$this->client        = $client;
@@ -60,21 +60,21 @@ class Catalogue_Image_Studio_ImageProcessor {
 		$job = $this->jobs->find($job_id);
 
 		if (! $job) {
-			return new WP_Error('catalogue_image_studio_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
+			return new WP_Error('optiimst_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
 		$image_url = wp_get_attachment_url((int) ($job['attachment_id'] ?? 0));
 		$source_payload = $this->get_attachment_upload_payload((int) ($job['attachment_id'] ?? 0));
 
 		if (! $image_url) {
-			$error = new WP_Error('catalogue_image_studio_missing_source_url', __('The source image URL could not be resolved.', 'optivra-image-studio-for-woocommerce'));
+			$error = new WP_Error('optiimst_missing_source_url', __('The source image URL could not be resolved.', 'optivra-image-studio-for-woocommerce'));
 			$this->mark_failed($job_id, $error);
 			return $error;
 		}
 
 		if (empty($source_payload)) {
 			$error = new WP_Error(
-				'catalogue_image_studio_missing_source_file',
+				'optiimst_missing_source_file',
 				__('The source image file could not be prepared for upload to Optivra. Check that the image exists in the Media Library and is smaller than 25 MB after resizing.', 'optivra-image-studio-for-woocommerce')
 			);
 			$this->mark_failed($job_id, $error);
@@ -104,7 +104,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 
 		$processed_url = $this->get_processed_url($processed);
 		if ('' === $processed_url) {
-			$error = new WP_Error('catalogue_image_studio_missing_processed_url', __('The processing API did not return a usable processed image URL.', 'optivra-image-studio-for-woocommerce'));
+			$error = new WP_Error('optiimst_missing_processed_url', __('The processing API did not return a usable processed image URL.', 'optivra-image-studio-for-woocommerce'));
 			$this->mark_failed($job_id, $error);
 			return $error;
 		}
@@ -168,7 +168,7 @@ class Catalogue_Image_Studio_ImageProcessor {
 			'seo_description'         => $seo['description'],
 		];
 
-		$safety = catalogue_image_studio_get_preservation_safety(array_merge($job, $result));
+		$safety = optiimst_get_preservation_safety(array_merge($job, $result));
 		$result['safety_status'] = $safety['status'];
 		$result['safety_metadata'] = wp_json_encode($safety['metadata']);
 		$result['processing_mode'] = isset($processed['output_validation']['processingMode']) && is_scalar($processed['output_validation']['processingMode'])

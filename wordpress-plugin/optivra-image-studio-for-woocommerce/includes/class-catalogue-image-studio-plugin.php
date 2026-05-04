@@ -9,13 +9,13 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_Plugin {
+class Optiimst_Plugin {
 	private const SCHEMA_VERSION = '20260429_product_preservation_safety';
 
 	/**
 	 * Singleton instance.
 	 *
-	 * @var Catalogue_Image_Studio_Plugin|null
+	 * @var Optiimst_Plugin|null
 	 */
 	private static $instance = null;
 
@@ -24,70 +24,70 @@ class Catalogue_Image_Studio_Plugin {
 	 *
 	 * @var string
 	 */
-	private $option_name = 'catalogue_image_studio_settings';
+	private $option_name = 'optiimst_settings';
 
 	/**
 	 * Logger.
 	 *
-	 * @var Catalogue_Image_Studio_Logger
+	 * @var Optiimst_Logger
 	 */
 	private $logger;
 
 	/**
 	 * Job repository.
 	 *
-	 * @var Catalogue_Image_Studio_Job_Repository
+	 * @var Optiimst_Job_Repository
 	 */
 	private $jobs;
 
 	/**
 	 * Product scanner.
 	 *
-	 * @var Catalogue_Image_Studio_ProductScanner
+	 * @var Optiimst_ProductScanner
 	 */
 	private $scanner;
 
 	/**
 	 * SaaS client.
 	 *
-	 * @var Catalogue_Image_Studio_SaaSClient
+	 * @var Optiimst_SaaSClient
 	 */
 	private $client;
 
 	/**
 	 * Media manager.
 	 *
-	 * @var Catalogue_Image_Studio_MediaManager
+	 * @var Optiimst_MediaManager
 	 */
 	private $media;
 
 	/**
 	 * SEO metadata generator.
 	 *
-	 * @var Catalogue_Image_Studio_SEO_Metadata_Generator
+	 * @var Optiimst_SEO_Metadata_Generator
 	 */
 	private $seo_generator;
 
 	/**
 	 * Approval manager.
 	 *
-	 * @var Catalogue_Image_Studio_ApprovalManager
+	 * @var Optiimst_ApprovalManager
 	 */
 	private $approval;
 
 	/**
 	 * Image processor.
 	 *
-	 * @var Catalogue_Image_Studio_ImageProcessor
+	 * @var Optiimst_ImageProcessor
 	 */
 	private $processor;
 
 	/**
 	 * Return singleton instance.
 	 *
-	 * @return Catalogue_Image_Studio_Plugin
+	 * @return Optiimst_Plugin
 	 */
-	public static function instance(): Catalogue_Image_Studio_Plugin {
+	public static function instance(): Optiimst_Plugin {
 		if (! self::$instance instanceof self) {
 			self::$instance = new self();
 		}
@@ -102,15 +102,15 @@ class Catalogue_Image_Studio_Plugin {
 	 */
 	public static function activate(): void {
 		self::create_tables();
-		update_option('catalogue_image_studio_schema_version', self::SCHEMA_VERSION, false);
-		$settings = get_option('catalogue_image_studio_settings', []);
+		optiimst_update_option('optiimst_schema_version', self::SCHEMA_VERSION, false);
+		$settings = optiimst_get_option('optiimst_settings', []);
 
 		if (! is_array($settings)) {
 			$settings = [];
 		}
 
-		update_option(
-			'catalogue_image_studio_settings',
+		optiimst_update_option(
+			'optiimst_settings',
 			wp_parse_args($settings, self::default_settings()),
 			false
 		);
@@ -122,12 +122,12 @@ class Catalogue_Image_Studio_Plugin {
 	 * @return void
 	 */
 	public static function maybe_upgrade_schema(): void {
-		if (self::SCHEMA_VERSION === (string) get_option('catalogue_image_studio_schema_version', '')) {
+		if (self::SCHEMA_VERSION === (string) optiimst_get_option('optiimst_schema_version', '')) {
 			return;
 		}
 
 		self::create_tables();
-		update_option('catalogue_image_studio_schema_version', self::SCHEMA_VERSION, false);
+		optiimst_update_option('optiimst_schema_version', self::SCHEMA_VERSION, false);
 	}
 
 	/**
@@ -140,7 +140,7 @@ class Catalogue_Image_Studio_Plugin {
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-		$table           = catalogue_image_studio_table_name();
+		$table           = optiimst_table_name();
 		$charset_collate = $wpdb->get_charset_collate();
 
 		$sql = "CREATE TABLE {$table} (
@@ -205,7 +205,7 @@ class Catalogue_Image_Studio_Plugin {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- dbDelta is required for the plugin's custom queue table.
 		dbDelta($sql);
 
-		$versions_table = catalogue_image_studio_versions_table_name();
+		$versions_table = optiimst_versions_table_name();
 		$versions_sql = "CREATE TABLE {$versions_table} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			job_id bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -248,22 +248,22 @@ class Catalogue_Image_Studio_Plugin {
 	 * Private constructor for singleton.
 	 */
 	private function __construct() {
-		$this->logger = new Catalogue_Image_Studio_Logger();
-		$this->jobs   = new Catalogue_Image_Studio_Job_Repository();
+		$this->logger = new Optiimst_Logger();
+		$this->jobs   = new Optiimst_Job_Repository();
 		$settings     = $this->get_settings();
 
-		$this->scanner   = new Catalogue_Image_Studio_ProductScanner($this->jobs, $this->logger);
-		$this->client    = new Catalogue_Image_Studio_SaaSClient(
+		$this->scanner   = new Optiimst_ProductScanner($this->jobs, $this->logger);
+		$this->client    = new Optiimst_SaaSClient(
 			(string) $settings['api_base_url'],
 			(string) $settings['api_token'],
 			$this->logger
 		);
-		$this->media         = new Catalogue_Image_Studio_MediaManager($this->logger);
-		$this->seo_generator = new Catalogue_Image_Studio_SEO_Metadata_Generator();
-		$this->approval      = new Catalogue_Image_Studio_ApprovalManager($this->jobs, $this->media, $settings, $this->logger);
-		$this->processor     = new Catalogue_Image_Studio_ImageProcessor($this->jobs, $this->client, $this->media, $this->seo_generator, $settings, $this->logger);
+		$this->media         = new Optiimst_MediaManager($this->logger);
+		$this->seo_generator = new Optiimst_SEO_Metadata_Generator();
+		$this->approval      = new Optiimst_ApprovalManager($this->jobs, $this->media, $settings, $this->logger);
+		$this->processor     = new Optiimst_ImageProcessor($this->jobs, $this->client, $this->media, $this->seo_generator, $settings, $this->logger);
 
-		add_action('optivra_image_studio_scheduled_audit_tick', [$this, 'run_scheduled_audit_tick']);
+		add_action('optiimst_image_studio_scheduled_audit_tick', [$this, 'run_scheduled_audit_tick']);
 		add_action('admin_init', [$this, 'maybe_queue_due_scheduled_audit']);
 	}
 
@@ -400,19 +400,19 @@ class Catalogue_Image_Studio_Plugin {
 	 * @return array<string, mixed>
 	 */
 	public function get_settings(): array {
-		$settings = get_option($this->option_name, []);
+		$settings = optiimst_get_option($this->option_name, []);
 		$settings = is_array($settings) ? $settings : [];
 		$raw_settings = $settings;
 		$settings = wp_parse_args($settings, $this->get_default_settings());
 
-		$normalized_override = isset($settings['api_base_url_override']) ? Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $settings['api_base_url_override']) : '';
-		if ('' !== $normalized_override && Catalogue_Image_Studio_SaaSClient::is_local_api_base_url($normalized_override) && empty($settings['debug_mode'])) {
+		$normalized_override = isset($settings['api_base_url_override']) ? Optiimst_SaaSClient::normalize_api_base_url((string) $settings['api_base_url_override']) : '';
+		if ('' !== $normalized_override && Optiimst_SaaSClient::is_local_api_base_url($normalized_override) && empty($settings['debug_mode'])) {
 			$normalized_override = '';
 		}
 		$settings['api_base_url_override'] = $normalized_override;
 		$settings['api_base_url']          = '' !== $settings['api_base_url_override']
 			? $settings['api_base_url_override']
-			: Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $this->get_default_settings()['api_base_url']);
+			: Optiimst_SaaSClient::normalize_api_base_url((string) $this->get_default_settings()['api_base_url']);
 
 		$settings['require_approval']      = array_key_exists('require_approval', $settings) ? (bool) $settings['require_approval'] : (bool) ($settings['approval_required'] ?? true);
 		$settings['approval_required']     = $settings['require_approval'];
@@ -448,12 +448,12 @@ class Catalogue_Image_Studio_Plugin {
 
 		$stored_override = isset($raw_settings['api_base_url_override']) ? (string) $raw_settings['api_base_url_override'] : '';
 		$stored_base = isset($raw_settings['api_base_url']) ? (string) $raw_settings['api_base_url'] : '';
-		$normalized_base = '' !== $settings['api_base_url_override'] ? $settings['api_base_url_override'] : Catalogue_Image_Studio_SaaSClient::normalize_api_base_url((string) $this->get_default_settings()['api_base_url']);
+		$normalized_base = '' !== $settings['api_base_url_override'] ? $settings['api_base_url_override'] : Optiimst_SaaSClient::normalize_api_base_url((string) $this->get_default_settings()['api_base_url']);
 
 		if (($stored_override !== (string) $normalized_override) || ($stored_base !== (string) $normalized_base)) {
 			$raw_settings['api_base_url_override'] = $normalized_override;
 			$raw_settings['api_base_url']          = $normalized_base;
-			update_option($this->option_name, wp_parse_args($raw_settings, $settings), false);
+			optiimst_update_option($this->option_name, wp_parse_args($raw_settings, $settings), false);
 		}
 
 		return $settings;
@@ -461,8 +461,8 @@ class Catalogue_Image_Studio_Plugin {
 
 	public function sync_audit_schedule(array $settings): void {
 		if ('off' === (string) ($settings['audit_schedule_frequency'] ?? 'off')) {
-			wp_clear_scheduled_hook('optivra_image_studio_scheduled_audit_tick');
-			delete_option('optivra_scheduled_scan_state');
+			wp_clear_scheduled_hook('optiimst_image_studio_scheduled_audit_tick');
+			optiimst_delete_option('optiimst_scheduled_scan_state');
 			return;
 		}
 
@@ -470,11 +470,11 @@ class Catalogue_Image_Studio_Plugin {
 		if (! $next_run || $next_run < time()) {
 			$next_run = $this->calculate_next_scheduled_audit_timestamp((string) ($settings['audit_schedule_frequency'] ?? 'weekly'));
 			$settings['audit_schedule_next_run_at'] = gmdate('c', $next_run);
-			update_option($this->option_name, $settings, false);
+			optiimst_update_option($this->option_name, $settings, false);
 		}
 
-		wp_clear_scheduled_hook('optivra_image_studio_scheduled_audit_tick');
-		wp_schedule_single_event($next_run, 'optivra_image_studio_scheduled_audit_tick');
+		wp_clear_scheduled_hook('optiimst_image_studio_scheduled_audit_tick');
+		wp_schedule_single_event($next_run, 'optiimst_image_studio_scheduled_audit_tick');
 
 		if (empty($settings['api_token'])) {
 			return;
@@ -509,17 +509,17 @@ class Catalogue_Image_Studio_Plugin {
 			return;
 		}
 
-		$state = get_option('optivra_scheduled_scan_state', []);
+		$state = optiimst_get_option('optiimst_scheduled_scan_state', []);
 		if (is_array($state) && 'running' === (string) ($state['status'] ?? '')) {
-			if (! wp_next_scheduled('optivra_image_studio_scheduled_audit_tick')) {
-				wp_schedule_single_event(time() + 60, 'optivra_image_studio_scheduled_audit_tick');
+			if (! wp_next_scheduled('optiimst_image_studio_scheduled_audit_tick')) {
+				wp_schedule_single_event(time() + 60, 'optiimst_image_studio_scheduled_audit_tick');
 			}
 			return;
 		}
 
 		$next_run = strtotime((string) ($settings['audit_schedule_next_run_at'] ?? ''));
-		if ($next_run && $next_run <= time() && ! wp_next_scheduled('optivra_image_studio_scheduled_audit_tick')) {
-			wp_schedule_single_event(time() + 30, 'optivra_image_studio_scheduled_audit_tick');
+		if ($next_run && $next_run <= time() && ! wp_next_scheduled('optiimst_image_studio_scheduled_audit_tick')) {
+			wp_schedule_single_event(time() + 30, 'optiimst_image_studio_scheduled_audit_tick');
 		}
 	}
 
@@ -529,7 +529,7 @@ class Catalogue_Image_Studio_Plugin {
 			return;
 		}
 
-		$state = get_option('optivra_scheduled_scan_state', []);
+		$state = optiimst_get_option('optiimst_scheduled_scan_state', []);
 		$state = is_array($state) ? $state : [];
 		$scan_id = (string) ($state['scan_id'] ?? '');
 		$store_id = (string) ($state['store_id'] ?? '');
@@ -553,7 +553,7 @@ class Catalogue_Image_Studio_Plugin {
 				$options + [
 					'scheduled'               => true,
 					'total_products_estimate' => $total,
-					'plugin_version'          => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+					'plugin_version'          => defined('OPTIIMST_VERSION') ? OPTIIMST_VERSION : '1.0.0',
 					'woocommerce_version'     => defined('WC_VERSION') ? WC_VERSION : '',
 				]
 			);
@@ -578,9 +578,9 @@ class Catalogue_Image_Studio_Plugin {
 				'images_scanned' => 0,
 				'started_at'     => current_time('mysql'),
 			];
-			update_option('optivra_latest_scan_id', $scan_id, false);
-			update_option('optivra_latest_audit_store_id', $store_id, false);
-			update_option('optivra_scheduled_scan_state', $state, false);
+			optiimst_update_option('optiimst_latest_scan_id', $scan_id, false);
+			optiimst_update_option('optiimst_latest_audit_store_id', $store_id, false);
+			optiimst_update_option('optiimst_scheduled_scan_state', $state, false);
 			$this->client->acknowledge_image_audit_schedule($store_id, ['status' => 'running', 'scan_id' => $scan_id]);
 		}
 
@@ -600,10 +600,10 @@ class Catalogue_Image_Studio_Plugin {
 		$state['offset'] = $next_offset;
 		$state['batch'] = max(1, absint($state['batch'] ?? 0) + 1);
 		$state['images_scanned'] = (int) ($state['images_scanned'] ?? 0) + count($items);
-		update_option('optivra_scheduled_scan_state', $state, false);
+		optiimst_update_option('optiimst_scheduled_scan_state', $state, false);
 
 		if (! $done) {
-			wp_schedule_single_event(time() + 60, 'optivra_image_studio_scheduled_audit_tick');
+			wp_schedule_single_event(time() + 60, 'optiimst_image_studio_scheduled_audit_tick');
 			return;
 		}
 
@@ -617,16 +617,16 @@ class Catalogue_Image_Studio_Plugin {
 		$summary = ! is_wp_error($full_report) && is_array($full_report) ? $full_report : (is_array($report) ? $report : []);
 		$score = $this->extract_health_score_from_report($summary);
 		$this->store_monthly_report_summary($summary, $score, $settings);
-		update_option('optivra_latest_health_score', $score, false);
-		update_option('optivra_last_scan_completed_at', current_time('mysql'), false);
-		update_option('optivra_scan_in_progress', false, false);
-		update_option('optivra_report_summary_cache', ['latest' => $summary, 'updated_at' => current_time('mysql')], false);
-		delete_option('optivra_scheduled_scan_state');
+		optiimst_update_option('optiimst_latest_health_score', $score, false);
+		optiimst_update_option('optiimst_last_scan_completed_at', current_time('mysql'), false);
+		optiimst_update_option('optiimst_scan_in_progress', false, false);
+		optiimst_update_option('optiimst_report_summary_cache', ['latest' => $summary, 'updated_at' => current_time('mysql')], false);
+		optiimst_delete_option('optiimst_scheduled_scan_state');
 
 		$next_run = $this->calculate_next_scheduled_audit_timestamp((string) ($settings['audit_schedule_frequency'] ?? 'weekly'));
 		$settings['audit_schedule_next_run_at'] = gmdate('c', $next_run);
-		update_option($this->option_name, $settings, false);
-		wp_schedule_single_event($next_run, 'optivra_image_studio_scheduled_audit_tick');
+		optiimst_update_option($this->option_name, $settings, false);
+		wp_schedule_single_event($next_run, 'optiimst_image_studio_scheduled_audit_tick');
 		$this->client->acknowledge_image_audit_schedule($store_id, ['status' => 'active', 'scan_id' => $scan_id, 'next_scan_at' => gmdate('c', $next_run)]);
 	}
 
@@ -644,7 +644,7 @@ class Catalogue_Image_Studio_Plugin {
 		];
 
 		if ('updated' === $scan_mode) {
-			$last_completed = (string) get_option('optivra_last_scan_completed_at', '');
+			$last_completed = (string) optiimst_get_option('optiimst_last_scan_completed_at', '');
 			if ('' !== $last_completed) {
 				$options['updated_since'] = $last_completed;
 			}
@@ -687,7 +687,7 @@ class Catalogue_Image_Studio_Plugin {
 	}
 
 	private function store_monthly_report_summary(array $summary, float $score, array $settings): void {
-		$previous = get_option('optivra_monthly_report_summary', []);
+		$previous = optiimst_get_option('optiimst_monthly_report_summary', []);
 		$previous = is_array($previous) ? $previous : [];
 		$previous_score = isset($previous['current_score']) ? (float) $previous['current_score'] : null;
 		$metrics = isset($summary['metrics']) && is_array($summary['metrics']) ? $summary['metrics'] : [];
@@ -704,46 +704,46 @@ class Catalogue_Image_Studio_Plugin {
 			'email_status'                      => ! empty($settings['audit_schedule_email_report']) ? 'queued_stub' : 'skipped',
 			'updated_at'                        => current_time('mysql'),
 		];
-		update_option('optivra_monthly_report_summary', $monthly, false);
+		optiimst_update_option('optiimst_monthly_report_summary', $monthly, false);
 	}
 
 	private function record_scheduled_audit_error(string $message, string $store_id): void {
 		$this->logger->error('Scheduled Product Image Health scan failed.', ['reason' => $message]);
-		update_option('optivra_scheduled_scan_state', ['status' => 'failed', 'message' => $message, 'updated_at' => current_time('mysql')], false);
+		optiimst_update_option('optiimst_scheduled_scan_state', ['status' => 'failed', 'message' => $message, 'updated_at' => current_time('mysql')], false);
 		if ('' !== $store_id) {
 			$this->client->acknowledge_image_audit_schedule($store_id, ['status' => 'error']);
 		}
 	}
 
-	public function logger(): Catalogue_Image_Studio_Logger {
+	public function logger(): Optiimst_Logger {
 		return $this->logger;
 	}
 
-	public function jobs(): Catalogue_Image_Studio_Job_Repository {
+	public function jobs(): Optiimst_Job_Repository {
 		return $this->jobs;
 	}
 
-	public function scanner(): Catalogue_Image_Studio_ProductScanner {
+	public function scanner(): Optiimst_ProductScanner {
 		return $this->scanner;
 	}
 
-	public function client(): Catalogue_Image_Studio_SaaSClient {
+	public function client(): Optiimst_SaaSClient {
 		return $this->client;
 	}
 
-	public function media(): Catalogue_Image_Studio_MediaManager {
+	public function media(): Optiimst_MediaManager {
 		return $this->media;
 	}
 
-	public function seo_generator(): Catalogue_Image_Studio_SEO_Metadata_Generator {
+	public function seo_generator(): Optiimst_SEO_Metadata_Generator {
 		return $this->seo_generator;
 	}
 
-	public function approval(): Catalogue_Image_Studio_ApprovalManager {
+	public function approval(): Optiimst_ApprovalManager {
 		return $this->approval;
 	}
 
-	public function processor(): Catalogue_Image_Studio_ImageProcessor {
+	public function processor(): Optiimst_ImageProcessor {
 		return $this->processor;
 	}
 }

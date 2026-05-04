@@ -62,7 +62,7 @@ $cases = [
 ];
 
 foreach ($cases as [$base, $endpoint, $expected]) {
-	$actual = Catalogue_Image_Studio_SaaSClient::build_api_url_for_base($base, $endpoint);
+	$actual = Optiimst_SaaSClient::build_api_url_for_base($base, $endpoint);
 	if ($actual !== $expected) {
 		fwrite(STDERR, sprintf("URL assertion failed\nBase: %s\nEndpoint: %s\nExpected: %s\nActual: %s\n", $base, $endpoint, $expected, $actual));
 		exit(1);
@@ -80,7 +80,7 @@ $local_cases = [
 ];
 
 foreach ($local_cases as $local_case) {
-	if (! Catalogue_Image_Studio_SaaSClient::is_local_api_base_url($local_case)) {
+	if (! Optiimst_SaaSClient::is_local_api_base_url($local_case)) {
 		fwrite(STDERR, sprintf("Local API base assertion failed: %s\n", $local_case));
 		exit(1);
 	}
@@ -94,7 +94,7 @@ $token_cases = [
 ];
 
 foreach ($token_cases as $token_case) {
-	$actual = Catalogue_Image_Studio_SaaSClient::normalize_api_token($token_case);
+	$actual = Optiimst_SaaSClient::normalize_api_token($token_case);
 	if ($actual !== $token) {
 		fwrite(STDERR, sprintf("Token normalisation assertion failed\nExpected: %s\nActual: %s\n", $token, $actual));
 		exit(1);

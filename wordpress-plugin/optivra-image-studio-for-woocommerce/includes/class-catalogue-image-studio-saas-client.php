@@ -9,14 +9,14 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_SaaSClient {
+class Optiimst_SaaSClient {
 	private string $api_base_url;
 
 	private string $api_token;
 
-	private Catalogue_Image_Studio_Logger $logger;
+	private Optiimst_Logger $logger;
 
-	public function __construct(string $api_base_url, string $api_token, Catalogue_Image_Studio_Logger $logger) {
+	public function __construct(string $api_base_url, string $api_token, Optiimst_Logger $logger) {
 		$this->api_base_url = self::normalize_api_base_url($api_base_url);
 		$this->api_token    = self::normalize_api_token($api_token);
 		$this->logger       = $logger;
@@ -276,7 +276,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	public function process_image(string $image_url, array $options = []) {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
-				'catalogue_image_studio_missing_api_settings',
+				'optiimst_missing_api_settings',
 				__('Paste your Site API Token to connect this store.', 'optivra-image-studio-for-woocommerce')
 			);
 		}
@@ -327,7 +327,7 @@ class Catalogue_Image_Studio_SaaSClient {
 
 		if (! is_array($decoded)) {
 			return new WP_Error(
-				'catalogue_image_studio_invalid_api_response',
+				'optiimst_invalid_api_response',
 				sprintf(
 					/* translators: 1: status code, 2: API base URL */
 					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'optivra-image-studio-for-woocommerce'),
@@ -343,11 +343,11 @@ class Catalogue_Image_Studio_SaaSClient {
 			if (isset($decoded['preserve_debug']) && is_array($decoded['preserve_debug'])) {
 				$error_data['preserve_debug'] = $decoded['preserve_debug'];
 			}
-			return new WP_Error('catalogue_image_studio_api_error', $message, $error_data);
+			return new WP_Error('optiimst_api_error', $message, $error_data);
 		}
 
 		if (empty($decoded['processed_url'])) {
-			return new WP_Error('catalogue_image_studio_missing_processed_url', __('The image processing API did not return a processed image URL.', 'optivra-image-studio-for-woocommerce'));
+			return new WP_Error('optiimst_missing_processed_url', __('The image processing API did not return a processed image URL.', 'optivra-image-studio-for-woocommerce'));
 		}
 
 		if (! empty($decoded['processed_url']) && is_string($decoded['processed_url'])) {
@@ -365,7 +365,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	public function get_usage() {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
-				'catalogue_image_studio_missing_api_settings',
+				'optiimst_missing_api_settings',
 				__('Paste your Site API Token to connect this store.', 'optivra-image-studio-for-woocommerce')
 			);
 		}
@@ -394,7 +394,7 @@ class Catalogue_Image_Studio_SaaSClient {
 
 		if (! is_array($decoded)) {
 			return new WP_Error(
-				'catalogue_image_studio_invalid_api_response',
+				'optiimst_invalid_api_response',
 				sprintf(
 					/* translators: 1: status code, 2: API base URL */
 					__('The image processing API returned an unexpected response (HTTP %1$d) from %2$s. Check the API Base URL in Advanced Settings.', 'optivra-image-studio-for-woocommerce'),
@@ -406,7 +406,7 @@ class Catalogue_Image_Studio_SaaSClient {
 
 		if ($status_code < 200 || $status_code >= 300) {
 			$message = $this->get_error_message($decoded, __('Connection test failed.', 'optivra-image-studio-for-woocommerce'));
-			return new WP_Error('catalogue_image_studio_api_error', $message, ['status_code' => $status_code]);
+			return new WP_Error('optiimst_api_error', $message, ['status_code' => $status_code]);
 		}
 
 		return $decoded;
@@ -697,7 +697,7 @@ class Catalogue_Image_Studio_SaaSClient {
 				'body'     => wp_json_encode(
 					[
 						'eventType'          => $event_type,
-						'pluginVersion'      => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+						'pluginVersion'      => defined('OPTIIMST_VERSION') ? OPTIIMST_VERSION : '1.0.0',
 						'wordpressVersion'   => get_bloginfo('version'),
 						'woocommerceVersion' => defined('WC_VERSION') ? WC_VERSION : '',
 						'phpVersion'         => PHP_VERSION,
@@ -759,7 +759,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	}
 
 	private function debug_mode_enabled(): bool {
-		$settings = get_option('catalogue_image_studio_settings', []);
+		$settings = optiimst_get_option('optiimst_settings', []);
 		$settings = is_array($settings) ? $settings : [];
 
 		return ! empty($settings['debug_mode']);
@@ -844,6 +844,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			}
 
 			return $request_id
+				/* translators: %s: Optivra backend request ID. */
 				? sprintf(__('Backend error. Request ID: %s', 'optivra-image-studio-for-woocommerce'), $request_id)
 				: __('Backend error. Please try again or contact Optivra support.', 'optivra-image-studio-for-woocommerce');
 		}
@@ -863,7 +864,7 @@ class Catalogue_Image_Studio_SaaSClient {
 	private function request_json(string $method, string $path, array $payload = [], int $timeout = 30, bool $log_response_body = false) {
 		if ('' === $this->api_base_url || '' === $this->api_token) {
 			return new WP_Error(
-				'catalogue_image_studio_missing_api_settings',
+				'optiimst_missing_api_settings',
 				__('Paste your Site API Token to connect this store.', 'optivra-image-studio-for-woocommerce')
 			);
 		}
@@ -916,7 +917,7 @@ class Catalogue_Image_Studio_SaaSClient {
 
 		if (! is_array($decoded)) {
 			return new WP_Error(
-				'catalogue_image_studio_invalid_api_response',
+				'optiimst_invalid_api_response',
 				sprintf(
 					/* translators: 1: status code, 2: API path */
 					__('Optivra returned an unexpected response for %2$s (HTTP %1$d).', 'optivra-image-studio-for-woocommerce'),
@@ -958,7 +959,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			$this->log_http_request(strtoupper($method), $url, $status_code, $error_data);
 
 			return new WP_Error(
-				'catalogue_image_studio_api_error',
+				'optiimst_api_error',
 				$this->build_http_error_message($status_code, $decoded, __('Optivra could not complete the audit request.', 'optivra-image-studio-for-woocommerce')),
 				$error_data
 			);
@@ -1002,10 +1003,10 @@ class Catalogue_Image_Studio_SaaSClient {
 	 * @return array<string,string>
 	 */
 	private function get_site_headers(): array {
-		$install_id = (string) get_option('optivra_image_studio_install_id', '');
+		$install_id = (string) optiimst_get_option('optiimst_image_studio_install_id', '');
 		if ('' === $install_id) {
 			$install_id = wp_generate_uuid4();
-			update_option('optivra_image_studio_install_id', $install_id, false);
+			optiimst_update_option('optiimst_image_studio_install_id', $install_id, false);
 		}
 
 		$woocommerce_version = '';
@@ -1020,7 +1021,7 @@ class Catalogue_Image_Studio_SaaSClient {
 			'X-Optivra-Home-Url'             => esc_url_raw(home_url()),
 			'X-Optivra-Admin-Url-Hash'       => hash('sha256', admin_url()),
 			'X-Optivra-WordPress-Install-Id' => sanitize_text_field($install_id),
-			'X-Optivra-Plugin-Version'       => defined('CIS_VERSION') ? CIS_VERSION : '1.0.0',
+			'X-Optivra-Plugin-Version'       => defined('OPTIIMST_VERSION') ? OPTIIMST_VERSION : '1.0.0',
 			'X-Optivra-WordPress-Version'    => sanitize_text_field((string) get_bloginfo('version')),
 			'X-Optivra-WooCommerce-Version'  => sanitize_text_field($woocommerce_version),
 			'X-Optivra-PHP-Version'          => sanitize_text_field(PHP_VERSION),

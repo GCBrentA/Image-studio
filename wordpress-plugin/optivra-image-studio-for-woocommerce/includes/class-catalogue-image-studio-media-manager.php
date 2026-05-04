@@ -9,10 +9,10 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-class Catalogue_Image_Studio_MediaManager {
-	private Catalogue_Image_Studio_Logger $logger;
+class Optiimst_MediaManager {
+	private Optiimst_Logger $logger;
 
-	public function __construct(Catalogue_Image_Studio_Logger $logger) {
+	public function __construct(Optiimst_Logger $logger) {
 		$this->logger = $logger;
 	}
 
@@ -34,7 +34,7 @@ class Catalogue_Image_Studio_MediaManager {
 		if (is_wp_error($tmp)) {
 			$this->logger->error('Processed image download failed.', ['message' => $tmp->get_error_message()]);
 			return new WP_Error(
-				'catalogue_image_studio_processed_download_failed',
+				'optiimst_processed_download_failed',
 				sprintf(
 					/* translators: %s: download error */
 					__('Processed image could not be found or downloaded. Reprocess this image. Details: %s', 'optivra-image-studio-for-woocommerce'),
@@ -63,7 +63,7 @@ class Catalogue_Image_Studio_MediaManager {
 			wp_delete_file($tmp);
 			$this->logger->error('Processed image media import failed.', ['message' => $attachment_id->get_error_message()]);
 			return new WP_Error(
-				'catalogue_image_studio_processed_import_failed',
+				'optiimst_processed_import_failed',
 				sprintf(
 					/* translators: %s: import error */
 					__('Processed image could not be saved to the Media Library. Details: %s', 'optivra-image-studio-for-woocommerce'),
@@ -79,7 +79,7 @@ class Catalogue_Image_Studio_MediaManager {
 				update_post_meta($attachment_id, '_wp_attachment_image_alt', $alt_text);
 			}
 
-			update_post_meta($attachment_id, '_catalogue_image_studio_original_attachment_id', $source_attachment_id);
+			update_post_meta($attachment_id, '_optiimst_original_attachment_id', $source_attachment_id);
 		}
 
 		$this->apply_seo_metadata((int) $attachment_id, $seo, $settings);
@@ -102,7 +102,7 @@ class Catalogue_Image_Studio_MediaManager {
 	public function apply_seo_metadata(int $attachment_id, array $seo, array $settings): void {
 		$only_fill_missing = ! empty($settings['only_fill_missing']);
 		$overwrite         = ! empty($settings['overwrite_existing_meta']);
-		$managed_attachment = '' !== (string) get_post_meta($attachment_id, '_catalogue_image_studio_original_attachment_id', true);
+		$managed_attachment = '' !== (string) get_post_meta($attachment_id, '_optiimst_original_attachment_id', true);
 
 		$post = get_post($attachment_id);
 
