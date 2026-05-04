@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 const admin = readFileSync("wordpress-plugin/optivra-image-studio-for-woocommerce/admin/class-catalogue-image-studio-admin.php", "utf8");
+const adminJs = readFileSync("wordpress-plugin/optivra-image-studio-for-woocommerce/assets/admin.js", "utf8");
 const css = readFileSync("wordpress-plugin/optivra-image-studio-for-woocommerce/assets/admin.css", "utf8");
 const service = readFileSync("src/services/imageAuditService.ts", "utf8");
 const app = readFileSync("src/app.ts", "utf8");
@@ -28,8 +29,8 @@ requireIncludes("WordPress scan UI", admin, [
   "Optimise Recommended Images",
   "queue_selected_scan_results",
   "queue_from_audit_payload",
-  "optivra_latest_audit_items",
-  "optivra_latest_audit_remote_enabled",
+  "optiimst_latest_audit_items",
+  "optiimst_latest_audit_remote_enabled",
   "optivra-audit-category-start",
   "Remote health report unavailable",
   "Catalogue scan completed locally",
@@ -48,14 +49,14 @@ requireIncludes("Product scanner fallback rows", readFileSync("wordpress-plugin/
   "_queueable_image"
 ]);
 
-requireIncludes("WordPress scan results JavaScript", admin, [
+requireIncludes("WordPress scan results JavaScript", adminJs, [
   "initScanResults",
   "data-optivra-selected-count",
   "data-optivra-result-filter",
   "data-optivra-row-add",
   "data-optivra-row-ignore",
-  "scan_scope: \"categories\"",
-  "scan_scope: \"all\", category_ids: []"
+  "scan_scope: 'categories'",
+  "scan_scope: 'all', category_ids: []"
 ]);
 
 requireIncludes("Scan results styling", css, [
@@ -69,10 +70,10 @@ requireIncludes("Scan results styling", css, [
 
 requireIncludes("Preserve settings respected", admin, [
   "$preserve_product_exactly = ! empty($settings['preserve_product_exactly'])",
-  "$strict_preserve_guard = $preserve_product_exactly && ! $is_audit_job && ! empty($settings['auto_fail_product_altered'])",
+  "$strict_preserve_guard = $preserve_product_exactly",
   "'preserveProductExactly' => $strict_preserve_guard",
   "'preserveProductIntent' => $preserve_product_exactly",
-  "'preserveFallbackFromStrictMode' => $preserve_product_exactly && ! $strict_preserve_guard",
+  "'preserveFallbackFromStrictMode' => false",
   "'autoFailIfProductAltered' => $strict_preserve_guard",
   "if ($is_audit_job) {\n\t\t\t$shadow_mode = 'under';",
   "$shadow_strength = 'light'",
@@ -84,8 +85,11 @@ requireIncludes("Custom background respected for audit queue jobs", admin, [
   "$uses_custom_background = 'custom' === $background_source",
   "$is_audit_job && ! $uses_custom_background",
   "! $uses_custom_background && empty($options['background_image_url'])",
-  "'customBackgroundUrl' => $custom_background_url ?: null",
-  "backgroundSource.value = 'custom'",
+  "'customBackgroundUrl' => $custom_background_url ?: null"
+]);
+
+requireIncludes("Custom background JavaScript controls", adminJs, [
+  "backgroundSource.value === 'custom'",
   "syncBackgroundMode"
 ]);
 

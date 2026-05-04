@@ -77,8 +77,9 @@ assert.doesNotMatch(imageProcessing, /provider:\s*`openai:\$\{openAiImageEditMod
 assert.match(imageProcessing, /imgly:background-removal-node:flexible-source-pixel/, "standard mode uses specialist segmentation as source-pixel alpha guidance");
 assert.match(imageProcessing, /flexible-source-pixel-first/, "standard mode tries source-pixel local segmentation before AI guidance");
 assert.match(imageProcessing, /flexible-noisy-ai-mask-fallback/, "standard mode retries noisy AI masks with local source-pixel fallback");
-assert.doesNotMatch(imageProcessing, /source-original-review-fallback/, "standard mode must not complete by returning a full source-photo fallback");
-assert.match(imageProcessing, /Flexible mode could not produce a product-safe source-pixel mask/, "standard mode fails safely when no product-safe mask exists");
+assert.match(imageProcessing, /flexible-full-source-review-fallback/, "standard mode completes with a review-only full-source fallback when no product-safe mask exists");
+assert.match(imageProcessing, /Flexible mode could not isolate the product safely/, "standard mode flags full-source fallback outputs for review");
+assert.doesNotMatch(imageProcessing, /Flexible mode could not produce a product-safe source-pixel mask/, "standard mode must not fail outright when pixel-perfect preservation is off");
 assert.match(imageProcessing, /Product cutout is too faint after background removal/, "product visibility validation rejects faint striped cutouts");
 assert.match(imageProcessing, /horizontal scanline artifacts after background removal/, "product visibility validation rejects striped scanline cutouts");
 assert.match(imageProcessing, /mask includes a long detached background strip/, "product cutout integrity rejects retained background strips");

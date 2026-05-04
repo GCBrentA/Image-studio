@@ -59,6 +59,7 @@ assert.deepEqual(
 const publicIndex = read("public/site/index.html");
 const publicApp = read("public/site/assets/app.js");
 const billingService = read("src/services/billingService.ts");
+const creditService = read("src/services/creditService.ts");
 
 [
   "10 starter credits for verified production stores, where eligible.",
@@ -86,6 +87,15 @@ const billingService = read("src/services/billingService.ts");
   "resetMonthlyCredits(localSubscription.user_id, localSubscription.plan"
 ].forEach((expectedSource) => {
   assert.ok(billingService.includes(expectedSource), `Billing source should include: ${expectedSource}`);
+});
+
+[
+  "maxWait: 10_000",
+  "timeout: 20_000",
+  "const remaining = await client.creditLedger.aggregate",
+  "const positiveCredits = await client.creditLedger.aggregate"
+].forEach((expectedSource) => {
+  assert.ok(creditService.includes(expectedSource), `Credit transaction source should include: ${expectedSource}`);
 });
 
 [

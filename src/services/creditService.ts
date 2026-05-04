@@ -64,7 +64,9 @@ const runSerializableTransaction = async <T>(
   for (let attempt = 1; attempt <= maxSerializableRetries; attempt += 1) {
     try {
       return await prisma.$transaction(callback, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 10_000,
+        timeout: 20_000
       });
     } catch (error) {
       lastError = error;
@@ -105,29 +107,27 @@ const getCreditTotals = async (
   const periodStart = await getPeriodStart(userId, client);
   const periodFilter = periodStart ? { gte: periodStart } : undefined;
 
-  const [remaining, positiveCredits] = await Promise.all([
-    client.creditLedger.aggregate({
-      where: {
-        userId,
-        ...(periodFilter ? { createdAt: periodFilter } : {})
+  const remaining = await client.creditLedger.aggregate({
+    where: {
+      userId,
+      ...(periodFilter ? { createdAt: periodFilter } : {})
+    },
+    _sum: {
+      changeAmount: true
+    }
+  });
+  const positiveCredits = await client.creditLedger.aggregate({
+    where: {
+      userId,
+      changeAmount: {
+        gt: 0
       },
-      _sum: {
-        changeAmount: true
-      }
-    }),
-    client.creditLedger.aggregate({
-      where: {
-        userId,
-        changeAmount: {
-          gt: 0
-        },
-        ...(periodFilter ? { createdAt: periodFilter } : {})
-      },
-      _sum: {
-        changeAmount: true
-      }
-    })
-  ]);
+      ...(periodFilter ? { createdAt: periodFilter } : {})
+    },
+    _sum: {
+      changeAmount: true
+    }
+  });
 
   return {
     credits_remaining: Math.max(remaining._sum.changeAmount ?? 0, 0),

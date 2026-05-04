@@ -923,20 +923,69 @@ const processImageFlexibleMode = async (
       await assertVisibleProductImage(result.cutout);
       return result;
     } catch (fallbackError) {
-      console.warn("Flexible local foreground fallback failed; refusing unsafe processed output", {
+      console.warn("Flexible local foreground fallback failed; using full-source review fallback", {
         aiMaskReason: error instanceof Error ? error.message : "Unknown flexible cutout error",
         localFallbackReason: fallbackError instanceof Error ? fallbackError.message : "Unknown local fallback error"
       });
 
-      throw new Error(
-        `Flexible mode could not produce a product-safe source-pixel mask. AI mask reason: ${
-          error instanceof Error ? error.message : "unknown flexible cutout error"
-        }. Local fallback reason: ${
-          fallbackError instanceof Error ? fallbackError.message : "unknown local fallback error"
-        }.`
+      const result = await buildFlexibleFullSourceReviewCutout(
+        sourceInput,
+        [
+          `AI mask reason: ${error instanceof Error ? error.message : "unknown flexible cutout error"}.`,
+          `Local fallback reason: ${fallbackError instanceof Error ? fallbackError.message : "unknown local fallback error"}.`
+        ]
       );
+      await assertVisibleProductImage(result.cutout);
+      return result;
     }
   }
+};
+
+const buildFlexibleFullSourceReviewCutout = async (
+  sourceBuffer: Buffer,
+  reasons: string[]
+): Promise<CutoutResult> => {
+  const fallbackSize = Math.round(outputSize * 0.88);
+  const cutout = await sharp(sourceBuffer)
+    .rotate()
+    .resize({
+      width: fallbackSize,
+      height: fallbackSize,
+      fit: "contain",
+      withoutEnlargement: false,
+      background: {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0
+      }
+    })
+    .extend({
+      top: Math.floor((outputSize - fallbackSize) / 2),
+      bottom: Math.ceil((outputSize - fallbackSize) / 2),
+      left: Math.floor((outputSize - fallbackSize) / 2),
+      right: Math.ceil((outputSize - fallbackSize) / 2),
+      background: {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0
+      }
+    })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+
+  return {
+    cutout,
+    debugCutout: cutout,
+    provider: `source-alpha:flexible-full-source-review-fallback:${reasons.join(" ")}`,
+    attempts: 3,
+    validation: {
+      alphaCoverage: await getImageAlphaCoverage(cutout),
+      foregroundMeanDelta: Number.NaN
+    }
+  };
 };
 
 const buildFlexibleLocalForegroundCutout = async (
@@ -4329,6 +4378,9 @@ const buildOutputQualityValidation = async (
   const detailPreservation: ValidationStatus = productPreservation;
   if (!preserveProductExactly) {
     warnings.push("Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.");
+  }
+  if (cutoutResult.provider.includes("flexible-full-source-review-fallback")) {
+    warnings.push("Flexible mode could not isolate the product safely, so the original image was processed as a full-source review fallback.");
   }
 
   if (protectedProductValidation.outcome === "HARD_FAIL") {
