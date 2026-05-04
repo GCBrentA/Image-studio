@@ -5064,6 +5064,153 @@ const removeDetachedBackgroundMarksFromProductBuffer = async (productBuffer: Buf
     .toBuffer();
 };
 
+const removeDetachedTextLogoComponentsFromProductBuffer = async (
+  productBuffer: Buffer
+): Promise<{ buffer: Buffer; removedPixels: number }> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = rgba[pixel * 4 + 3] ?? 0;
+  }
+
+  const components = getConnectedMaskComponents(thresholdAlphaMask(alpha, 24), width, height);
+
+  if (components.length < 2) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const imageArea = width * height;
+  const metrics = components.map((pixels) => {
+    const bounds = getPixelComponentBounds(pixels, width, height);
+    const componentWidth = bounds.maxX - bounds.minX + 1;
+    const componentHeight = bounds.maxY - bounds.minY + 1;
+    const boundsArea = Math.max(1, componentWidth * componentHeight);
+    let totalSaturation = 0;
+    let totalLuminance = 0;
+    let totalGradient = 0;
+    let darkPixels = 0;
+
+    for (const pixel of pixels) {
+      const index = pixel * 4;
+      const r = rgba[index] ?? 0;
+      const g = rgba[index + 1] ?? 0;
+      const b = rgba[index + 2] ?? 0;
+      const saturation = getRgbSaturation(r, g, b);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const gradient = getRgbGradientMagnitude(rgba, width, height, pixel);
+      totalSaturation += saturation;
+      totalLuminance += luminance;
+      totalGradient += gradient;
+      if (luminance < 88) {
+        darkPixels += 1;
+      }
+    }
+
+    const density = pixels.length / boundsArea;
+    const meanSaturation = totalSaturation / Math.max(1, pixels.length);
+    const meanLuminance = totalLuminance / Math.max(1, pixels.length);
+    const meanGradient = totalGradient / Math.max(1, pixels.length);
+    const darkShare = darkPixels / Math.max(1, pixels.length);
+    const aspect = componentWidth / Math.max(1, componentHeight);
+    const productScore = pixels.length *
+      Math.max(0.1, density) *
+      (1 + Math.min(meanGradient, 60) / 18 + meanSaturation * 5 + (meanLuminance < 120 ? 0.7 : 0));
+
+    return {
+      pixels,
+      bounds,
+      componentWidth,
+      componentHeight,
+      density,
+      meanSaturation,
+      meanLuminance,
+      meanGradient,
+      darkShare,
+      aspect,
+      productScore
+    };
+  });
+  const primary = metrics.reduce((best, metric) => metric.productScore > best.productScore ? metric : best, metrics[0] as typeof metrics[number]);
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (const metric of metrics) {
+    if (metric === primary) {
+      continue;
+    }
+
+    const farFromPrimary = !componentBoundsOverlapWithPadding(metric.bounds, primary.bounds, Math.round(Math.min(width, height) * 0.11));
+    const detachedBelowOrSide =
+      metric.bounds.minY > primary.bounds.maxY - height * 0.04 ||
+      metric.bounds.maxX < primary.bounds.minX - width * 0.03 ||
+      metric.bounds.minX > primary.bounds.maxX + width * 0.03;
+    const textOrLogoLike =
+      metric.pixels.length >= Math.max(180, imageArea * 0.00016) &&
+      metric.pixels.length < primary.pixels.length * 0.9 &&
+      (
+        metric.density < 0.62 ||
+        metric.aspect > 2.1 ||
+        metric.aspect < 0.38 ||
+        metric.darkShare > 0.55
+      ) &&
+      metric.meanSaturation < 0.32 &&
+      metric.meanGradient < 58;
+    const backgroundCornerMark =
+      metric.bounds.minY > height * 0.48 &&
+      metric.bounds.maxX < width * 0.48 &&
+      metric.pixels.length < primary.pixels.length * 0.95;
+
+    if (!(farFromPrimary && textOrLogoLike && (detachedBelowOrSide || backgroundCornerMark))) {
+      continue;
+    }
+
+    for (const pixel of metric.pixels) {
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+  }
+
+  if (removedPixels <= 0) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const initialCoverage = getAlphaCoverage(alpha);
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.18) || hasCatastrophicMaskFailure(analyzeAlphaMask(cleaned, width, height))) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const cleanedRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), cleaned, width, height);
+  const buffer = await sharp(cleanedRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+
+  console.info("Removed optional detached background text/logo components from product layer", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    componentCount: components.length
+  });
+
+  return { buffer, removedPixels };
+};
+
 const assertCompositeContainsProduct = async (
   backgroundBuffer: Buffer,
   composedImage: Buffer,
@@ -5620,8 +5767,22 @@ export const processImageForProduct = async ({
     productBuffer = await removeDetachedBackgroundMarksFromProductBuffer(productBuffer);
     productBuffer = await removePalePhotoCardFromProductBuffer(productBuffer);
   }
-  const protectedSourceProductBuffer = productBuffer;
+  const removeBackgroundTextLogos = getObject(processingSettings.background).removeTextLogos === true ||
+    processingSettings.removeBackgroundTextLogos === true ||
+    processingSettings.removeDetachedBackgroundTextLogos === true;
   const productFallbackWarnings: string[] = [];
+  if (!preserveProductExactly && removeBackgroundTextLogos) {
+    const detachedTextCleanup = await removeDetachedTextLogoComponentsFromProductBuffer(productBuffer);
+    if (detachedTextCleanup.removedPixels > 0) {
+      productBuffer = detachedTextCleanup.buffer;
+      productFallbackWarnings.push(
+        `Removed ${detachedTextCleanup.removedPixels} detached background text/logo pixels outside the main product layer.`
+      );
+    } else {
+      productFallbackWarnings.push("Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer.");
+    }
+  }
+  const protectedSourceProductBuffer = productBuffer;
   if (!preserveProductExactly) {
     const litProductBuffer = await applyProductLighting(productBuffer, lightingSettings);
     const litProductProtection = await validateProtectedProductRegion({

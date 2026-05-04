@@ -358,6 +358,7 @@ class Optiimst_Admin {
 		$settings['auto_fail_product_altered'] = ! empty($input['auto_fail_product_altered']);
 		$settings['auto_fix_crop_spacing']   = ! empty($input['auto_fix_crop_spacing']);
 		$settings['preserve_dark_detail']    = ! empty($input['preserve_dark_detail']);
+		$settings['remove_background_text_logos'] = ! empty($input['remove_background_text_logos']);
 		$settings['duplicate_detection']     = ! empty($input['duplicate_detection']);
 		$settings['generate_seo_filename']   = ! empty($input['generate_seo_filename']);
 		$settings['enable_filename_seo']     = $settings['generate_seo_filename'];
@@ -4877,6 +4878,7 @@ class Optiimst_Admin {
 					<?php $this->render_toggle_setting('auto_fail_product_altered', __('Auto-fail if product appears altered', 'optivra-image-studio-for-woocommerce'), __('Failed preservation checks stop the image before it can be applied.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_fail_product_altered'])); ?>
 					<?php $this->render_toggle_setting('auto_fix_crop_spacing', __('Auto-fix crop and spacing', 'optivra-image-studio-for-woocommerce'), __('Optivra deterministically improves excessive whitespace after background replacement.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['auto_fix_crop_spacing'])); ?>
 					<?php $this->render_toggle_setting('preserve_dark_detail', __('Preserve dark product detail', 'optivra-image-studio-for-woocommerce'), __('Avoid crushed blacks and heavy contrast changes on dark product parts.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['preserve_dark_detail'])); ?>
+					<?php $this->render_toggle_setting('remove_background_text_logos', __('Remove detached background text/logos', 'optivra-image-studio-for-woocommerce'), __('Optional cleanup for logos, watermark text, or labels that are separate from the product. Text printed on the product is still preserved.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['remove_background_text_logos'])); ?>
 					<?php $this->render_toggle_setting('duplicate_detection', __('Duplicate detection', 'optivra-image-studio-for-woocommerce'), __('Reuse previous processed results when the same source image is encountered.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['duplicate_detection'])); ?>
 					<?php $this->render_toggle_setting('pause_on_low_credits', __('Pause processing when credits are low', 'optivra-image-studio-for-woocommerce'), __('Stop larger queue batches before credits are exhausted.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['pause_on_low_credits'])); ?>
 					<?php $this->render_toggle_setting('retry_failed_jobs', __('Retry failed jobs automatically', 'optivra-image-studio-for-woocommerce'), __('Keep failed jobs ready for a quick retry pass.', 'optivra-image-studio-for-woocommerce'), ! empty($settings['retry_failed_jobs'])); ?>
@@ -5839,6 +5841,7 @@ class Optiimst_Admin {
 			'autoFailIfProductAltered' => $strict_preserve_guard,
 			'autoFixCropSpacing' => ! empty($settings['auto_fix_crop_spacing']),
 			'preserveDarkDetail' => $strict_preserve_guard && ! empty($settings['preserve_dark_detail']),
+			'removeBackgroundTextLogos' => ! empty($settings['remove_background_text_logos']),
 			'requireReviewBeforeReplace' => true,
 			'auditReportSource' => $is_audit_job,
 			'auditActionType' => (string) ($job['audit_action_type'] ?? ''),
@@ -5852,6 +5855,7 @@ class Optiimst_Admin {
 				'preset'              => $background_preset,
 				'customBackgroundUrl' => $custom_background_url ?: null,
 				'customBackgroundId'  => $custom_background_attachment_id ?: null,
+				'removeTextLogos'     => ! empty($settings['remove_background_text_logos']),
 			],
 			'framing' => [
 				'mode'                     => $scale_mode,

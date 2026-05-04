@@ -322,6 +322,7 @@ class Optiimst_Plugin {
 			'auto_fail_product_altered' => true,
 			'auto_fix_crop_spacing'   => true,
 			'preserve_dark_detail'    => true,
+			'remove_background_text_logos' => false,
 			'shadow_mode'             => 'under',
 			'shadow_strength'         => 'medium',
 			'shadow_opacity'          => 23,
@@ -445,6 +446,7 @@ class Optiimst_Plugin {
 		$settings['auto_fail_product_altered'] = array_key_exists('auto_fail_product_altered', $settings) ? (bool) $settings['auto_fail_product_altered'] : true;
 		$settings['auto_fix_crop_spacing'] = array_key_exists('auto_fix_crop_spacing', $settings) ? (bool) $settings['auto_fix_crop_spacing'] : true;
 		$settings['preserve_dark_detail'] = array_key_exists('preserve_dark_detail', $settings) ? (bool) $settings['preserve_dark_detail'] : true;
+		$settings['remove_background_text_logos'] = array_key_exists('remove_background_text_logos', $settings) ? (bool) $settings['remove_background_text_logos'] : false;
 
 		$stored_override = isset($raw_settings['api_base_url_override']) ? (string) $raw_settings['api_base_url_override'] : '';
 		$stored_base = isset($raw_settings['api_base_url']) ? (string) $raw_settings['api_base_url'] : '';

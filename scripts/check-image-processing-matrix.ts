@@ -437,6 +437,37 @@ const assertNoLargeBackgroundTextArtifacts = async (buffer: Buffer, label: strin
   );
 };
 
+const countDarkPixelsInRegion = async (
+  buffer: Buffer,
+  region: { minX: number; minY: number; maxX: number; maxY: number }
+): Promise<number> => {
+  const image = await sharp(buffer)
+    .resize(1024, 1024, {
+      fit: "fill"
+    })
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  let darkPixels = 0;
+
+  for (let y = region.minY; y <= region.maxY; y += 1) {
+    for (let x = region.minX; x <= region.maxX; x += 1) {
+      const index = (y * 1024 + x) * 4;
+      const alpha = image[index + 3] ?? 0;
+      const r = image[index] ?? 255;
+      const g = image[index + 1] ?? 255;
+      const b = image[index + 2] ?? 255;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+      if (alpha > 80 && luminance < 70) {
+        darkPixels += 1;
+      }
+    }
+  }
+
+  return darkPixels;
+};
+
 const assertPromptPolicy = (): void => {
   const backgroundRemoval = readFileSync("src/services/backgroundRemovalService.ts", "utf8");
   const imageProcessing = readFileSync("src/services/imageProcessingService.ts", "utf8");
@@ -897,6 +928,124 @@ const run = async (): Promise<void> => {
   await assertValidProcessedImage(aztechProcessed, "AZTECH contaminated processed regression");
   await writeFile(path.join(artifactDir, "aztech-contaminated-processed-regression.webp"), aztechProcessed);
   await assertNoLargeBackgroundTextArtifacts(aztechProcessed, "AZTECH contaminated processed regression");
+
+  const detachedLogoSource = await toPng(`
+    <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="720" fill="none"/>
+      <g transform="translate(360 300)">
+        <path d="M-260 20 L-60 20 L-28 -8 L26 -8 L60 20 L260 20" fill="none" stroke="#17191f" stroke-width="18" stroke-linecap="round"/>
+        <path d="M250 20 C292 22 304 88 263 106" fill="none" stroke="#17191f" stroke-width="24" stroke-linecap="round"/>
+        <circle cx="0" cy="20" r="58" fill="#111827"/>
+        <circle cx="0" cy="20" r="24" fill="none" stroke="#e5e7eb" stroke-width="11"/>
+      </g>
+      <g transform="translate(110 500)" fill="#050505">
+        <path d="M0 0 H78 V24 H50 V88 H28 V24 H0 Z"/>
+        <text x="96" y="118" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="44" font-weight="900">AZTECH</text>
+        <text x="104" y="162" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" letter-spacing="5">INNOVATIONS</text>
+      </g>
+    </svg>
+  `);
+  await writeFile(path.join(fixtureDir, "detached-logo-source.png"), detachedLogoSource);
+
+  const detachedLogoBaseSettings = {
+    preserveProductExactly: false,
+    processingMode: "standard_ecommerce_cleanup",
+    promptVersion: "ecommerce_preserve_v2",
+    autoFailIfProductAltered: false,
+    preserveFallbackFromStrictMode: false,
+    output: {
+      size: 1024,
+      aspectRatio: "1:1"
+    },
+    background: {
+      source: "preset",
+      preset: "white",
+      customBackgroundUrl: null,
+      customBackgroundId: null
+    },
+    framing: {
+      mode: "auto",
+      smartScaling: true,
+      padding: 6,
+      targetCoverage: 86,
+      useTargetCoverage: false,
+      preserveTransparentEdges: true
+    },
+    shadow: {
+      mode: "off",
+      strength: "medium",
+      opacity: 24,
+      blur: 24,
+      offsetX: 0,
+      offsetY: 0,
+      spread: 100,
+      softness: 60,
+      color: "#000000"
+    },
+    lighting: {
+      enabled: false,
+      mode: "auto",
+      brightness: 0,
+      contrast: 0,
+      highlightRecovery: true,
+      shadowLift: true,
+      neutralizeTint: true,
+      strength: "light"
+    },
+    debugArtifacts: true
+  } as const;
+  const detachedLogoKeepResult = await processImageForProduct({
+    imageJobId: "matrix-detached-logo-keep",
+    userId: "matrix-user",
+    imageUrl: "uploaded://detached-logo-source.png",
+    imageBuffer: detachedLogoSource,
+    imageContentType: "image/png",
+    background: "white",
+    settings: detachedLogoBaseSettings,
+    jobOverrides: {
+      productId: "detached-logo-keep",
+      imageId: "detached-logo-keep-main",
+      edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
+    }
+  });
+  const detachedLogoRemoveResult = await processImageForProduct({
+    imageJobId: "matrix-detached-logo-remove",
+    userId: "matrix-user",
+    imageUrl: "uploaded://detached-logo-source.png",
+    imageBuffer: detachedLogoSource,
+    imageContentType: "image/png",
+    background: "white",
+    settings: {
+      ...detachedLogoBaseSettings,
+      removeBackgroundTextLogos: true,
+      background: {
+        ...detachedLogoBaseSettings.background,
+        removeTextLogos: true
+      }
+    },
+    jobOverrides: {
+      productId: "detached-logo-remove",
+      imageId: "detached-logo-remove-main",
+      edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
+    }
+  });
+  const detachedLogoKeepProcessed = getUploadedObject("processed-images", detachedLogoKeepResult.processedStoragePath);
+  const detachedLogoRemoveProcessed = getUploadedObject("processed-images", detachedLogoRemoveResult.processedStoragePath);
+  await writeFile(path.join(artifactDir, "detached-logo-kept-regression.webp"), detachedLogoKeepProcessed);
+  await writeFile(path.join(artifactDir, "detached-logo-removed-regression.webp"), detachedLogoRemoveProcessed);
+  const logoRegion = { minX: 0, minY: 560, maxX: 420, maxY: 1010 };
+  const keptLogoPixels = await countDarkPixelsInRegion(detachedLogoKeepProcessed, logoRegion);
+  const removedLogoPixels = await countDarkPixelsInRegion(detachedLogoRemoveProcessed, logoRegion);
+  assert.ok(keptLogoPixels > 2000, "Detached logo should remain when optional background text/logo removal is off");
+  assert.ok(
+    removedLogoPixels < keptLogoPixels * 0.28,
+    `Detached logo should be removed when optional cleanup is on (${removedLogoPixels} vs ${keptLogoPixels} dark pixels)`
+  );
+  assert.match(
+    (detachedLogoRemoveResult.outputValidation?.warnings ?? []).join(" "),
+    /Removed .* detached background text\/logo pixels/i,
+    "Detached logo cleanup should be reported in validation warnings"
+  );
 
   const extremeMessage = getExtremeFineDetailFailureMessage([
     "Preserve mode rejected the mask because grass and hair-like fibers are entangled with a visually similar background.",
