@@ -279,6 +279,64 @@ const assertValidCutoutImage = async (buffer: Buffer, label: string): Promise<vo
   assert.ok(coverage < 0.55, `${label}: cutout should not include the full source background`);
 };
 
+const assertNoLargeBackgroundTextArtifacts = async (buffer: Buffer, label: string): Promise<void> => {
+  const image = sharp(buffer).resize(1024, 1024, { fit: "fill" }).removeAlpha();
+  const raw = await image.raw().toBuffer();
+  let suspiciousInkPixels = 0;
+  let suspiciousEdgePixels = 0;
+
+  for (let y = 0; y < 1024; y += 1) {
+    for (let x = 0; x < 1024; x += 1) {
+      const insideProductSafeArea = x >= 250 && x <= 774 && y >= 135 && y <= 555;
+      if (insideProductSafeArea) continue;
+
+      const index = (y * 1024 + x) * 3;
+      const r = raw[index] ?? 0;
+      const g = raw[index + 1] ?? 0;
+      const b = raw[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const saturation = max === 0 ? 0 : (max - min) / max;
+      const neighbourIndexes = [
+        x > 0 ? index - 3 : index,
+        x < 1023 ? index + 3 : index,
+        y > 0 ? index - 1024 * 3 : index,
+        y < 1023 ? index + 1024 * 3 : index
+      ];
+      let maxLuminanceDelta = 0;
+
+      for (const neighbourIndex of neighbourIndexes) {
+        const nr = raw[neighbourIndex] ?? r;
+        const ng = raw[neighbourIndex + 1] ?? g;
+        const nb = raw[neighbourIndex + 2] ?? b;
+        const neighbourLuminance = 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;
+        maxLuminanceDelta = Math.max(maxLuminanceDelta, Math.abs(luminance - neighbourLuminance));
+      }
+
+      const belowProductTextBand = y >= 555 && x >= 120 && x <= 904;
+      const aboveProductLogoBand = y <= 260 && x >= 220 && x <= 804;
+      const looksLikeDetachedLogoOrTextInk =
+        saturation < 0.26 &&
+        luminance > 32 &&
+        luminance < 246 &&
+        (luminance < 210 || maxLuminanceDelta > 8);
+
+      if (looksLikeDetachedLogoOrTextInk) {
+        suspiciousInkPixels += 1;
+      }
+      if ((belowProductTextBand || aboveProductLogoBand) && looksLikeDetachedLogoOrTextInk && maxLuminanceDelta > 6) {
+        suspiciousEdgePixels += 1;
+      }
+    }
+  }
+
+  assert.ok(
+    suspiciousInkPixels < 22000 && suspiciousEdgePixels < 3000,
+    `${label}: output appears to contain large detached background text/logo artifacts (${suspiciousInkPixels} suspicious pixels, ${suspiciousEdgePixels} suspicious edge pixels)`
+  );
+};
+
 const assertPromptPolicy = (): void => {
   const backgroundRemoval = readFileSync("src/services/backgroundRemovalService.ts", "utf8");
   const imageProcessing = readFileSync("src/services/imageProcessingService.ts", "utf8");
@@ -300,6 +358,8 @@ const assertPromptPolicy = (): void => {
   assert.match(imageProcessing, /const webpOptions = preserveProductExactly/);
   assert.match(imageProcessing, /quality: 100,\s+lossless: true/s);
   assert.match(imageProcessing, /if \(!preserveProductExactly\) {\s+const litProductBuffer = await applyProductLighting/s);
+  assert.match(imageProcessing, /removeSuspiciousDetachedBackgroundMarks/);
+  assert.match(imageProcessing, /\.blur\(18\)/);
 };
 
 const resetDirectory = async (directory: string): Promise<void> => {
@@ -535,6 +595,185 @@ const run = async (): Promise<void> => {
   await assertValidCutoutImage(greyRetainerCutout.cutout, "grey branded retainer local fallback");
   await writeFile(path.join(fixtureDir, "grey-branded-retainer-source.png"), greyRetainerSource);
   await writeFile(path.join(artifactDir, "grey-branded-retainer-local-cutout.png"), greyRetainerCutout.cutout);
+
+  const greyRetainerResult = await processImageForProduct({
+    imageJobId: "matrix-grey-branded-retainer-regression",
+    userId: "matrix-user",
+    imageUrl: "uploaded://grey-branded-retainer-source.png",
+    imageBuffer: greyRetainerSource,
+    imageContentType: "image/png",
+    background: "white",
+    settings: {
+      preserveProductExactly: false,
+      processingMode: "standard_ecommerce_cleanup",
+      promptVersion: "ecommerce_preserve_v2",
+      autoFailIfProductAltered: false,
+      preserveFallbackFromStrictMode: false,
+      output: {
+        size: 1024,
+        aspectRatio: "1:1"
+      },
+      background: {
+        source: "preset",
+        preset: "white",
+        customBackgroundUrl: null,
+        customBackgroundId: null
+      },
+      framing: {
+        mode: "auto",
+        smartScaling: true,
+        padding: 6,
+        targetCoverage: 86,
+        useTargetCoverage: false,
+        preserveTransparentEdges: true
+      },
+      shadow: {
+        mode: "under",
+        strength: "medium",
+        opacity: 24,
+        blur: 24,
+        offsetX: 0,
+        offsetY: 0,
+        spread: 100,
+        softness: 60,
+        color: "#000000"
+      },
+      lighting: {
+        enabled: true,
+        mode: "auto",
+        brightness: 0,
+        contrast: 0,
+        highlightRecovery: true,
+        shadowLift: true,
+        neutralizeTint: true,
+        strength: "medium"
+      },
+      debugArtifacts: true
+    },
+    jobOverrides: {
+      productId: "grey-branded-retainer",
+      imageId: "grey-branded-retainer-main",
+      edgeToEdge: {
+        enabled: false,
+        left: false,
+        right: false,
+        top: false,
+        bottom: false
+      }
+    }
+  });
+  assert.notEqual(greyRetainerResult.outputValidation?.status, "Failed", "grey branded retainer regression should process without failing");
+  assert.doesNotMatch(
+    (greyRetainerResult.outputValidation?.warnings ?? []).join(" "),
+    /full-source review fallback/i,
+    "grey branded retainer regression must not use the full-source fallback"
+  );
+  const greyRetainerProcessed = getUploadedObject("processed-images", greyRetainerResult.processedStoragePath);
+  await assertValidProcessedImage(greyRetainerProcessed, "grey branded retainer processed regression");
+  await writeFile(path.join(artifactDir, "grey-branded-retainer-processed-regression.webp"), greyRetainerProcessed);
+
+  const aztechContaminatedSource = await toPng(`
+    <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="720" fill="#eceae6"/>
+      <g opacity="0.22" fill="none" stroke="#6e6e6e" stroke-width="11">
+        <path d="M270 120 C300 100 420 100 450 120 L450 156 C430 172 410 178 405 205 L450 170 L450 223 L405 258 L450 258 L450 311 L405 338 L405 365 L315 365 L315 338 L270 311 L270 258 L315 258 L270 223 L270 170 L315 205 C310 178 290 172 270 156 Z"/>
+        <circle cx="360" cy="350" r="215"/>
+      </g>
+      <text x="360" y="525" font-family="Arial Black, Arial, Helvetica, sans-serif" text-anchor="middle" font-size="86" font-weight="900" fill="#555555" opacity="0.74">AZTECH</text>
+      <text x="420" y="595" font-family="Arial Black, Arial, Helvetica, sans-serif" text-anchor="middle" font-size="48" font-weight="900" fill="#555555" opacity="0.7">ON</text>
+      <g transform="translate(360 340)">
+        <ellipse cx="0" cy="0" rx="116" ry="86" fill="#b7773f"/>
+        <ellipse cx="0" cy="-4" rx="102" ry="72" fill="#cd8d51"/>
+        <ellipse cx="0" cy="64" rx="104" ry="34" fill="#8f532b"/>
+        <circle cx="-58" cy="-32" r="18" fill="#6b351c"/>
+        <circle cx="-20" cy="-44" r="18" fill="#6b351c"/>
+        <circle cx="28" cy="-44" r="18" fill="#6b351c"/>
+        <circle cx="68" cy="-28" r="18" fill="#6b351c"/>
+        <circle cx="-62" cy="18" r="20" fill="#6b351c"/>
+        <circle cx="-18" cy="30" r="20" fill="#6b351c"/>
+        <circle cx="30" cy="30" r="20" fill="#6b351c"/>
+        <circle cx="72" cy="16" r="20" fill="#6b351c"/>
+        <text x="6" y="-2" font-family="Arial Black, Arial, Helvetica, sans-serif" text-anchor="middle" font-size="42" font-weight="900" fill="#364047" transform="rotate(22)">A7</text>
+      </g>
+    </svg>
+  `);
+  await writeFile(path.join(fixtureDir, "aztech-contaminated-source.png"), aztechContaminatedSource);
+  const aztechResult = await processImageForProduct({
+    imageJobId: "matrix-aztech-contaminated-regression",
+    userId: "matrix-user",
+    imageUrl: "uploaded://aztech-contaminated-source.png",
+    imageBuffer: aztechContaminatedSource,
+    imageContentType: "image/png",
+    background: "white",
+    settings: {
+      preserveProductExactly: false,
+      processingMode: "standard_ecommerce_cleanup",
+      promptVersion: "ecommerce_preserve_v2",
+      autoFailIfProductAltered: false,
+      preserveFallbackFromStrictMode: false,
+      output: {
+        size: 1024,
+        aspectRatio: "1:1"
+      },
+      background: {
+        source: "preset",
+        preset: "white",
+        customBackgroundUrl: null,
+        customBackgroundId: null
+      },
+      framing: {
+        mode: "auto",
+        smartScaling: true,
+        padding: 6,
+        targetCoverage: 86,
+        useTargetCoverage: false,
+        preserveTransparentEdges: true
+      },
+      shadow: {
+        mode: "under",
+        strength: "medium",
+        opacity: 24,
+        blur: 24,
+        offsetX: 0,
+        offsetY: 0,
+        spread: 100,
+        softness: 60,
+        color: "#000000"
+      },
+      lighting: {
+        enabled: true,
+        mode: "auto",
+        brightness: 0,
+        contrast: 0,
+        highlightRecovery: true,
+        shadowLift: true,
+        neutralizeTint: true,
+        strength: "medium"
+      },
+      debugArtifacts: true
+    },
+    jobOverrides: {
+      productId: "aztech-contaminated-regression",
+      imageId: "aztech-contaminated-main",
+      edgeToEdge: {
+        enabled: false,
+        left: false,
+        right: false,
+        top: false,
+        bottom: false
+      }
+    }
+  });
+  assert.notEqual(aztechResult.outputValidation?.status, "Failed", "AZTECH contaminated source regression should process successfully");
+  assert.doesNotMatch(
+    (aztechResult.outputValidation?.warnings ?? []).join(" "),
+    /full-source review fallback/i,
+    "AZTECH contaminated source regression must not use the full-source fallback"
+  );
+  const aztechProcessed = getUploadedObject("processed-images", aztechResult.processedStoragePath);
+  await assertValidProcessedImage(aztechProcessed, "AZTECH contaminated processed regression");
+  await writeFile(path.join(artifactDir, "aztech-contaminated-processed-regression.webp"), aztechProcessed);
+  await assertNoLargeBackgroundTextArtifacts(aztechProcessed, "AZTECH contaminated processed regression");
 
   const extremeMessage = getExtremeFineDetailFailureMessage([
     "Preserve mode rejected the mask because grass and hair-like fibers are entangled with a visually similar background.",

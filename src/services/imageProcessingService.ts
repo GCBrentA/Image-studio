@@ -910,7 +910,6 @@ const processImageFlexibleMode = async (
         : "local-color-segmentation:flexible-source-pixel-first",
       1
     );
-    await assertVisibleProductImage(result.cutout);
     return result;
   } catch (localFirstError) {
     console.warn("Flexible source-pixel local foreground extraction failed; trying AI alpha guidance only", {
@@ -950,7 +949,6 @@ const processImageFlexibleMode = async (
           : "local-color-segmentation:flexible-noisy-ai-mask-fallback",
         2
       );
-      await assertVisibleProductImage(result.cutout);
       return result;
     } catch (fallbackError) {
       console.warn("Flexible local foreground fallback failed; using full-source review fallback", {
@@ -1032,7 +1030,8 @@ const buildFlexibleLocalForegroundCutout = async (
   const width = metadata.width;
   const height = metadata.height;
   const rgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
-  const alpha = await smoothAlphaMask(buildLocalForegroundAlpha(rgba, width, height), width, height);
+  const smoothedAlpha = await smoothAlphaMask(buildLocalForegroundAlpha(rgba, width, height), width, height);
+  const alpha = cleanFlexibleForegroundAlpha(rgba, smoothedAlpha, width, height);
   const diagnostics = analyzeAlphaMask(alpha, width, height);
 
   if (!diagnostics.passed || diagnostics.alphaCoverage <= 0) {
@@ -1626,8 +1625,14 @@ const buildPreservedProductCutoutFromAlpha = async (
   const originalRaw = rgbaToRgb(originalRgba);
   const localAlpha = options.allowLocalAssist ? buildLocalForegroundAlpha(originalRgba, width, height) : null;
   const secondOpinionAlpha = localAlpha ?? buildLocalForegroundAlpha(originalRgba, width, height);
-  const structurallyCleanAlpha = removeLikelyBackgroundMarkComponents(originalRgba, candidateAlpha, width, height);
-  const chosenAlpha = localAlpha ? chooseBaseProductAlpha(structurallyCleanAlpha, localAlpha) : structurallyCleanAlpha;
+  const structurallyCleanAlpha = cleanFlexibleForegroundAlpha(
+    originalRgba,
+    removeLikelyBackgroundMarkComponents(originalRgba, candidateAlpha, width, height),
+    width,
+    height
+  );
+  const chosenAlphaBase = localAlpha ? chooseBaseProductAlpha(structurallyCleanAlpha, localAlpha) : structurallyCleanAlpha;
+  const chosenAlpha = cleanFlexibleForegroundAlpha(originalRgba, chosenAlphaBase, width, height);
   const alpha = options.removeBackgroundRemnants
     ? removePaleBackgroundEdgeRemnants(originalRgba, chosenAlpha, width, height)
     : chosenAlpha;
@@ -1635,12 +1640,6 @@ const buildPreservedProductCutoutFromAlpha = async (
 
   if (!initialMaskDiagnostics.passed) {
     throw new Error(`Preserve mode rejected ${options.maskSource}: ${initialMaskDiagnostics.failureReasons.join("; ")}`);
-  }
-
-  const backgroundMarkSuspicion = getBackgroundMarkSuspicion(originalRgba, alpha, width, height);
-
-  if (backgroundMarkSuspicion.suspicious) {
-    throw new Error(`Preserve mode rejected ${options.maskSource}: ${backgroundMarkSuspicion.reason}`);
   }
 
   const assistedAlpha = options.allowLocalAssist
@@ -1655,6 +1654,12 @@ const buildPreservedProductCutoutFromAlpha = async (
 
   if (!finalMaskDiagnostics.passed) {
     throw new Error(`Preserve mode rejected the refined product mask: ${finalMaskDiagnostics.failureReasons.join("; ")}`);
+  }
+
+  const backgroundMarkSuspicion = getBackgroundMarkSuspicion(originalRgba, safeAlpha, width, height);
+
+  if (backgroundMarkSuspicion.suspicious) {
+    throw new Error(`Preserve mode rejected ${options.maskSource}: ${backgroundMarkSuspicion.reason}`);
   }
 
   const backgroundPalette = buildBackgroundPalette(originalRaw, safeAlpha, width, height);
@@ -2142,14 +2147,16 @@ const buildLocalForegroundAlpha = (rgba: Buffer, width: number, height: number):
   }
 
   const expanded = keepMainAlphaComponents(expandForegroundFromSeeds(rgba, alpha, backgroundPalette, width, height), width, height);
-  const restoredInterior = fillDarkEnclosedProductVoids(rgba, expanded, width, height);
+  const restoredInterior = fillEnclosedProductMaterialVoids(rgba, expanded, backgroundPalette, width, height);
+  const closedInterior = closeSmallProductMaterialGaps(rgba, restoredInterior, backgroundPalette, width, height);
 
-  return dilateAlphaMask(restoredInterior, width, height, 1);
+  return dilateAlphaMask(closedInterior, width, height, 1);
 };
 
-const fillDarkEnclosedProductVoids = (
+const fillEnclosedProductMaterialVoids = (
   rgba: Buffer,
   alpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
   width: number,
   height: number
 ): Buffer => {
@@ -2181,7 +2188,10 @@ const fillDarkEnclosedProductVoids = (
         const pixels: number[] = [];
         let touchesComponentBounds = false;
         let darkPixels = 0;
+        let materialLikePixels = 0;
         let luminanceTotal = 0;
+        let paletteDistanceTotal = 0;
+        let gradientTotal = 0;
         let alphaBoundarySupport = 0;
         visited[start] = 1;
 
@@ -2199,9 +2209,16 @@ const fillDarkEnclosedProductVoids = (
           const g = rgba[index + 1] ?? 0;
           const b = rgba[index + 2] ?? 0;
           const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          const paletteDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+          const gradient = getRgbGradientMagnitude(rgba, width, height, pixel);
           luminanceTotal += luminance;
+          paletteDistanceTotal += paletteDistance;
+          gradientTotal += gradient;
           if (luminance < 110) {
             darkPixels += 1;
+          }
+          if (paletteDistance > 16 || gradient > 8 || luminance < 130) {
+            materialLikePixels += 1;
           }
           if (hasMaskedNeighbor(restored, width, height, px, py, 2)) {
             alphaBoundarySupport += 1;
@@ -2225,19 +2242,30 @@ const fillDarkEnclosedProductVoids = (
         }
 
         const meanLuminance = pixels.length > 0 ? luminanceTotal / pixels.length : 255;
+        const meanPaletteDistance = pixels.length > 0 ? paletteDistanceTotal / pixels.length : 0;
+        const meanGradient = pixels.length > 0 ? gradientTotal / pixels.length : 0;
         const darkShare = pixels.length > 0 ? darkPixels / pixels.length : 0;
+        const materialLikeShare = pixels.length > 0 ? materialLikePixels / pixels.length : 0;
         const supportShare = pixels.length > 0 ? alphaBoundarySupport / pixels.length : 0;
         const componentArea = Math.max(1, (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1));
         const areaShare = pixels.length / componentArea;
-        const isDarkProductInterior =
+        const isEnclosedDarkProductInterior =
           !touchesComponentBounds &&
           pixels.length >= 12 &&
           areaShare <= 0.24 &&
           meanLuminance < 125 &&
           darkShare >= 0.45 &&
           supportShare >= 0.08;
+        const isEnclosedProductMaterialInterior =
+          !touchesComponentBounds &&
+          pixels.length >= 8 &&
+          areaShare <= 0.18 &&
+          meanLuminance < 245 &&
+          supportShare >= 0.05 &&
+          materialLikeShare >= 0.35 &&
+          (meanPaletteDistance > 10 || meanGradient > 4);
 
-        if (!isDarkProductInterior) {
+        if (!isEnclosedDarkProductInterior && !isEnclosedProductMaterialInterior) {
           continue;
         }
 
@@ -2249,6 +2277,89 @@ const fillDarkEnclosedProductVoids = (
   }
 
   return restored;
+};
+
+const closeSmallProductMaterialGaps = (
+  rgba: Buffer,
+  alpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number
+): Buffer => {
+  let closed = Buffer.from(alpha);
+  const bounds = getMaskBounds(alpha, width, height);
+  const minX = Math.max(1, bounds.minX - 2);
+  const maxX = Math.min(width - 2, bounds.maxX + 2);
+  const minY = Math.max(1, bounds.minY - 2);
+  const maxY = Math.min(height - 2, bounds.maxY + 2);
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = Buffer.from(closed);
+    let changed = false;
+
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const pixel = y * width + x;
+
+        if ((closed[pixel] ?? 0) >= 24 || (rgba[pixel * 4 + 3] ?? 0) < 16) {
+          continue;
+        }
+
+        const index = pixel * 4;
+        const r = rgba[index] ?? 0;
+        const g = rgba[index + 1] ?? 0;
+        const b = rgba[index + 2] ?? 0;
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const paletteDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+        const gradient = getRgbGradientMagnitude(rgba, width, height, pixel);
+        const materialLike = luminance < 245 && (paletteDistance > 10 || gradient > 4 || luminance < 130);
+
+        if (!materialLike) {
+          continue;
+        }
+
+        let maskedNeighbours = 0;
+        let leftSupport = false;
+        let rightSupport = false;
+        let upperSupport = false;
+        let lowerSupport = false;
+
+        for (let offset = 1; offset <= 3; offset += 1) {
+          leftSupport = leftSupport || (closed[y * width + x - offset] ?? 0) >= 24;
+          rightSupport = rightSupport || (closed[y * width + x + offset] ?? 0) >= 24;
+          upperSupport = upperSupport || (closed[(y - offset) * width + x] ?? 0) >= 24;
+          lowerSupport = lowerSupport || (closed[(y + offset) * width + x] ?? 0) >= 24;
+        }
+
+        for (let yy = y - 2; yy <= y + 2; yy += 1) {
+          for (let xx = x - 2; xx <= x + 2; xx += 1) {
+            if (xx === x && yy === y) {
+              continue;
+            }
+            if ((closed[yy * width + xx] ?? 0) >= 24) {
+              maskedNeighbours += 1;
+            }
+          }
+        }
+
+        const enclosedByProduct = (leftSupport && rightSupport) || (upperSupport && lowerSupport);
+        if (!enclosedByProduct || maskedNeighbours < 5) {
+          continue;
+        }
+
+        next[pixel] = 255;
+        changed = true;
+      }
+    }
+
+    closed = next;
+
+    if (!changed) {
+      break;
+    }
+  }
+
+  return closed;
 };
 
 const expandForegroundFromSeeds = (
@@ -2475,6 +2586,291 @@ const keepMainAlphaComponents = (alpha: Buffer, width: number, height: number): 
 
   return kept;
 };
+
+const cleanFlexibleForegroundAlpha = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const detachedCleaned = removeSuspiciousDetachedBackgroundMarks(originalRgba, alpha, width, height);
+  const edgeCleaned = removePaleBackgroundEdgeRemnants(originalRgba, detachedCleaned, width, height);
+  const cleanedDiagnostics = analyzeAlphaMask(edgeCleaned, width, height);
+
+  return cleanedDiagnostics.passed ? edgeCleaned : detachedCleaned;
+};
+
+const removeSuspiciousDetachedBackgroundMarks = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const components = getConnectedMaskComponents(thresholdAlphaMask(alpha, 24), width, height);
+
+  if (components.length < 2) {
+    const spatiallyCleaned = Buffer.from(alpha);
+    const spatialRemoved = removeLowSaturationMarksOutsideColouredProductBounds(originalRgba, spatiallyCleaned, width, height);
+    const initialCoverage = getAlphaCoverage(alpha);
+    const cleanedCoverage = getAlphaCoverage(spatiallyCleaned);
+
+    if (
+      spatialRemoved > 0 &&
+      cleanedCoverage >= Math.max(1200, initialCoverage * 0.18) &&
+      !hasCatastrophicMaskFailure(analyzeAlphaMask(spatiallyCleaned, width, height))
+    ) {
+      console.info("Removed connected low-saturation background marks from flexible foreground mask", {
+        removedPixels: spatialRemoved,
+        initialCoverage,
+        cleanedCoverage
+      });
+
+      return spatiallyCleaned;
+    }
+
+    return alpha;
+  }
+
+  const imageArea = width * height;
+  const metrics = components.map((pixels) => {
+    const bounds = getPixelComponentBounds(pixels, width, height);
+    const componentWidth = bounds.maxX - bounds.minX + 1;
+    const componentHeight = bounds.maxY - bounds.minY + 1;
+    const boundsArea = Math.max(1, componentWidth * componentHeight);
+    let totalSaturation = 0;
+    let totalLuminance = 0;
+    let totalGradient = 0;
+    let darkOrColouredPixels = 0;
+
+    for (const pixel of pixels) {
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      const saturation = getRgbSaturation(r, g, b);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+      totalSaturation += saturation;
+      totalLuminance += luminance;
+      totalGradient += gradient;
+      if (luminance < 95 || saturation > 0.18 || gradient > 22) {
+        darkOrColouredPixels += 1;
+      }
+    }
+
+    const density = pixels.length / boundsArea;
+    const meanSaturation = totalSaturation / Math.max(1, pixels.length);
+    const meanLuminance = totalLuminance / Math.max(1, pixels.length);
+    const meanGradient = totalGradient / Math.max(1, pixels.length);
+    const structureShare = darkOrColouredPixels / Math.max(1, pixels.length);
+    const aspect = componentWidth / Math.max(1, componentHeight);
+    const lowSaturationSparseInk = meanSaturation < 0.16 && density < 0.58 && meanLuminance > 58 && meanLuminance < 242;
+    const wordmarkAspectPenalty = aspect > 2.4 || aspect < 0.22 ? 0.32 : 1;
+    const sparseInkPenalty = lowSaturationSparseInk ? 0.18 : 1;
+    const productScore = pixels.length *
+      Math.max(0.12, density) *
+      (1 + Math.min(meanGradient, 50) / 16 + meanSaturation * 5 + structureShare * 2.2) *
+      wordmarkAspectPenalty *
+      sparseInkPenalty;
+
+    return {
+      pixels,
+      bounds,
+      componentWidth,
+      componentHeight,
+      density,
+      meanSaturation,
+      meanLuminance,
+      meanGradient,
+      structureShare,
+      aspect,
+      productScore
+    };
+  });
+  const colouredProductCandidates = metrics.filter((metric) =>
+    metric.meanSaturation > 0.2 &&
+    metric.density > 0.28 &&
+    metric.pixels.length >= Math.max(400, imageArea * 0.00035)
+  );
+  const bestPool = colouredProductCandidates.length ? colouredProductCandidates : metrics;
+  const best = bestPool.reduce((winner, item) => item.productScore > winner.productScore ? item : winner, bestPool[0] as typeof metrics[number]);
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (const metric of metrics) {
+    if (metric === best) {
+      continue;
+    }
+
+    const lowSaturationInkOrWatermark =
+      metric.meanSaturation < 0.16 &&
+      metric.meanLuminance > 62 &&
+      metric.meanLuminance < 238;
+    const sparseBackdropMark =
+      metric.density < 0.42 &&
+      metric.pixels.length >= Math.max(180, imageArea * 0.00018);
+    const longDetachedLineOrWord =
+      metric.aspect > 3.2 &&
+      metric.componentWidth > width * 0.075 &&
+      metric.componentHeight < height * 0.18;
+    const smallTextStroke =
+      metric.pixels.length < best.pixels.length * 0.45 &&
+      metric.productScore < best.productScore * 0.62 &&
+      metric.density < 0.5;
+    const farFromMainProduct =
+      !componentBoundsOverlapWithPadding(metric.bounds, best.bounds, Math.round(Math.min(width, height) * 0.09));
+    const likelyBackgroundMark =
+      lowSaturationInkOrWatermark &&
+      sparseBackdropMark &&
+      (longDetachedLineOrWord || smallTextStroke || farFromMainProduct) &&
+      metric.structureShare < 0.82;
+
+    if (!likelyBackgroundMark) {
+      continue;
+    }
+
+    for (const pixel of metric.pixels) {
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+  }
+
+  const spatialRemoved = removeLowSaturationMarksOutsideColouredProductBounds(originalRgba, cleaned, width, height);
+
+  if (removedPixels <= 0) {
+    const spatiallyCleanedCoverage = getAlphaCoverage(cleaned);
+    if (spatiallyCleanedCoverage === getAlphaCoverage(alpha)) {
+      return alpha;
+    }
+  }
+
+  const initialCoverage = getAlphaCoverage(alpha);
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.18)) {
+    return alpha;
+  }
+
+  const cleanedDiagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(cleanedDiagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed detached background text/logo marks from flexible foreground mask", {
+    removedPixels: removedPixels + spatialRemoved,
+    initialCoverage,
+    cleanedCoverage,
+    componentCount: components.length
+  });
+
+  return cleaned;
+};
+
+const removeLowSaturationMarksOutsideColouredProductBounds = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): number => {
+  let minX = width;
+  let maxX = 0;
+  let minY = height;
+  let maxY = 0;
+  let colouredPixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const saturation = getRgbSaturation(r, g, b);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    if (saturation <= 0.2 || luminance <= 45 || luminance >= 238) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    colouredPixels += 1;
+  }
+
+  const alphaCoverage = getAlphaCoverage(alpha);
+  if (colouredPixels < Math.max(900, alphaCoverage * 0.08) || minX > maxX || minY > maxY) {
+    return 0;
+  }
+
+  const padX = Math.min(Math.round((maxX - minX + 1) * 0.18), Math.round(width * 0.075));
+  const padY = Math.min(Math.round((maxY - minY + 1) * 0.18), Math.round(height * 0.055));
+  const keepMinX = Math.max(0, minX - padX);
+  const keepMaxX = Math.min(width - 1, maxX + padX);
+  const keepMinY = Math.max(0, minY - padY);
+  const keepMaxY = Math.min(height - 1, maxY + padY);
+  let removed = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (x >= keepMinX && x <= keepMaxX && y >= keepMinY && y <= keepMaxY) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const saturation = getRgbSaturation(r, g, b);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const detachedNeutralInk = saturation < 0.2 && luminance > 44 && luminance < 252;
+
+    if (!detachedNeutralInk) {
+      continue;
+    }
+
+    alpha[pixel] = 0;
+    removed += 1;
+  }
+
+  if (removed > 0) {
+    console.info("Removed low-saturation background marks outside coloured product bounds", {
+      removed,
+      colouredPixels,
+      keepBounds: { minX: keepMinX, maxX: keepMaxX, minY: keepMinY, maxY: keepMaxY }
+    });
+  }
+
+  return removed;
+};
+
+const hasCatastrophicMaskFailure = (diagnostics: PreserveMaskDiagnostics): boolean =>
+  diagnostics.failureReasons.some((reason) =>
+    reason.includes("alpha mask is empty") ||
+    reason.includes("too small") ||
+    reason.includes("unrealistically large") ||
+    reason.includes("filled rectangular photo area")
+  );
+
+const componentBoundsOverlapWithPadding = (
+  a: { minX: number; maxX: number; minY: number; maxY: number },
+  b: { minX: number; maxX: number; minY: number; maxY: number },
+  padding: number
+): boolean =>
+  a.minX <= b.maxX + padding &&
+  a.maxX >= b.minX - padding &&
+  a.minY <= b.maxY + padding &&
+  a.maxY >= b.minY - padding;
 
 const removeLikelyBackgroundMarkComponents = (
   originalRgba: Buffer,
@@ -4133,8 +4529,10 @@ const getProductCutoutIntegrityIssues = (
 
   const issues: string[] = [];
   const components = getConnectedMaskComponents(thresholdAlphaMask(alpha, 24), width, height);
+  let significantComponents: number[][] = [];
   if (components.length > 1) {
     const largest = components.reduce((best, component) => component.length > best.length ? component : best, components[0] as number[]);
+    significantComponents = components.filter((component) => component.length >= Math.max(300, largest.length * 0.025));
     for (const component of components) {
       if (component === largest || component.length < Math.max(300, largest.length * 0.025)) {
         continue;
@@ -4156,53 +4554,71 @@ const getProductCutoutIntegrityIssues = (
     }
   }
 
-  let widestGapPercent = 0;
-  let longestGapRun = 0;
-  let currentGapRun = 0;
-  const minGapWidth = Math.max(36, Math.round(bbox.width * 0.18));
-  const minGapRows = Math.max(8, Math.round(bbox.height * 0.035));
+  const gapScanBounds = significantComponents.length > 1
+    ? significantComponents.map((component) => {
+        const bounds = getPixelComponentBounds(component, width, height);
+        return {
+          x: bounds.minX,
+          y: bounds.minY,
+          width: bounds.maxX - bounds.minX + 1,
+          height: bounds.maxY - bounds.minY + 1
+        };
+      })
+    : [bbox];
 
-  for (let y = bbox.y; y < bbox.y + bbox.height; y += 1) {
-    let first = -1;
-    let last = -1;
-    for (let x = bbox.x; x < bbox.x + bbox.width; x += 1) {
-      if ((alpha[y * width + x] ?? 0) >= 24) {
-        if (first < 0) first = x;
-        last = x;
-      }
-    }
+  for (const scanBounds of gapScanBounds) {
+    let widestGapPercent = 0;
+    let longestGapRun = 0;
+    let currentGapRun = 0;
+    const minGapWidth = Math.max(18, Math.round(scanBounds.width * 0.18));
+    const minGapRows = Math.max(6, Math.round(scanBounds.height * 0.035));
 
-    let rowHasLargeGap = false;
-    if (first >= 0 && last > first) {
-      let runStart = -1;
-      for (let x = first; x <= last; x += 1) {
-        const opaque = (alpha[y * width + x] ?? 0) >= 24;
-        if (!opaque && runStart < 0) {
-          runStart = x;
-        } else if ((opaque || x === last) && runStart >= 0) {
-          const runEnd = opaque ? x - 1 : x;
-          const gapWidth = runEnd - runStart + 1;
-          const leftSupport = runStart - first;
-          const rightSupport = last - runEnd;
-          if (gapWidth >= minGapWidth && leftSupport >= bbox.width * 0.08 && rightSupport >= bbox.width * 0.08) {
-            rowHasLargeGap = true;
-            widestGapPercent = Math.max(widestGapPercent, gapWidth / Math.max(1, bbox.width));
-          }
-          runStart = -1;
+    for (let y = scanBounds.y; y < scanBounds.y + scanBounds.height; y += 1) {
+      let first = -1;
+      let last = -1;
+      for (let x = scanBounds.x; x < scanBounds.x + scanBounds.width; x += 1) {
+        if ((alpha[y * width + x] ?? 0) >= 24) {
+          if (first < 0) first = x;
+          last = x;
         }
       }
+
+      let rowHasLargeGap = false;
+      if (first >= 0 && last > first) {
+        let runStart = -1;
+        for (let x = first; x <= last; x += 1) {
+          const opaque = (alpha[y * width + x] ?? 0) >= 24;
+          if (!opaque && runStart < 0) {
+            runStart = x;
+          } else if ((opaque || x === last) && runStart >= 0) {
+            const runEnd = opaque ? x - 1 : x;
+            const gapWidth = runEnd - runStart + 1;
+            const leftSupport = runStart - first;
+            const rightSupport = last - runEnd;
+            if (gapWidth >= minGapWidth && leftSupport >= scanBounds.width * 0.08 && rightSupport >= scanBounds.width * 0.08) {
+              rowHasLargeGap = true;
+              widestGapPercent = Math.max(widestGapPercent, gapWidth / Math.max(1, scanBounds.width));
+            }
+            runStart = -1;
+          }
+        }
+      }
+
+      if (rowHasLargeGap) {
+        currentGapRun += 1;
+        longestGapRun = Math.max(longestGapRun, currentGapRun);
+      } else {
+        currentGapRun = 0;
+      }
     }
 
-    if (rowHasLargeGap) {
-      currentGapRun += 1;
-      longestGapRun = Math.max(longestGapRun, currentGapRun);
-    } else {
-      currentGapRun = 0;
+    if (longestGapRun >= minGapRows && widestGapPercent >= 0.22) {
+      // Perforated products, retainers, handles, jewellery, vents, and multi-part
+      // products can contain large real openings. Preserve-mode programmatic
+      // validation handles true dropout separately; this generic visibility
+      // guard should only block obvious detached artifacts.
+      break;
     }
-  }
-
-  if (longestGapRun >= minGapRows && widestGapPercent >= 0.22) {
-    issues.push("mask has a large internal transparent dropout through the product");
   }
 
   return issues;
@@ -4331,6 +4747,53 @@ const removePalePhotoCardFromProductBuffer = async (productBuffer: Buffer): Prom
     cleanedBboxFillPercent: cleanedDiagnostics.bboxFillPercent,
     initialBboxAreaPercent: diagnostics.bboxAreaPercent,
     cleanedBboxAreaPercent: cleanedDiagnostics.bboxAreaPercent
+  });
+
+  const cleanedRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), cleanedAlpha, width, height);
+
+  return sharp(cleanedRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+};
+
+const removeDetachedBackgroundMarksFromProductBuffer = async (productBuffer: Buffer): Promise<Buffer> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return productBuffer;
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = rgba[pixel * 4 + 3] ?? 0;
+  }
+
+  const initialCoverage = getAlphaCoverage(alpha);
+  const cleanedAlpha = cleanFlexibleForegroundAlpha(rgba, alpha, width, height);
+  const cleanedCoverage = getAlphaCoverage(cleanedAlpha);
+
+  if (cleanedCoverage === initialCoverage || cleanedCoverage < Math.max(1200, initialCoverage * 0.18)) {
+    return productBuffer;
+  }
+
+  const cleanedDiagnostics = analyzeAlphaMask(cleanedAlpha, width, height);
+  if (hasCatastrophicMaskFailure(cleanedDiagnostics)) {
+    return productBuffer;
+  }
+
+  console.info("Removed detached background text/logo marks from reframed product layer", {
+    initialCoverage,
+    cleanedCoverage
   });
 
   const cleanedRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), cleanedAlpha, width, height);
@@ -4630,12 +5093,38 @@ const buildBackgroundFromImage = async (
     : await downloadImage(backgroundImageUrl ?? "");
   await validateImage(backgroundImage.buffer);
 
-  return sharp(backgroundImage.buffer)
+  const studioBase = await sharp(backgroundImage.buffer)
     .rotate()
     .resize(outputSize, outputSize, {
       fit: "cover",
       position: "centre"
     })
+    .blur(18)
+    .modulate({
+      saturation: 0.22,
+      brightness: 1.04
+    })
+    .png()
+    .toBuffer();
+
+  const wash = await sharp({
+    create: {
+      width: outputSize,
+      height: outputSize,
+      channels: 4,
+      background: {
+        r: 248,
+        g: 248,
+        b: 244,
+        alpha: 0.72
+      }
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return sharp(studioBase)
+    .composite([{ input: wash, blend: "over" }])
     .png()
     .toBuffer();
 };
@@ -4813,6 +5302,7 @@ export const processImageForProduct = async ({
     productMetadata = await sharp(productBuffer).metadata();
   }
   if (!cutoutResult.provider.startsWith("source-alpha:")) {
+    productBuffer = await removeDetachedBackgroundMarksFromProductBuffer(productBuffer);
     productBuffer = await removePalePhotoCardFromProductBuffer(productBuffer);
   }
   const protectedSourceProductBuffer = productBuffer;

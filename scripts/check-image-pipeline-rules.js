@@ -83,7 +83,9 @@ assert.doesNotMatch(imageProcessing, /Flexible mode could not produce a product-
 assert.match(imageProcessing, /Product cutout is too faint after background removal/, "product visibility validation rejects faint striped cutouts");
 assert.match(imageProcessing, /horizontal scanline artifacts after background removal/, "product visibility validation rejects striped scanline cutouts");
 assert.match(imageProcessing, /mask includes a long detached background strip/, "product cutout integrity rejects retained background strips");
-assert.match(imageProcessing, /large internal transparent dropout through the product/, "product cutout integrity rejects missing product interiors");
+assert.match(imageProcessing, /Preserve-mode programmatic[\s\S]*validation handles true dropout separately/, "generic product visibility guard allows real product holes while preserve validation handles true dropouts");
+assert.match(imageProcessing, /removeSuspiciousDetachedBackgroundMarks/, "product cutout integrity removes retained background text and logo marks");
+assert.match(imageProcessing, /Remove[d]? low-saturation background marks outside coloured product bounds/i, "product cutout integrity strips low-saturation background lettering around coloured products");
 assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
 assert.match(imageProcessing, /protectedProductValidation/, "output validation stores protected product metrics");
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
