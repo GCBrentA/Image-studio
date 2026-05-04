@@ -42,6 +42,8 @@ tmp/imgly-clean-1.png
 tmp/imgly-clean-2.png
 tmp/imgly-foreground.png
 tmp/imgly-mask.png
+tmp/image-processing-matrix-artifacts/
+tmp/image-processing-matrix-fixtures/
 tmp/local-backend.err.log
 tmp/local-backend.out.log
 tmp/local-preserve-review-2/ai_cutout.png

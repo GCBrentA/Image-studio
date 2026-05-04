@@ -11,7 +11,6 @@ import {
   removeImageBackgroundWithSpecialistModel
 } from "./backgroundRemovalService";
 import {
-  combinePreserveQaResults,
   type PreserveModeFailReason,
   type PreserveModeProgrammaticValidation,
   validatePreserveModeProgrammatic
@@ -316,6 +315,37 @@ class PreserveModeProgrammaticValidationError extends Error {
     this.validation = validation;
   }
 }
+
+export const getExtremeFineDetailFailureMessage = (reasons: string[]): string | null => {
+  const text = reasons.join(" ").toLowerCase();
+  const fineDetailIndicators = [
+    "fine detail",
+    "hair",
+    "hair-like",
+    "fibre",
+    "fiber",
+    "fringe",
+    "fur",
+    "grass",
+    "lace",
+    "mesh",
+    "netting",
+    "transparent lace",
+    "thin structure",
+    "thin structures",
+    "complex boundary",
+    "visually similar background",
+    "entangled",
+    "many detached",
+    "too many connected components"
+  ];
+
+  if (!fineDetailIndicators.some((indicator) => text.includes(indicator))) {
+    return null;
+  }
+
+  return "This product image has very fine product/background detail interaction, such as hair-like fibers, mesh, lace, grass, fringe, transparent material, or visually similar background texture. Optivra could not reliably replace the background without risking missing product detail or changing the product. Use a cleaner source photo with more separation between the product and background, or review/edit this image manually.";
+};
 
 const sourceAlphaSoftEdgeFailReasons = new Set<PreserveModeFailReason>([
   "Edge Halo / Background Residue",
@@ -1034,6 +1064,11 @@ const buildFlexibleLocalForegroundCutout = async (
   };
 };
 
+export const __optiimstImageProcessingTestHooks = {
+  buildFlexibleFullSourceReviewCutout,
+  buildFlexibleLocalForegroundCutout
+};
+
 const getImageAlphaMaskDiagnostics = async (imageBuffer: Buffer): Promise<PreserveMaskDiagnostics> => {
   const metadata = await sharp(imageBuffer).metadata();
 
@@ -1509,7 +1544,8 @@ const processImagePreserveMode = async (
   });
 
   throw new PreserveModeProcessingError(
-    "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output.",
+    getExtremeFineDetailFailureMessage(errors) ??
+      "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output.",
     debug
   );
 };
@@ -2105,12 +2141,114 @@ const buildLocalForegroundAlpha = (rgba: Buffer, width: number, height: number):
     }
   }
 
-  return dilateAlphaMask(
-    keepMainAlphaComponents(expandForegroundFromSeeds(rgba, alpha, backgroundPalette, width, height), width, height),
-    width,
-    height,
-    1
-  );
+  const expanded = keepMainAlphaComponents(expandForegroundFromSeeds(rgba, alpha, backgroundPalette, width, height), width, height);
+  const restoredInterior = fillDarkEnclosedProductVoids(rgba, expanded, width, height);
+
+  return dilateAlphaMask(restoredInterior, width, height, 1);
+};
+
+const fillDarkEnclosedProductVoids = (
+  rgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const restored = Buffer.from(alpha);
+  const productComponents = getConnectedMaskComponents(thresholdAlphaMask(alpha, 24), width, height)
+    .filter((component) => component.length >= Math.max(120, width * height * 0.0002));
+
+  for (const productComponent of productComponents) {
+    const bounds = getPixelComponentBounds(productComponent, width, height);
+    const minX = Math.max(0, bounds.minX + 1);
+    const maxX = Math.min(width - 1, bounds.maxX - 1);
+    const minY = Math.max(0, bounds.minY + 1);
+    const maxY = Math.min(height - 1, bounds.maxY - 1);
+
+    if (minX >= maxX || minY >= maxY) {
+      continue;
+    }
+
+    const visited = new Uint8Array(alpha.length);
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const start = y * width + x;
+
+        if (visited[start] || (restored[start] ?? 0) >= 24) {
+          continue;
+        }
+
+        const stack = [start];
+        const pixels: number[] = [];
+        let touchesComponentBounds = false;
+        let darkPixels = 0;
+        let luminanceTotal = 0;
+        let alphaBoundarySupport = 0;
+        visited[start] = 1;
+
+        while (stack.length > 0) {
+          const pixel = stack.pop() as number;
+          const px = pixel % width;
+          const py = Math.floor(pixel / width);
+
+          if (px <= minX || px >= maxX || py <= minY || py >= maxY) {
+            touchesComponentBounds = true;
+          }
+
+          const index = pixel * 4;
+          const r = rgba[index] ?? 0;
+          const g = rgba[index + 1] ?? 0;
+          const b = rgba[index + 2] ?? 0;
+          const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          luminanceTotal += luminance;
+          if (luminance < 110) {
+            darkPixels += 1;
+          }
+          if (hasMaskedNeighbor(restored, width, height, px, py, 2)) {
+            alphaBoundarySupport += 1;
+          }
+          pixels.push(pixel);
+
+          const neighbours = [
+            px > minX ? pixel - 1 : -1,
+            px < maxX ? pixel + 1 : -1,
+            py > minY ? pixel - width : -1,
+            py < maxY ? pixel + width : -1
+          ];
+
+          for (const next of neighbours) {
+            if (next < 0 || visited[next] || (restored[next] ?? 0) >= 24) {
+              continue;
+            }
+            visited[next] = 1;
+            stack.push(next);
+          }
+        }
+
+        const meanLuminance = pixels.length > 0 ? luminanceTotal / pixels.length : 255;
+        const darkShare = pixels.length > 0 ? darkPixels / pixels.length : 0;
+        const supportShare = pixels.length > 0 ? alphaBoundarySupport / pixels.length : 0;
+        const componentArea = Math.max(1, (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1));
+        const areaShare = pixels.length / componentArea;
+        const isDarkProductInterior =
+          !touchesComponentBounds &&
+          pixels.length >= 12 &&
+          areaShare <= 0.24 &&
+          meanLuminance < 125 &&
+          darkShare >= 0.45 &&
+          supportShare >= 0.08;
+
+        if (!isDarkProductInterior) {
+          continue;
+        }
+
+        for (const pixel of pixels) {
+          restored[pixel] = 255;
+        }
+      }
+    }
+  }
+
+  return restored;
 };
 
 const expandForegroundFromSeeds = (
@@ -4703,7 +4841,7 @@ export const processImageForProduct = async ({
   const protectedProductValidation = await validateProtectedProductRegion({
     sourceProductBuffer: protectedSourceProductBuffer,
     finalProductBuffer: productBuffer,
-    preserveMode: true
+    preserveMode: preserveProductExactly
   });
   const productDiffHeatmap = savePipelineDebugAssets
     ? await buildProductDiffHeatmap(protectedSourceProductBuffer, productBuffer)
@@ -4924,13 +5062,19 @@ export const processImageForProduct = async ({
       edgeHaloOverlay: isSourceAlphaPreserve || isSourceLockedSoftEdgeAccepted ? undefined : cutoutResult.preserveDebug.programmaticValidation?.overlays.edgeHaloOverlay,
       dropoutOverlay: cutoutResult.debugInteriorDropoutOverlay
     });
-    const visionQa = (isSourceAlphaPreserve || isSourceLockedSoftEdgeAccepted) && outputValidation.status === "Passed"
+    const visionQa = (isSourceAlphaPreserve || isSourceLockedSoftEdgeAccepted) && outputValidation.status !== "Failed"
       ? markSourceLockedVisionQaAdvisory(rawVisionQa)
       : rawVisionQa;
     cutoutResult.preserveDebug.visionQa = visionQa;
+    const combinedPreserveStatus = !visionQa.passed
+      ? "Failed"
+      : outputValidation.status === "Failed"
+        ? "Failed"
+        : outputValidation.status;
+
     outputValidation = {
       ...outputValidation,
-      status: combinePreserveQaResults(outputValidation.status === "Passed", visionQa.passed),
+      status: combinedPreserveStatus,
       checks: {
         ...outputValidation.checks,
         visionQa: visionQa.passed ? "Passed" : "Failed"
@@ -4965,7 +5109,7 @@ export const processImageForProduct = async ({
       "application/json"
     );
 
-    if (outputValidation.status !== "Passed") {
+    if (outputValidation.status === "Failed") {
       cutoutResult.preserveDebug.finalStatus = "failed";
       cutoutResult.preserveDebug.failureReason = outputValidation.failureReasons.join("; ") || "Preserve mode failed ecommerce QA.";
       throw new PreserveModeProcessingError(cutoutResult.preserveDebug.failureReason, cutoutResult.preserveDebug);

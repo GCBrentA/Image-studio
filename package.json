@@ -33,7 +33,8 @@
     "test:preserve-debug": "node scripts/check-preserve-debug.js",
     "test:preserve-architecture": "tsx scripts/check-preserve-architecture.ts",
     "test:product-protection": "tsx scripts/check-product-protection-validation.ts",
-    "test:image-pipeline": "node scripts/check-image-pipeline-rules.js"
+    "test:image-pipeline": "node scripts/check-image-pipeline-rules.js",
+    "test:image-processing-matrix": "tsx scripts/check-image-processing-matrix.ts"
   },
   "keywords": [
     "optivra",

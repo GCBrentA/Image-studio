@@ -32,7 +32,7 @@ assert.match(imageStudioAuth, /previous_api_token_hash:[\s\S]*in: tokenHashes/, 
 assert.match(apiTokenAuth, /embeddedTokenExtracted/, "usage/image auth logs safe embedded-token diagnostics");
 assert.match(imageStudioAuth, /embeddedTokenExtracted/, "audit auth logs safe embedded-token diagnostics");
 assert.match(siteService, /previous_api_token_hash: existingSite\.api_token_hash/, "site token rotation stores the previous token hash");
-assert.match(backgroundRemoval, /Preserve the product exactly as it appears/, "prompt includes strict preservation wording");
+assert.match(backgroundRemoval, /Do not alter the product\. Preserve the exact product pixels/, "prompt includes strict preservation wording");
 assert.match(backgroundRemoval, /Do not change the product\. Do not modify the object\. Do not alter the silhouette/, "prompt includes no alteration rules");
 assert.match(backgroundRemoval, /Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret/, "prompt blocks product modification");
 
@@ -87,7 +87,7 @@ assert.match(imageProcessing, /large internal transparent dropout through the pr
 assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
 assert.match(imageProcessing, /protectedProductValidation/, "output validation stores protected product metrics");
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
-assert.match(imageProcessing, /preserveMode: true\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation is pixel-strict even when pixel-perfect mode is off");
+assert.match(imageProcessing, /preserveMode: preserveProductExactly\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation uses strict thresholds only in pixel-perfect mode");
 assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");
 assert.doesNotMatch(imageProcessing, /linearGradient id="bg"|fill="url\(#bg\)"/, "generated default backgrounds must not introduce horizontal gradient bands");
 assert.match(imageProcessing, /product_diff_heatmap/, "debug artifacts include product diff heatmaps");

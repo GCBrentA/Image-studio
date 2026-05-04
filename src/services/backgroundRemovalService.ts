@@ -18,19 +18,22 @@ export const openAiImageEditQuality = "high";
 export const openAiImageEditSize = "1024x1024";
 
 const negativeProductInstructionBlock =
-  "Do not change the product. Do not modify the object. Do not alter the silhouette. Do not redraw the item. Do not invent details. Do not remove details. Do not crop the product. Do not leave excessive whitespace. Do not make the background dark, textured, wooden, lifestyle, dramatic, cluttered, or busy. Do not add logos, text, labels, watermarks, reflections, props, hands, people, packaging, smoke, glow, or extra objects.";
+  "Do not change the product. Do not modify the object. Do not alter the silhouette. Do not redraw the item. Do not invent details. Do not remove details. Do not crop the product. Do not change, rewrite, blur, distort, remove, add, or reinterpret any product logos, labels, visible text, markings, branding, graphics, packaging design, texture, reflections, materials, proportions, or sellable features. Do not leave excessive whitespace. Do not make the background dark, textured, wooden, lifestyle, dramatic, cluttered, or busy. Do not add logos, text, labels, watermarks, reflections, props, hands, people, packaging, smoke, glow, or extra objects.";
 
 const strictProductPreservationBlock =
-  "Preserve the product exactly as it appears in the original image. The product itself must remain pixel-faithful in shape, proportions, silhouette, parts, colour, markings, surface texture, materials, holes, screws, rails, barrel, stock, grip, magazine, seams, highlights, and all visible details. Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret the product. Do not add or remove any product parts. Do not change the product geometry. Do not change the product colour. Do not make the product look like a different item.";
+  "Do not alter the product. Preserve the exact product pixels, shape, silhouette, design, logos, visible text, labels, colours, proportions, geometry, branding, packaging, texture, reflections, materials, markings, surface details, holes, screws, seams, highlights, and all visible sellable details. Only the background/environment may change according to the selected background settings. Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret the product. Do not add or remove any product parts. Do not change the product geometry. Do not change the product colour. Do not make the product look like a different item.";
+
+const flexibleProductPreservationBlock =
+  "Preserve the product identity and design. Keep the same product shape, silhouette, proportions, branding, logos, visible text, labels, packaging design, colours, texture, materials, markings, and sellable appearance. Only minor adjustments needed for realistic background integration are allowed: subtle lighting harmonisation, soft shadow generation, slight edge blending, minor reflection adaptation, and small colour-temperature balancing. Do not redesign, redraw, recolour, simplify, invent features, remove details, change text or logos, alter geometry, or make the product look like a different item.";
 
 const preserveBackgroundReplacementPrompt =
   `Edit this image as a professional ecommerce product photo. ${strictProductPreservationBlock} Only remove the original background and replace it with a clean premium studio background. Create a clean light ecommerce background suitable for WooCommerce product pages and shopping feeds. Use an off-white or very light neutral grey background, not pure harsh white. Add a subtle realistic soft contact shadow beneath the product so it feels grounded, but do not obscure or alter the product. Keep the product horizontally aligned and centred. Crop and scale the final image so the product fills approximately 82-90% of the image width while maintaining comfortable margins. Do not crop any part of the product. Keep the entire product visible. Maintain natural contrast and detail, especially in black/dark parts. Do not crush shadows. Do not over-brighten. Do not over-sharpen. Do not blur edges. Preserve fine details around thin parts. Final output should look like a premium catalogue product image: clean, sharp, realistic, accurately preserved, well centred, correctly scaled, and ready for ecommerce use. ${negativeProductInstructionBlock}`;
 
 const standardBackgroundReplacementPrompt =
-  `Create a clean ecommerce product image from the supplied photo. Preserve the real product shape, proportions, colour, markings, texture, and visible parts. Remove the source background and use a clean light studio background with natural product contrast and a subtle grounding shadow. Minor presentation improvements are allowed only for background, framing, and lighting balance. Do not redesign, redraw, recolour, crop, or add product parts. ${negativeProductInstructionBlock}`;
+  `Create a clean ecommerce product image from the supplied photo. ${flexibleProductPreservationBlock} Remove the source background and use a clean light studio background with natural product contrast and a subtle grounding shadow. Minor presentation improvements are allowed only for background, framing, lighting balance, edge blending, shadow realism, and background integration. ${negativeProductInstructionBlock}`;
 
 const premiumStudioBackgroundPrompt =
-  `Create a premium studio ecommerce product presentation from the supplied photo. Preserve product geometry, proportions, silhouette, colours, materials, markings, and visible details. Improve only the background presentation, framing, and studio grounding shadow. The product must remain the same item and must not be redesigned, redrawn, simplified, or stylised. ${negativeProductInstructionBlock}`;
+  `Create a premium studio ecommerce product presentation from the supplied photo. ${flexibleProductPreservationBlock} Improve only the background presentation, framing, subtle lighting integration, edge blending, and studio grounding shadow. The product must remain the same item and must not be redesigned, redrawn, simplified, or stylised. ${negativeProductInstructionBlock}`;
 
 const seoProductFeedSafePrompt =
   `Create an SEO and product-feed-safe ecommerce product image. ${preserveBackgroundReplacementPrompt} The background must be clean, light, low-clutter, shopping-feed friendly, and free of props, text, logos, people, hands, packaging, and lifestyle context.`;
@@ -47,6 +50,28 @@ export const buildOpenAiImagePrompt = (variant: ImagePromptVariant): string => {
     default:
       return seoProductFeedSafePrompt;
   }
+};
+
+export const buildProductImageProcessingPrompt = ({
+  preserveProductExactly,
+  processingMode,
+  backgroundDescription
+}: {
+  preserveProductExactly: boolean;
+  processingMode: ImagePromptVariant | string;
+  backgroundDescription: string;
+}): string => {
+  const basePrompt = buildOpenAiImagePrompt(
+    processingMode === "premium_studio_background"
+      ? "premium_studio_background"
+      : processingMode === "standard_background_replacement" || processingMode === "standard_ecommerce_cleanup"
+        ? "standard_background_replacement"
+        : "seo_product_feed_preserve"
+  );
+  const preservation = preserveProductExactly ? strictProductPreservationBlock : flexibleProductPreservationBlock;
+  const background = backgroundDescription.trim() || "Use the selected clean ecommerce background settings.";
+
+  return `${preservation} User background settings: ${background}. ${basePrompt}`;
 };
 
 const preserveMaskPrompt =
