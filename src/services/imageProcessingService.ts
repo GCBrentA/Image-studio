@@ -1865,9 +1865,39 @@ const buildPreservedProductCutoutFromAlpha = async (
   const assistedAlpha = options.allowLocalAssist
     ? expandMaskWithOriginalForeground(originalRaw, alpha, width, height)
     : alpha;
-  const safeAlpha = options.allowLocalAssist
+  let safeAlpha = options.allowLocalAssist
     ? getSafeAlphaMask(alpha, await smoothAlphaMask(assistedAlpha, width, height))
     : alpha;
+
+  if (options.removeBackgroundRemnants) {
+    const postAssistCleaned = removePaleBackgroundEdgeRemnants(
+      originalRgba,
+      keepMainAlphaComponents(
+        removeNeutralEdgeResidueWithProductSupport(
+          originalRgba,
+          safeAlpha,
+          secondOpinionAlpha,
+          width,
+          height
+        ),
+        width,
+        height
+      ),
+      width,
+      height
+    );
+    const postAssistCoverage = getAlphaCoverage(postAssistCleaned);
+    const safeCoverage = getAlphaCoverage(safeAlpha);
+    const postAssistDiagnostics = analyzeAlphaMask(postAssistCleaned, width, height);
+
+    if (
+      postAssistCoverage >= Math.max(1200, safeCoverage * 0.56) &&
+      !hasCatastrophicMaskFailure(postAssistDiagnostics)
+    ) {
+      safeAlpha = postAssistCleaned;
+    }
+  }
+
   const finalMaskDiagnostics = options.allowLocalAssist
     ? analyzeAlphaMask(safeAlpha, width, height)
     : initialMaskDiagnostics;
