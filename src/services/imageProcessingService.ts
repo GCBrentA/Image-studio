@@ -3782,7 +3782,8 @@ const removeNeutralEdgeResidueWithProductSupport = (
     return alpha;
   }
 
-  const support = dilateBinaryAlphaMask(thresholdAlphaMask(supportAlpha, 24), width, height, 3);
+  const support = thresholdAlphaMask(supportAlpha, 24);
+  const trustedSupport = erodeBinaryAlphaMask(support, width, height, 1);
   const cleaned = Buffer.from(alpha);
   let removedPixels = 0;
 
@@ -3845,7 +3846,7 @@ const removeNeutralEdgeResidueWithProductSupport = (
           smoothNeutral &&
           (current[pixel] ?? 0) < 245 &&
           backgroundDistance < 116;
-        const nearProductCore = hasMaskedNeighbor(support, width, height, x, y, 2);
+        const nearProductCore = hasMaskedNeighbor(trustedSupport, width, height, x, y, 2);
         const trueDarkProductEdge =
           luminance < 42 ||
           saturation > 0.24 ||
