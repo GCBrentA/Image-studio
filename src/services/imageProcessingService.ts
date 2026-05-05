@@ -1898,6 +1898,15 @@ const buildPreservedProductCutoutFromAlpha = async (
     }
   }
 
+  safeAlpha = repairEdgeProductBiteMarks(
+    originalRgba,
+    safeAlpha,
+    chosenAlpha,
+    secondOpinionAlpha,
+    width,
+    height
+  );
+
   const finalMaskDiagnostics = options.allowLocalAssist
     ? analyzeAlphaMask(safeAlpha, width, height)
     : initialMaskDiagnostics;
@@ -3899,6 +3908,162 @@ const removeNeutralEdgeResidueWithProductSupport = (
   });
 
   return cleaned;
+};
+
+const repairEdgeProductBiteMarks = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  sourceAlpha: Buffer,
+  supportAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height);
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const support = thresholdAlphaMask(supportAlpha, 24);
+  const candidate = Buffer.alloc(alpha.length);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) >= 24 || (sourceAlpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (!hasMaskedNeighbor(alpha, width, height, x, y, 3) || !hasMaskedNeighbor(support, width, height, x, y, 5)) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const smoothBackground =
+      luminance > 194 &&
+      saturation < 0.12 &&
+      channelSpread < 44 &&
+      gradient < 8 &&
+      backgroundDistance < 72;
+    const productLike =
+      luminance < 248 &&
+      !smoothBackground &&
+      (
+        saturation > 0.08 ||
+        gradient > 6 ||
+        backgroundDistance > 18 ||
+        luminance < 128
+      );
+
+    if (productLike) {
+      candidate[pixel] = 255;
+    }
+  }
+
+  const components = getConnectedMaskComponents(candidate, width, height);
+  if (components.length === 0) {
+    return alpha;
+  }
+
+  const repaired = Buffer.from(alpha);
+  let restoredPixels = 0;
+  const maxComponentPixels = Math.max(80, Math.round(initialCoverage * 0.035));
+
+  for (const component of components) {
+    if (component.length > maxComponentPixels) {
+      continue;
+    }
+
+    let supportPixels = 0;
+    let edgeSupportPixels = 0;
+    let gradientTotal = 0;
+    let darkPixels = 0;
+    let smoothBackgroundPixels = 0;
+
+    for (const pixel of component) {
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+      const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+
+      if ((support[pixel] ?? 0) >= 24 || hasMaskedNeighbor(support, width, height, x, y, 2)) {
+        supportPixels += 1;
+      }
+      if (hasMaskedNeighbor(alpha, width, height, x, y, 2)) {
+        edgeSupportPixels += 1;
+      }
+      if (
+        luminance > 194 &&
+        saturation < 0.12 &&
+        channelSpread < 44 &&
+        gradient < 8 &&
+        backgroundDistance < 72
+      ) {
+        smoothBackgroundPixels += 1;
+      }
+      if (luminance < 128) {
+        darkPixels += 1;
+      }
+      gradientTotal += gradient;
+    }
+
+    const supportShare = supportPixels / component.length;
+    const edgeSupportShare = edgeSupportPixels / component.length;
+    const smoothBackgroundShare = smoothBackgroundPixels / component.length;
+    const meanGradient = gradientTotal / component.length;
+    const darkShare = darkPixels / component.length;
+    const restoreProductBite =
+      supportShare >= 0.18 &&
+      edgeSupportShare >= 0.22 &&
+      smoothBackgroundShare < 0.72 &&
+      (meanGradient > 5 || darkShare > 0.08 || supportShare > 0.38);
+
+    if (!restoreProductBite) {
+      continue;
+    }
+
+    for (const pixel of component) {
+      repaired[pixel] = 255;
+      restoredPixels += 1;
+    }
+  }
+
+  if (restoredPixels <= 0 || getAlphaCoverage(repaired) > initialCoverage * 1.16) {
+    return alpha;
+  }
+
+  const repairedDiagnostics = analyzeAlphaMask(repaired, width, height);
+  if (hasCatastrophicMaskFailure(repairedDiagnostics)) {
+    return alpha;
+  }
+
+  console.info("Repaired edge product bite marks in preserve mask", {
+    restoredPixels,
+    initialCoverage,
+    repairedCoverage: getAlphaCoverage(repaired)
+  });
+
+  return repaired;
 };
 
 const removeConnectedBackgroundPaletteRemnants = (
