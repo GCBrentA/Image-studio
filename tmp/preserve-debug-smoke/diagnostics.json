@@ -1,6 +1,6 @@
 {
   "preserveMode": true,
-  "fallbackMode": "fail_safe",
+  "fallbackMode": "strict_retry",
   "finalStatus": "failed",
   "maskSource": "failed",
   "attempts": 2,

@@ -62,7 +62,7 @@ const main = async () => {
 
   const diagnostics = {
     preserveMode: true,
-    fallbackMode: "fail_safe",
+    fallbackMode: "strict_retry",
     finalStatus: coverage === 0 ? "failed" : "completed",
     maskSource: coverage === 0 ? "failed" : "ai_mask",
     attempts: 2,

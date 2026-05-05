@@ -70,7 +70,7 @@ assert.doesNotMatch(backgroundRemoval, /editProductImageWithOpenAi/, "full produ
 assert.match(backgroundRemoval, /openAiImageEditQuality = "high"/, "OpenAI quality is high");
 assert.match(backgroundRemoval, /openAiImageEditSize = "1024x1024"/, "OpenAI size is 1024x1024");
 
-assert.match(imageProcessing, /const attempts = \[[\s\S]*attempt: 1[\s\S]*attempt: 2[\s\S]*\];/, "preserve mode retry is capped at two attempts");
+assert.match(imageProcessing, /const attempts = \[[\s\S]*attempt: 1[\s\S]*attempt: 2[\s\S]*attempt: 3[\s\S]*preserve-mask-hard-contamination[\s\S]*\];/, "preserve mode retries include a hard-contamination mask attempt before local rescue");
 assert.match(backgroundRemoval, /processImageFlexibleMode|flexible-cutout|BackgroundRemovalMode/, "standard mode uses the same image model path with one attempt");
 assert.match(imageProcessing, /raw AI product pixels rejected/, "standard mode rejects unsafe raw AI product pixels");
 assert.match(imageProcessing, /Flexible OpenAI alpha guidance failed/, "standard mode fallback covers AI cutout call failures and unsafe masks");
@@ -109,7 +109,7 @@ assert.match(productProtection, /bandingScore/, "product protection checks poste
 assert.match(imageController, /deductCredit[\s\S]*if \(!result\.creditDeductionRequired\)[\s\S]*const deduction = await deductCredit/s, "credits are deducted only after processing success");
 assert.match(imageController, /catch \(error\)[\s\S]*response\.status\(422\)/s, "failed processing returns without deducting credit");
 assert.match(creditService, /const getCurrentBalance[\s\S]*getCreditTotals\(userId, client\)[\s\S]*return totals\.credits_remaining;/, "credit deductions use ledger totals rather than the stale user mirror");
-assert.match(imageController, /Strict preserve mode failed; refusing non-pixel-perfect fallback/, "strict preserve failures fail safely instead of falling back to standard mode");
+assert.match(imageController, /Exact preserve mode exhausted source-locked methods without using a non-pixel-perfect fallback/, "strict preserve failures do not fall back to non-pixel-perfect output");
 assert.doesNotMatch(imageController, /preserveFallbackFromStrictMode: true|preserve_fallback: true/, "strict preserve responses must not complete as standard-mode fallbacks");
 assert.doesNotMatch(approvalManager, /process\(/, "approval manager does not auto-process or auto-apply failed outputs");
 

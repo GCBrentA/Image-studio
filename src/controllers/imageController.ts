@@ -213,11 +213,11 @@ export const processImage = async (
     const preserveDebug = getPreserveDebugFromError(error);
 
     if (preserveDebug) {
-      console.warn("Strict preserve mode failed; refusing non-pixel-perfect fallback", {
+      console.warn("Exact preserve mode exhausted source-locked methods without using a non-pixel-perfect fallback", {
         imageJobId: imageJob.id,
         userId: auth.userId,
         imageUrl: sourceImageUrl,
-        reason: error instanceof Error ? error.message : "Strict preserve mode failed validation."
+        reason: error instanceof Error ? error.message : "Exact preserve mode failed validation."
       });
     }
 

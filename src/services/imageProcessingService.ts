@@ -7,6 +7,7 @@ import {
   openAiImageEditModel,
   openAiImageEditQuality,
   openAiImageEditSize,
+  renderFlexibleStudioProductImage,
   removeImageBackground,
   removeImageBackgroundWithSpecialistModel
 } from "./backgroundRemovalService";
@@ -16,6 +17,7 @@ import {
   validatePreserveModeProgrammatic
 } from "./preserveModeValidationService";
 import {
+  runFlexibleStudioVisionQa,
   runPreserveVisionQa,
   type PreserveVisionQaResult
 } from "./preserveVisionQaService";
@@ -162,7 +164,7 @@ type CutoutResult = {
   preserveDebug?: PreserveDebugInfo;
 };
 
-type PreserveModeFallback = "fail_safe" | "local_experimental" | "external_provider";
+type PreserveModeFallback = "strict_retry" | "local_experimental" | "external_provider";
 type PreserveMaskSource = "ai_mask" | "local_fallback" | "source_alpha" | "failed";
 type PreserveRgbIntegrity = {
   passed: boolean;
@@ -837,6 +839,31 @@ const normalizeImageForOpenAi = async (imageBuffer: Buffer): Promise<Buffer> =>
     .png()
     .toBuffer();
 
+const normalizeImageForOpenAiStudioRender = async (imageBuffer: Buffer): Promise<Buffer> =>
+  sharp(imageBuffer)
+    .rotate()
+    .resize({
+      width: outputSize,
+      height: outputSize,
+      fit: "contain",
+      withoutEnlargement: false,
+      background: {
+        r: 247,
+        g: 247,
+        b: 244,
+        alpha: 1
+      }
+    })
+    .flatten({
+      background: {
+        r: 247,
+        g: 247,
+        b: 244
+      }
+    })
+    .png()
+    .toBuffer();
+
 const normalizeImageForPreservedProduct = async (imageBuffer: Buffer): Promise<Buffer> =>
   sharp(imageBuffer)
     .rotate()
@@ -1417,6 +1444,13 @@ const processImagePreserveMode = async (
       stage: "refining_edges" as const,
       alphaAlignment: "square-fill" as const,
       getMaskCutoutBuffer: () => removeImageBackground(openAiInput, "preserve-mask-refined")
+    },
+    {
+      provider: `openai:${openAiImageEditModel}:preserve-mask-hard-contamination`,
+      attempt: 3,
+      stage: "refining_edges" as const,
+      alphaAlignment: "square-fill" as const,
+      getMaskCutoutBuffer: () => removeImageBackground(openAiInput, "preserve-mask-hard-contamination")
     }
   ];
 
@@ -1480,9 +1514,9 @@ const processImagePreserveMode = async (
   }
 
   if (context.fallbackMode !== "external_provider") {
-    console.warn("Image preserve-mode source-locked local rescue enabled after provider mask rejection", {
-      imageJobId: context.imageJobId,
-      attempt: 3,
+      console.warn("Image preserve-mode source-locked local rescue enabled after provider mask rejection", {
+        imageJobId: context.imageJobId,
+      attempt: 4,
       fallbackMode: context.fallbackMode
     });
 
@@ -1538,7 +1572,7 @@ const processImagePreserveMode = async (
 
       return {
         ...fallback,
-        attempts: 3,
+        attempts: 4,
         preserveDebug: {
           ...debug,
           finalStatus: "validating_foreground_integrity",
@@ -1573,7 +1607,7 @@ const processImagePreserveMode = async (
   debug.finalStatus = "failed";
   debug.maskSource = "failed";
   debug.failureReason = failureReason;
-  console.error("Image preserve-mode failed safely", {
+  console.error("Image preserve-mode exhausted exact source-locked methods", {
     imageJobId: context.imageJobId,
     fallbackMode: context.fallbackMode,
     selectedMaskSource: "failed",
@@ -1587,7 +1621,7 @@ const processImagePreserveMode = async (
 
   throw new PreserveModeProcessingError(
     getExtremeFineDetailFailureMessage(errors) ??
-      "Preserve mode could not produce a trustworthy product mask. The job was stopped for manual review instead of completing a background-only or partial-product output.",
+      "Exact Product Preservation could not produce an artifact-free source-locked product mask after all available methods.",
     debug
   );
 };
@@ -1828,7 +1862,7 @@ const buildPreservedProductCutoutFromAlpha = async (
       preserveMode: true,
       promptVersion: ecommercePreservePromptVersion,
       processingMode: "seo_product_feed_safe_preserve_background_replacement",
-      fallbackMode: options.allowLocalAssist ? "local_experimental" : "fail_safe",
+      fallbackMode: options.allowLocalAssist ? "local_experimental" : "strict_retry",
       finalStatus: "validating_foreground_integrity",
       maskSource: options.maskSource,
       attempts,
@@ -4840,7 +4874,7 @@ const getPreserveModeFallback = (settings: Record<string, unknown>): PreserveMod
     return value;
   }
 
-  return "fail_safe";
+  return "strict_retry";
 };
 
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -6025,6 +6059,220 @@ const compositeSourceLockedProductLayers = async ({
     .toBuffer();
 };
 
+const flexibleStudioRecoveryInstructions = [
+  "Create a flawless professional WooCommerce product image from the supplied photo. Remove the old background, detached background watermarks/logos/text, baked-in alpha or mask outlines, jagged dark borders, grey/white halos, staircase cutout artifacts, and shadow bleed around the product. Preserve the same sellable product identity, shape, holes, openings, threading, tabs, screws, ridges, labels, printed product text, orientation, material, colour family, reflective finish, and fine geometry. Do not draw an outline around the product. Use a clean off-white ecommerce studio background and a very soft natural shadow only behind or beneath the product. The final product must have smooth anti-aliased professional edges and no visible mask artifacts.",
+  "Professional product retouching edit. Treat the original image as the reference for the actual product. Rebuild only the studio presentation: remove the source background, watermark, embedded halo, edge dirt, dark contour artifacts, cutout stair-stepping, and background fragments. Keep the product as the same object with the same proportions, openings, material finish, visible product markings, holes, tabs, ridges, screws, transparent areas, and orientation. Use a plain light grey/off-white background with subtle realistic shadow separated from the product. No visible alpha mask, no edge outline, no jagged contour, no background bleed, no extra objects, no new text.",
+  "Make a clean ecommerce catalogue photo of this exact product. Remove all background branding and every visible cutout/mask artifact. Preserve the real product, including silhouettes, negative spaces, transparent or dark openings, threads, tabs, labels, logos physically on the product, surface texture, and reflective finish. The product edges must be naturally anti-aliased with absolutely no dark fringe or grey halo. Place on a soft off-white studio background with a gentle shadow beneath only. Do not stylize, warp, crop, recolour, add text, or add extra objects."
+];
+
+const buildFlexibleStudioBackgroundDescription = (
+  background: string,
+  processingSettings: Record<string, unknown>
+): string => {
+  const backgroundSettings = getObject(processingSettings.background);
+  const preset = getString(backgroundSettings.preset, background);
+  const mode = getString(processingSettings.processingMode, "standard_background_replacement");
+
+  return [
+    `Selected background preset: ${preset}.`,
+    `Processing mode: ${mode}.`,
+    "Use a clean light ecommerce studio background with no logos, watermark, text, props, hands, people, packaging, clutter, or lifestyle scene.",
+    "Use only a soft realistic shadow separated from the product; do not let shadow become a product outline."
+  ].join(" ");
+};
+
+const processFlexibleOpenAiStudioRecovery = async ({
+  userId,
+  imageJobId,
+  originalImage,
+  originalImageHash,
+  originalStoragePath,
+  originalUploadedAt,
+  storageCleanupAfter,
+  seoMetadata,
+  preservedOriginalInput,
+  processingSettings,
+  background,
+  pipelineDebugAssets,
+  recoveryReason
+}: {
+  userId: string;
+  imageJobId: string;
+  originalImage: DownloadedImage;
+  originalImageHash: string;
+  originalStoragePath: string;
+  originalUploadedAt: Date;
+  storageCleanupAfter: Date;
+  seoMetadata: SuggestedSeoMetadata;
+  preservedOriginalInput: Buffer;
+  processingSettings: Record<string, unknown>;
+  background: string;
+  pipelineDebugAssets: PreserveDebugAsset[];
+  recoveryReason: string;
+}): Promise<ProcessedImageResult> => {
+  const studioInput = await normalizeImageForOpenAiStudioRender(originalImage.buffer);
+  const sourceAnalysis = await analyzeSourceImageForPreserveMode(preservedOriginalInput);
+  const processingMode = getString(processingSettings.processingMode, "standard_background_replacement");
+  const backgroundDescription = buildFlexibleStudioBackgroundDescription(background, processingSettings);
+  const attemptSummaries: string[] = [];
+
+  for (let attempt = 0; attempt < flexibleStudioRecoveryInstructions.length; attempt += 1) {
+    const finalComposite = await renderFlexibleStudioProductImage({
+      imageBuffer: studioInput,
+      preserveProductExactly: false,
+      processingMode,
+      backgroundDescription,
+      recoveryInstruction: flexibleStudioRecoveryInstructions[attempt]
+    });
+    await validateImage(finalComposite);
+
+    const visionQa = await runFlexibleStudioVisionQa({
+      originalSource: preservedOriginalInput,
+      finalComposite
+    });
+    const qaPassed =
+      visionQa.passed &&
+      visionQa.commerciallyUsable &&
+      visionQa.scores.edgeCleanliness >= 88 &&
+      visionQa.scores.productPreservation >= 78 &&
+      visionQa.scores.backgroundRemoval >= 88 &&
+      visionQa.scores.ecommerceQuality >= 88 &&
+      visionQa.visibleProblems.length === 0;
+    const outputValidation: OutputQualityValidation = {
+      status: qaPassed ? "Passed" : "Failed",
+      promptVersion: ecommercePreservePromptVersion,
+      processingMode: "flexible_openai_studio_recovery",
+      cutoutProvider: `openai:${openAiImageEditModel}:flexible-studio-final`,
+      retryCount: attempt,
+      productCoveragePercent: Number((sourceAnalysis.alphaCoveragePercent || 0).toFixed(2)),
+      productCoverageWidthPercent: sourceAnalysis.productBounds
+        ? Number(((sourceAnalysis.productBounds.width / Math.max(1, sourceAnalysis.width)) * 100).toFixed(2))
+        : 0,
+      productCoverageHeightPercent: sourceAnalysis.productBounds
+        ? Number(((sourceAnalysis.productBounds.height / Math.max(1, sourceAnalysis.height)) * 100).toFixed(2))
+        : 0,
+      targetCoverageMinPercent: 0,
+      targetCoverageMaxPercent: 100,
+      productOrientation: sourceAnalysis.productOrientation,
+      autoFixedFraming: false,
+      checks: {
+        productPreservation: qaPassed ? "Passed" : "Failed",
+        framing: "Passed",
+        background: qaPassed ? "Passed" : "Failed",
+        detailPreservation: qaPassed ? "Passed" : "Failed",
+        interiorDropout: qaPassed ? "Passed" : "Failed",
+        edgeQuality: qaPassed ? "Passed" : "Failed",
+        shadow: qaPassed ? "Passed" : "Failed",
+        protectedProduct: qaPassed ? "Passed" : "Failed",
+        visionQa: qaPassed ? "Passed" : "Failed"
+      },
+      outcome: qaPassed ? "PASS" : "HARD_FAIL",
+      scores: {
+        visionQaEcommerce: visionQa.scores.ecommerceQuality,
+        visionQaTextBranding: visionQa.scores.textBrandingConsistency
+      },
+      visionQa,
+      warnings: [
+        `Flexible OpenAI studio recovery was used after source-locked matting failed: ${recoveryReason}`,
+        `Flexible studio recovery attempt ${attempt + 1} of ${flexibleStudioRecoveryInstructions.length}.`
+      ],
+      failureReasons: qaPassed
+        ? []
+        : Array.from(new Set([
+            ...visionQa.failReasons,
+            ...visionQa.visibleProblems,
+            "Flexible OpenAI studio recovery did not pass strict visual QA."
+          ]))
+    };
+
+    attemptSummaries.push(`attempt ${attempt + 1}: ${outputValidation.status}${outputValidation.failureReasons.length ? ` (${outputValidation.failureReasons.join("; ")})` : ""}`);
+
+    if (!qaPassed) {
+      continue;
+    }
+
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "source_normalized",
+      `flexible-openai-studio-input-${randomUUID()}.png`,
+      studioInput,
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "final_composite",
+      `flexible-openai-studio-final-${randomUUID()}.png`,
+      finalComposite,
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "vision_qa_json",
+      `flexible-openai-studio-qa-${randomUUID()}.json`,
+      Buffer.from(JSON.stringify(visionQa, null, 2)),
+      "application/json"
+    );
+    const finalOutputValidation = {
+      ...outputValidation,
+      debugAssets: pipelineDebugAssets
+    };
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "validation_json",
+      `flexible-openai-studio-validation-${randomUUID()}.json`,
+      Buffer.from(JSON.stringify(finalOutputValidation, null, 2)),
+      "application/json"
+    );
+    finalOutputValidation.debugAssets = pipelineDebugAssets;
+
+    const processedImage = await sharp(finalComposite)
+      .webp({
+        quality: 94,
+        smartSubsample: true
+      })
+      .toBuffer();
+    const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.webp`);
+    await uploadStorageObject({
+      bucket: storageBuckets.processedImages,
+      path: processedStoragePath,
+      body: processedImage,
+      contentType: "image/webp"
+    });
+    const processedUploadedAt = new Date();
+    const processedUrl = await createStorageSignedUrl({
+      bucket: storageBuckets.processedImages,
+      path: processedStoragePath,
+      expiresInSeconds: env.storageSignedUrlExpiresSeconds
+    });
+
+    return {
+      processedUrl,
+      originalImageHash,
+      originalStoragePath,
+      processedStoragePath,
+      debugCutoutStoragePath: null,
+      originalUploadedAt,
+      processedUploadedAt,
+      debugCutoutUploadedAt: null,
+      storageCleanupAfter,
+      duplicateOfJobId: null,
+      creditDeductionRequired: true,
+      seoMetadata,
+      outputValidation: finalOutputValidation
+    };
+  }
+
+  throw new Error(`Flexible OpenAI studio recovery exhausted all attempts: ${attemptSummaries.join(" | ")}`);
+};
+
 export const __optiimstImageProcessingTestHooks = {
   buildFlexibleFullSourceReviewCutout,
   buildFlexibleLocalForegroundCutout,
@@ -6150,12 +6398,12 @@ export const processImageForProduct = async ({
   });
 
   const flexiblePipelineWarnings: string[] = [];
+  const backgroundIsTransparent = getString(getObject(processingSettings.background).preset, background) === "transparent" || background === "transparent";
   if (!preserveProductExactly) {
     if (requiresCustomBackground && !effectiveBackgroundImageUrl && !backgroundImageBuffer) {
       throw new Error("Custom background is selected but no custom background image was received. Save the background setting and reprocess this image.");
     }
 
-    const backgroundIsTransparent = getString(getObject(processingSettings.background).preset, background) === "transparent" || background === "transparent";
     console.info("Flexible studio enhancement selected; final image will be built by source-locked layer compositing", {
       imageJobId,
       backgroundIsTransparent,
@@ -6166,6 +6414,40 @@ export const processImageForProduct = async ({
       flexiblePipelineWarnings.push("Transparent background selected; OpenAI studio background generation was skipped and the product layer was composited onto transparency.");
     } else if (effectiveBackgroundImageUrl || backgroundImageBuffer) {
       flexiblePipelineWarnings.push("Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.");
+    }
+
+    const shouldUseOpenAiStudioRender =
+      processingSettings.disableOpenAiStudioRender !== true &&
+      !backgroundIsTransparent &&
+      !effectiveBackgroundImageUrl &&
+      !backgroundImageBuffer &&
+      Boolean(env.openAiApiKey);
+    if (shouldUseOpenAiStudioRender) {
+      const existingAlphaCutout = await buildCutoutFromExistingSourceAlpha(originalImage.buffer).catch(() => null);
+
+      if (!existingAlphaCutout) {
+        console.info("Flexible studio enhancement selected OpenAI studio recovery renderer for non-transparent source", {
+          imageJobId,
+          backgroundIsTransparent,
+          hasCustomBackground: false
+        });
+
+        return await processFlexibleOpenAiStudioRecovery({
+          userId,
+          imageJobId,
+          originalImage,
+          originalImageHash,
+          originalStoragePath,
+          originalUploadedAt,
+          storageCleanupAfter,
+          seoMetadata,
+          preservedOriginalInput,
+          processingSettings,
+          background,
+          pipelineDebugAssets,
+          recoveryReason: "Flexible mode source image has no trustworthy transparency; using OpenAI studio recovery before publishing."
+        });
+      }
     }
   }
 
@@ -6189,7 +6471,7 @@ export const processImageForProduct = async ({
         throw preserveError;
       }
 
-      console.warn("Strict preserve mode failed; refusing non-pixel-perfect fallback", {
+      console.warn("Exact preserve mode exhausted source-locked methods without using a non-pixel-perfect fallback", {
         imageJobId,
         reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
       });
@@ -6428,6 +6710,29 @@ export const processImageForProduct = async ({
 
   if (outputValidation.status === "Failed") {
     const failureReason = outputValidation.failureReasons.join("; ") || "Output failed product image validation.";
+    if (!preserveProductExactly && !backgroundIsTransparent && !effectiveBackgroundImageUrl && !backgroundImageBuffer) {
+      console.warn("Flexible source-locked matte failed; trying OpenAI studio recovery render", {
+        imageJobId,
+        reason: failureReason
+      });
+
+      return await processFlexibleOpenAiStudioRecovery({
+        userId,
+        imageJobId,
+        originalImage,
+        originalImageHash,
+        originalStoragePath,
+        originalUploadedAt,
+        storageCleanupAfter,
+        seoMetadata,
+        preservedOriginalInput,
+        processingSettings,
+        background,
+        pipelineDebugAssets,
+        recoveryReason: failureReason
+      });
+    }
+
     if (preserveProductExactly && cutoutResult.preserveDebug) {
       cutoutResult.preserveDebug.finalStatus = "failed";
       cutoutResult.preserveDebug.failureReason = failureReason;

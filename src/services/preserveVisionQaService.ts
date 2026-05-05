@@ -63,7 +63,12 @@ const imagePart = (_label: string, buffer: Buffer) => ({
 
 const coerceScore = (value: unknown): number => {
   const score = Number(value);
-  return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
+  if (!Number.isFinite(score)) {
+    return 0;
+  }
+
+  const normalizedScore = score > 0 && score <= 10 ? score * 10 : score;
+  return Math.max(0, Math.min(100, Math.round(normalizedScore)));
 };
 
 const parseVisionQaJson = (text: string): PreserveVisionQaResult => {
@@ -207,6 +212,129 @@ export const runPreserveVisionQa = async ({
     failReasons: Array.from(new Set([
       ...result.failReasons,
       ...(!textPass ? ["Label/text/branding consistency failed vision QA."] : [])
+    ]))
+  };
+};
+
+export const runFlexibleStudioVisionQa = async ({
+  originalSource,
+  finalComposite,
+  checkerboardPreview,
+  alphaMaskPreview,
+  edgeHaloOverlay,
+  dropoutOverlay
+}: VisionQaInput): Promise<PreserveVisionQaResult> => {
+  if (!env.openAiApiKey || !env.visionQaModel) {
+    return defaultVisionQa;
+  }
+
+  const content = [
+    {
+      type: "input_text",
+      text:
+        "Return strict JSON only. This is Product Preservation OFF / Flexible Studio Enhancement QA for WooCommerce product imagery. The final image may be an OpenAI-assisted professional studio recovery, so do not require pixel-identical product RGB and do not fail merely because old background watermark, baked-in mask scars, halo, jagged cutout outline, source shadow bleed, or dirty edges were removed. Be visually strict about ecommerce quality. Pass only if the final looks like a clean professional product photo with no visible alpha mask, no jagged edge, no grey/black/white halo, no background fragments, no blocky edge artifacts, no shadow bleed attached to the product, and no clutter. The product must remain the same sellable item: same product identity, main shape, holes/openings, tabs, screws, ridges, printed product text/logos when physically on the item, material family, and orientation. Fail if the final changes product identity, removes important product detail, changes product-mounted text/logos, adds extra parts, fills real holes, removes tabs/holes, makes surfaces melted/plastic/fake, or leaves any visible artifact. Ignore detached background logos, watermarks, and source-background branding if they are removed in the final. If the original has no important product-mounted text, do not invent a text/branding failure. Do not mention or infer private data."
+    },
+    imagePart("original_source", originalSource),
+    imagePart("final_composite", finalComposite),
+    ...(checkerboardPreview ? [imagePart("cutout_on_checkerboard", checkerboardPreview)] : []),
+    ...(alphaMaskPreview ? [imagePart("cleaned_alpha_mask_preview", alphaMaskPreview)] : []),
+    ...(edgeHaloOverlay ? [imagePart("edge_halo_overlay", edgeHaloOverlay)] : []),
+    ...(dropoutOverlay ? [imagePart("dropout_overlay", dropoutOverlay)] : [])
+  ];
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.openAiApiKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: env.visionQaModel,
+      input: [
+        {
+          role: "user",
+          content
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "flexible_studio_qa",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["passed", "commerciallyUsable", "failReasons", "scores", "ocrComparison", "visibleProblems", "summary"],
+            properties: {
+              passed: { type: "boolean" },
+              commerciallyUsable: { type: "boolean" },
+              failReasons: { type: "array", items: { type: "string" } },
+              scores: {
+                type: "object",
+                additionalProperties: false,
+                required: ["edgeCleanliness", "productPreservation", "textBrandingConsistency", "backgroundRemoval", "lightingNaturalness", "ecommerceQuality"],
+                properties: {
+                  edgeCleanliness: { type: "number" },
+                  productPreservation: { type: "number" },
+                  textBrandingConsistency: { type: "number" },
+                  backgroundRemoval: { type: "number" },
+                  lightingNaturalness: { type: "number" },
+                  ecommerceQuality: { type: "number" }
+                }
+              },
+              ocrComparison: {
+                type: "object",
+                additionalProperties: false,
+                required: ["originalText", "finalText", "missingImportantText", "alteredBranding"],
+                properties: {
+                  originalText: { type: "array", items: { type: "string" } },
+                  finalText: { type: "array", items: { type: "string" } },
+                  missingImportantText: { type: "array", items: { type: "string" } },
+                  alteredBranding: { type: "array", items: { type: "string" } }
+                }
+              },
+              visibleProblems: { type: "array", items: { type: "string" } },
+              summary: { type: "string" }
+            }
+          }
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    return {
+      ...defaultVisionQa,
+      visibleProblems: [`Flexible studio vision QA request failed with ${response.status}.`],
+      summary: "Flexible studio QA could not complete, so the result cannot pass automatically."
+    };
+  }
+
+  const body = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
+  const text = body.output_text ?? body.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") ?? "";
+  const result = parseVisionQaJson(text);
+  const importantTextFailed =
+    result.ocrComparison.missingImportantText.length > 0 ||
+    result.ocrComparison.alteredBranding.length > 0;
+  const visibleArtifactFailed = result.visibleProblems.some((problem) =>
+    /halo|jagged|mask|artifact|artefact|background fragment|bleed|blocky|pixelat|melt|plastic|warped|changed identity|missing/i.test(problem)
+  );
+  const ecommercePass =
+    result.commerciallyUsable &&
+    result.scores.ecommerceQuality >= 88 &&
+    result.scores.edgeCleanliness >= 88 &&
+    result.scores.backgroundRemoval >= 88 &&
+    result.scores.productPreservation >= 72 &&
+    !importantTextFailed &&
+    !visibleArtifactFailed;
+
+  return {
+    ...result,
+    passed: result.passed && ecommercePass,
+    failReasons: Array.from(new Set([
+      ...result.failReasons,
+      ...(importantTextFailed ? ["Product-mounted text/branding consistency failed flexible studio QA."] : []),
+      ...(visibleArtifactFailed ? ["Visible artifact failed flexible studio QA."] : [])
     ]))
   };
 };

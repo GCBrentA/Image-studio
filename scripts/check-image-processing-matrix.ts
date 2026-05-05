@@ -485,7 +485,7 @@ const assertPromptPolicy = (): void => {
   assert.doesNotMatch(backgroundRemoval, /freely redesign|make it look better however/i);
 
   assert.match(imageProcessing, /if \(preserveProductExactly\) \{\s+try \{\s+cutoutResult = await processImagePreserveMode/s);
-  assert.match(imageProcessing, /Strict preserve mode failed; refusing non-pixel-perfect fallback/);
+  assert.match(imageProcessing, /Exact preserve mode exhausted source-locked methods without using a non-pixel-perfect fallback/);
   assert.doesNotMatch(imageProcessing, /source-locked-strict-review-rescue/);
   assert.match(imageProcessing, /processImageFlexiblePreserveMode/);
   assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/);
@@ -810,8 +810,8 @@ const run = async (): Promise<void> => {
         edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
       }
     }),
-    /Preserve mode could not produce a trustworthy product mask|failed product image validation|programmatic validation failed/i,
-    "Strict preserve must fail safely when provider masks are not trustworthy"
+    /Exact Product Preservation could not produce an artifact-free source-locked product mask|failed product image validation|programmatic validation failed/i,
+    "Strict preserve must reject untrustworthy provider masks without publishing a damaged output"
   );
 
   const greyRetainerSource = await toPng(`
@@ -1021,7 +1021,7 @@ const run = async (): Promise<void> => {
         }
       }
     });
-    assert.notEqual(aztechResult.outputValidation?.status, "Failed", "AZTECH contaminated source regression should process successfully or fail safely before upload");
+    assert.notEqual(aztechResult.outputValidation?.status, "Failed", "AZTECH contaminated source regression should process successfully before upload");
     assert.doesNotMatch(
       (aztechResult.outputValidation?.warnings ?? []).join(" "),
       /full-source review fallback/i,
@@ -1035,7 +1035,7 @@ const run = async (): Promise<void> => {
     assert.match(
       error instanceof Error ? error.message : String(error),
       /Product coverage|Product mask contains|background contamination|trustworthy product mask|background logo|watermark/i,
-      "AZTECH contaminated source regression should fail safely when a clean source-locked product layer cannot be produced"
+      "AZTECH contaminated source regression should reject unclean source-locked product layers before upload"
     );
   }
 

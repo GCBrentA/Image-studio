@@ -4,12 +4,20 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
 
-export type BackgroundRemovalMode = "preserve-mask" | "preserve-mask-refined" | "flexible-cutout";
+export type BackgroundRemovalMode = "preserve-mask" | "preserve-mask-refined" | "preserve-mask-hard-contamination" | "flexible-cutout";
 export type ImagePromptVariant =
   | "seo_product_feed_preserve"
   | "preserve_background_replacement"
   | "standard_background_replacement"
   | "premium_studio_background";
+
+export type FlexibleStudioRenderInput = {
+  imageBuffer: Buffer;
+  preserveProductExactly: false;
+  processingMode: ImagePromptVariant | string;
+  backgroundDescription: string;
+  recoveryInstruction?: string;
+};
 
 export const ecommercePreservePromptVersion = "ecommerce_preserve_v2";
 export const openAiImageEditModel = env.imageEditModel;
@@ -80,6 +88,9 @@ const preserveMaskPrompt =
 const preserveMaskRefinedPrompt =
   `${strictProductPreservationBlock} Return a clean product-only mask. Exclude all background, watermark, logo, floor, shadows, halos, grey smears, pale residue, and semi-transparent edge contamination. Preserve all dark product details, thin structures, interior openings, and exact silhouette. Perform only professional product foreground segmentation. Return a transparent PNG alpha cutout that isolates the real product from the supplied image. Do not generate, redraw, repair, stylize, relight, recolour, or reinterpret the product. Keep thin rails, trigger guards, holes, vents, sights, nozzles, logos, markings, translucent sections, small accessories, screws, seams, and internal openings exactly as segmentation requires. If uncertain, prefer a conservative transparent cutout over inventing product pixels. ${negativeProductInstructionBlock}`;
 
+const preserveMaskHardContaminationPrompt =
+  `${strictProductPreservationBlock} This request is only for exact product segmentation on a source photo that may already contain a bad previous cutout, watermark, grey photo card, old shadow, jagged alpha outline, black contour scar, white ghost edge, or pale halo baked into the background. Return only a transparent PNG alpha cutout/mask for the real physical product. Exclude every detached background logo, background watermark, old mask outline, old cutout shell, halo, grey/white fringe, black edge scar, floor shadow, reflection, and background residue, even if it touches the product edge. Preserve the real product silhouette, holes, dark openings, threads, screws, ridges, tabs, fine geometry, transparent parts, and product-mounted text/logos. For white/silver/metal parts on light backgrounds, keep actual metal pixels but remove pale ghost shells and dark jagged contours that are not physical product edges. For black products on light backgrounds, keep dark product detail and holes but remove detached black background graphics. Do not fill holes. Do not shrink real tabs or protrusions. Do not generate, redraw, repair, relight, recolour, smooth, sharpen, or reinterpret the product. Return alpha only through a transparent product PNG; RGB content is diagnostic and will not be used as final product pixels.`;
+
 export const buildOpenAiBackgroundOnlyPrompt = (): string =>
   "Create a clean premium ecommerce studio background suitable for this product. No text, no logos, no props, no watermark, no product changes. Background only.";
 
@@ -89,12 +100,17 @@ export const buildOpenAiRelightingShadowGuidancePrompt = (): string =>
 const flexibleCutoutPrompt =
   `${buildOpenAiImagePrompt("standard_background_replacement")} Create a precise ecommerce product alpha mask/cutout from this image. Isolate only the actual product object. Remove all background, floor, wall, table, shadows, reflections, glare patches, gaps, holes, empty spaces between parts, and background visible through openings in the product. Return a clean transparent-background PNG with only the product foreground isolated, no added objects and no background remnants.`;
 
+const flexibleStudioRecoveryInstruction =
+  "This is Product Preservation OFF / Flexible Studio Enhancement. Use the supplied image as the reference for the same sellable product, but recover the ecommerce presentation when the source matte contains baked-in background contamination. Remove the old background, detached watermarks, background logos, background text, grey card residue, cutout outlines, jagged alpha borders, staircase mask artifacts, edge halos, and shadow bleed. The final product edges must be clean, naturally anti-aliased, and free of visible mask scars. Preserve the product identity, proportions, orientation, material, colour family, openings, holes, transparent areas, screws, ridges, grooves, labels, printed text, branding physically on the product, and fine geometry. Do not add product parts, remove product parts, change product-mounted text/logos, draw outlines, stylise the item, melt/smooth detail, or make the product look AI-generated. Use only a clean light ecommerce studio background and subtle realistic shadow behind or beneath the product.";
+
 const getPromptForMode = (mode: BackgroundRemovalMode): string => {
   switch (mode) {
     case "preserve-mask":
       return preserveMaskPrompt;
     case "preserve-mask-refined":
       return preserveMaskRefinedPrompt;
+    case "preserve-mask-hard-contamination":
+      return preserveMaskHardContaminationPrompt;
     case "flexible-cutout":
     default:
       return flexibleCutoutPrompt;
@@ -147,6 +163,70 @@ export const removeImageBackground = async (
 
   if (!imageBase64) {
     throw new Error("OpenAI background removal did not return image data");
+  }
+
+  return Buffer.from(imageBase64, "base64");
+};
+
+export const renderFlexibleStudioProductImage = async ({
+  imageBuffer,
+  preserveProductExactly,
+  processingMode,
+  backgroundDescription,
+  recoveryInstruction
+}: FlexibleStudioRenderInput): Promise<Buffer> => {
+  if (preserveProductExactly !== false) {
+    throw new Error("Flexible OpenAI studio rendering is only allowed when Product Preservation is OFF.");
+  }
+
+  if (!env.openAiApiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  const prompt = `${buildProductImageProcessingPrompt({
+    preserveProductExactly: false,
+    processingMode,
+    backgroundDescription
+  })} ${recoveryInstruction ?? flexibleStudioRecoveryInstruction}`;
+
+  const formData = new FormData();
+  formData.append(
+    "image",
+    new Blob([new Uint8Array(imageBuffer)], {
+      type: "image/png"
+    }),
+    "product.png"
+  );
+  formData.append("model", openAiImageEditModel);
+  formData.append("prompt", prompt);
+  formData.append("background", "opaque");
+  formData.append("input_fidelity", "high");
+  formData.append("output_format", "png");
+  formData.append("quality", openAiImageEditQuality);
+  formData.append("size", openAiImageEditSize);
+
+  const response = await fetch(openAiImageEditEndpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.openAiApiKey}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.text().catch(() => "");
+    throw new Error(`OpenAI flexible studio render failed with ${response.status}: ${responseBody}`);
+  }
+
+  const body = await response.json() as {
+    data?: Array<{
+      b64_json?: string;
+    }>;
+  };
+  const imageBase64 = body.data?.[0]?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error("OpenAI flexible studio render did not return image data");
   }
 
   return Buffer.from(imageBase64, "base64");
