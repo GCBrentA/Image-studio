@@ -2756,9 +2756,10 @@ const cleanFlexibleForegroundAlpha = (
 ): Buffer => {
   const detachedCleaned = removeSuspiciousDetachedBackgroundMarks(originalRgba, alpha, width, height);
   const edgeCleaned = removePaleBackgroundEdgeRemnants(originalRgba, detachedCleaned, width, height);
-  const cleanedDiagnostics = analyzeAlphaMask(edgeCleaned, width, height);
+  const islandCleaned = removeConnectedBackgroundPaletteRemnants(originalRgba, edgeCleaned, width, height);
+  const cleanedDiagnostics = analyzeAlphaMask(islandCleaned, width, height);
 
-  return cleanedDiagnostics.passed ? edgeCleaned : detachedCleaned;
+  return cleanedDiagnostics.passed ? islandCleaned : detachedCleaned;
 };
 
 const removeSuspiciousDetachedBackgroundMarks = (
@@ -3255,6 +3256,139 @@ const removePaleBackgroundEdgeRemnants = (
   if (totalRemovedPixels <= 0 || getAlphaCoverage(cleaned) < initialCoverage * 0.62) {
     return alpha;
   }
+
+  return cleaned;
+};
+
+const removeConnectedBackgroundPaletteRemnants = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 72);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const removable = new Uint8Array(alpha.length);
+  let productCorePixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const smoothPaleBackground =
+      luminance > 142 &&
+      saturation < 0.18 &&
+      channelSpread < 58 &&
+      gradient < 34 &&
+      backgroundDistance < 78;
+    const veryLightBackground =
+      luminance > 188 &&
+      saturation < 0.13 &&
+      channelSpread < 46 &&
+      gradient < 46 &&
+      backgroundDistance < 104;
+
+    if (smoothPaleBackground || veryLightBackground) {
+      removable[pixel] = 1;
+      continue;
+    }
+
+    if (luminance < 122 || saturation > 0.22 || backgroundDistance > 98 || gradient > 32) {
+      productCorePixels += 1;
+    }
+  }
+
+  if (productCorePixels < Math.max(900, initialCoverage * 0.1)) {
+    return alpha;
+  }
+
+  const cleaned = Buffer.from(alpha);
+  const visited = new Uint8Array(alpha.length);
+  const queue: number[] = [];
+  const enqueue = (pixel: number): void => {
+    if (pixel < 0 || pixel >= alpha.length || visited[pixel] || !removable[pixel]) {
+      return;
+    }
+
+    visited[pixel] = 1;
+    queue.push(pixel);
+  };
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) < 24 || !removable[pixel]) {
+        continue;
+      }
+
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1 || hasTransparentNeighbor(alpha, width, height, x, y, 1)) {
+        enqueue(pixel);
+      }
+    }
+  }
+
+  let removedPixels = 0;
+  while (queue.length > 0) {
+    const pixel = queue.pop() as number;
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    cleaned[pixel] = 0;
+    removedPixels += 1;
+
+    const neighbours = [
+      x > 0 ? pixel - 1 : -1,
+      x < width - 1 ? pixel + 1 : -1,
+      y > 0 ? pixel - width : -1,
+      y < height - 1 ? pixel + width : -1
+    ];
+
+    for (const next of neighbours) {
+      enqueue(next);
+    }
+  }
+
+  if (removedPixels < Math.max(120, initialCoverage * 0.0006)) {
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.52)) {
+    return alpha;
+  }
+
+  const cleanedDiagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(cleanedDiagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed connected background-colour remnants from product mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    productCorePixels
+  });
 
   return cleaned;
 };
@@ -5435,6 +5569,108 @@ const removeThinEdgeNoiseFromProductBuffer = async (
   return { buffer, removedPixels: cleanup.removedPixels };
 };
 
+const getProductLayerDropoutIssues = (
+  rgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): string[] => {
+  const bounds = getAlphaBounds(alpha, width, height, 24);
+  const coverage = getAlphaCoverage(alpha);
+
+  if (!bounds || coverage < 1200) {
+    return [];
+  }
+
+  let darkProductPixels = 0;
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = rgba[index] ?? 0;
+    const g = rgba[index + 1] ?? 0;
+    const b = rgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+
+    if (luminance < 150 || saturation > 0.18) {
+      darkProductPixels += 1;
+    }
+  }
+
+  if (darkProductPixels / Math.max(1, coverage) < 0.38) {
+    return [];
+  }
+
+  const visited = new Uint8Array(alpha.length);
+  let smallInteriorHoleCount = 0;
+  let smallInteriorHolePixels = 0;
+  const maxSmallHolePixels = Math.max(90, Math.round(coverage * 0.0025));
+
+  for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+    for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+      const start = y * width + x;
+      if (visited[start] || (alpha[start] ?? 0) >= 24) {
+        continue;
+      }
+
+      const stack = [start];
+      visited[start] = 1;
+      let pixels = 0;
+      let touchesBounds = false;
+      let adjacentOpaque = 0;
+
+      while (stack.length > 0) {
+        const pixel = stack.pop() as number;
+        const px = pixel % width;
+        const py = Math.floor(pixel / width);
+        pixels += 1;
+        touchesBounds = touchesBounds || px === bounds.minX || px === bounds.maxX || py === bounds.minY || py === bounds.maxY;
+
+        const neighbours = [
+          px > bounds.minX ? pixel - 1 : -1,
+          px < bounds.maxX ? pixel + 1 : -1,
+          py > bounds.minY ? pixel - width : -1,
+          py < bounds.maxY ? pixel + width : -1
+        ];
+
+        for (const next of neighbours) {
+          if (next < 0) {
+            continue;
+          }
+          if ((alpha[next] ?? 0) >= 24) {
+            adjacentOpaque += 1;
+            continue;
+          }
+          if (visited[next]) {
+            continue;
+          }
+          visited[next] = 1;
+          stack.push(next);
+        }
+      }
+
+      if (!touchesBounds && pixels <= maxSmallHolePixels && adjacentOpaque >= Math.max(8, pixels * 0.35)) {
+        smallInteriorHoleCount += 1;
+        smallInteriorHolePixels += pixels;
+      }
+    }
+  }
+
+  if (
+    smallInteriorHoleCount < 14 ||
+    smallInteriorHolePixels < Math.max(280, coverage * 0.0035)
+  ) {
+    return [];
+  }
+
+  return [
+    `Product mask contains ${smallInteriorHoleCount} small internal alpha dropouts (${smallInteriorHolePixels} px), indicating damaged product detail.`
+  ];
+};
+
 const assertCompositeContainsProduct = async (
   backgroundBuffer: Buffer,
   composedImage: Buffer,
@@ -5506,11 +5742,14 @@ const buildOutputQualityValidation = async (
     throw new Error("Product cutout could not be read for output validation.");
   }
 
-  const alpha = await sharp(productBuffer)
+  const productRgba = await sharp(productBuffer)
     .ensureAlpha()
-    .extractChannel("alpha")
     .raw()
     .toBuffer();
+  const alpha = Buffer.alloc(metadata.width * metadata.height);
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = productRgba[pixel * 4 + 3] ?? 0;
+  }
   const bounds = getAlphaBounds(alpha, metadata.width, metadata.height, 16);
 
   if (!bounds) {
@@ -5577,6 +5816,12 @@ const buildOutputQualityValidation = async (
     edgeQuality = programmaticValidation.failReasons.includes("Edge Halo / Background Residue") || programmaticValidation.failReasons.includes("Dirty Alpha Edge")
       ? "Failed"
       : edgeQuality;
+  }
+
+  const dropoutIssues = getProductLayerDropoutIssues(productRgba, alpha, metadata.width, metadata.height);
+  if (dropoutIssues.length > 0) {
+    failureReasons.push(...dropoutIssues);
+    interiorDropout = "Failed";
   }
 
   const interiorDropoutDiagnostics = cutoutResult.preserveDebug?.interiorDropout;

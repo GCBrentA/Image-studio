@@ -44,6 +44,8 @@ function is_wp_error($value): bool { return $value instanceof WP_Error; }
 function __($text, $domain = null) { return $text; }
 function get_option($key, $default = false) { return $GLOBALS['optivra_test_options'][$key] ?? $default; }
 function update_option($key, $value, $autoload = null): bool { $GLOBALS['optivra_test_options'][$key] = $value; return true; }
+function optiimst_get_option(string $option, $default = false) { return get_option($option, $default); }
+function optiimst_update_option(string $option, $value, $autoload = null): bool { return update_option($option, $value, $autoload); }
 function wp_generate_uuid4(): string { return getenv('OPTIVRA_TEST_INSTALL_ID') ?: 'audit-client-test-install'; }
 function site_url(): string { return 'http://localhost'; }
 function home_url(): string { return 'http://localhost'; }

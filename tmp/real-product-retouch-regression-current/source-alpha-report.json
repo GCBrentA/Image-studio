@@ -1,0 +1,154 @@
+[
+  {
+    "file": "ec-glock-17g17-gen5-mos-gas-pistol-gel-blaster-blaster-pistol-ec-9802141.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-ec-glock-17g17-gen5-mos-gas-pistol-g-exact-white-under.webp",
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "ec-glock-17g17-gen5-mos-gas-pistol-gel-blaster-blaster-pistol-ec-9802141.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-ec-glock-17g17-gen5-mos-gas-pistol-g-flexible-white-under.webp",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "ec-hk416-105-inch-geisselen-ris-aeg-blaster-rifle-ec-933453.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": null,
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "ec-hk416-105-inch-geisselen-ris-aeg-blaster-rifle-ec-933453.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": null,
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "cyma-warhawk-m4-cqb-nf-gel-blaster-blaster-rifle-cyma-5597048.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-cyma-warhawk-m4-cqb-nf-gel-blaster-b-exact-white-under.webp",
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "cyma-warhawk-m4-cqb-nf-gel-blaster-blaster-rifle-cyma-5597048.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-cyma-warhawk-m4-cqb-nf-gel-blaster-b-flexible-white-under.webp",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "ec-colt-1911-gas-blowback-gel-blaster-pistol-replica-blaster-ec-5741750.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-ec-colt-1911-gas-blowback-gel-blaste-exact-white-under.webp",
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "ec-colt-1911-gas-blowback-gel-blaster-pistol-replica-blaster-ec-5741750.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-ec-colt-1911-gas-blowback-gel-blaste-flexible-white-under.webp",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "classic-army-sa58-full-size-fal-gel-blaster-105680.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": null,
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "classic-army-sa58-full-size-fal-gel-blaster-105680.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": null,
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "classic-army-m16a2-sportline-gel-blaster-blaster-rifle-classic-army-2654536.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-classic-army-m16a2-sportline-gel-bla-exact-white-under.webp",
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "classic-army-m16a2-sportline-gel-blaster-blaster-rifle-classic-army-2654536.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-classic-army-m16a2-sportline-gel-bla-flexible-white-under.webp",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "classic-army-416d-cqb-gel-blaster-tactical-edge-hobbies-280667.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-classic-army-416d-cqb-gel-blaster-ta-exact-white-under.webp",
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "classic-army-416d-cqb-gel-blaster-tactical-edge-hobbies-280667.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-classic-army-416d-cqb-gel-blaster-ta-flexible-white-under.webp",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  },
+  {
+    "file": "skeletor-we-tech-full-metal-hyper-speed-hi-capa-gas-blowback-gel-blaster-black-blaster-we-9485196-1.png",
+    "mode": "exact-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-skeletor-we-tech-full-metal-hyper-sp-exact-white-under.webp",
+    "warnings": [],
+    "failureReasons": []
+  },
+  {
+    "file": "skeletor-we-tech-full-metal-hyper-speed-hi-capa-gas-blowback-gel-blaster-black-blaster-we-9485196-1.png",
+    "mode": "flexible-white-under",
+    "status": "Passed",
+    "processed": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\tmp\\real-product-retouch-regression-current\\real-skeletor-we-tech-full-metal-hyper-sp-flexible-white-under.webp",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer."
+    ],
+    "failureReasons": []
+  }
+]

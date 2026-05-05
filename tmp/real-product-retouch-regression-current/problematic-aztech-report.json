@@ -1,0 +1,29 @@
+[
+  {
+    "file": "aztech-hardened-hybrid-anti-reverse-latch-aztech-innovations-aeg-upgrade-collect.webp",
+    "product": "Aztech HARDENED Hybrid Anti-Reverse latch",
+    "imageSlot": "Gallery image #4",
+    "mode": "Exact Product Preservation ON / white background / under shadow",
+    "status": "Failed safely",
+    "result": "No processed image published",
+    "reason": "Preserve mode could not produce a trustworthy product mask; background residue / mask includes background; source is already visually damaged/contaminated."
+  },
+  {
+    "file": "aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087.jpg",
+    "product": "Aztech Magazine Terminal Block for Scythe Box",
+    "imageSlot": "Main product image",
+    "mode": "Flexible Studio Enhancement / white background / remove detached background text/logos / under shadow",
+    "status": "Failed safely",
+    "result": "No processed image published",
+    "reason": "Product mask contains 261 small internal alpha dropouts (8019 px), indicating damaged product detail."
+  },
+  {
+    "file": "aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087.jpg",
+    "product": "Aztech Magazine Terminal Block for Scythe Box",
+    "imageSlot": "Main product image",
+    "mode": "Exact Product Preservation ON / white background / under shadow",
+    "status": "Passed in targeted run",
+    "result": "Source-locked output only; detached watermark removed from mask",
+    "reason": null
+  }
+]

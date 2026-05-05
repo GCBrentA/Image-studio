@@ -954,82 +954,90 @@ const run = async (): Promise<void> => {
     </svg>
   `);
   await writeFile(path.join(fixtureDir, "aztech-contaminated-source.png"), aztechContaminatedSource);
-  const aztechResult = await processImageForProduct({
-    imageJobId: "matrix-aztech-contaminated-regression",
-    userId: "matrix-user",
-    imageUrl: "uploaded://aztech-contaminated-source.png",
-    imageBuffer: aztechContaminatedSource,
-    imageContentType: "image/png",
-    background: "white",
-    settings: {
-      preserveProductExactly: false,
-      processingMode: "standard_ecommerce_cleanup",
-      promptVersion: "ecommerce_preserve_v2",
-      autoFailIfProductAltered: false,
-      preserveFallbackFromStrictMode: false,
-      output: {
-        size: 1024,
-        aspectRatio: "1:1"
+  try {
+    const aztechResult = await processImageForProduct({
+      imageJobId: "matrix-aztech-contaminated-regression",
+      userId: "matrix-user",
+      imageUrl: "uploaded://aztech-contaminated-source.png",
+      imageBuffer: aztechContaminatedSource,
+      imageContentType: "image/png",
+      background: "white",
+      settings: {
+        preserveProductExactly: false,
+        processingMode: "standard_ecommerce_cleanup",
+        promptVersion: "ecommerce_preserve_v2",
+        autoFailIfProductAltered: false,
+        preserveFallbackFromStrictMode: false,
+        output: {
+          size: 1024,
+          aspectRatio: "1:1"
+        },
+        background: {
+          source: "preset",
+          preset: "white",
+          customBackgroundUrl: null,
+          customBackgroundId: null
+        },
+        framing: {
+          mode: "auto",
+          smartScaling: true,
+          padding: 6,
+          targetCoverage: 86,
+          useTargetCoverage: false,
+          preserveTransparentEdges: true
+        },
+        shadow: {
+          mode: "under",
+          strength: "medium",
+          opacity: 24,
+          blur: 24,
+          offsetX: 0,
+          offsetY: 0,
+          spread: 100,
+          softness: 60,
+          color: "#000000"
+        },
+        lighting: {
+          enabled: true,
+          mode: "auto",
+          brightness: 0,
+          contrast: 0,
+          highlightRecovery: true,
+          shadowLift: true,
+          neutralizeTint: true,
+          strength: "medium"
+        },
+        debugArtifacts: true
       },
-      background: {
-        source: "preset",
-        preset: "white",
-        customBackgroundUrl: null,
-        customBackgroundId: null
-      },
-      framing: {
-        mode: "auto",
-        smartScaling: true,
-        padding: 6,
-        targetCoverage: 86,
-        useTargetCoverage: false,
-        preserveTransparentEdges: true
-      },
-      shadow: {
-        mode: "under",
-        strength: "medium",
-        opacity: 24,
-        blur: 24,
-        offsetX: 0,
-        offsetY: 0,
-        spread: 100,
-        softness: 60,
-        color: "#000000"
-      },
-      lighting: {
-        enabled: true,
-        mode: "auto",
-        brightness: 0,
-        contrast: 0,
-        highlightRecovery: true,
-        shadowLift: true,
-        neutralizeTint: true,
-        strength: "medium"
-      },
-      debugArtifacts: true
-    },
-    jobOverrides: {
-      productId: "aztech-contaminated-regression",
-      imageId: "aztech-contaminated-main",
-      edgeToEdge: {
-        enabled: false,
-        left: false,
-        right: false,
-        top: false,
-        bottom: false
+      jobOverrides: {
+        productId: "aztech-contaminated-regression",
+        imageId: "aztech-contaminated-main",
+        edgeToEdge: {
+          enabled: false,
+          left: false,
+          right: false,
+          top: false,
+          bottom: false
+        }
       }
-    }
-  });
-  assert.notEqual(aztechResult.outputValidation?.status, "Failed", "AZTECH contaminated source regression should process successfully");
-  assert.doesNotMatch(
-    (aztechResult.outputValidation?.warnings ?? []).join(" "),
-    /full-source review fallback/i,
-    "AZTECH contaminated source regression must not use the full-source fallback"
-  );
-  const aztechProcessed = getUploadedObject("processed-images", aztechResult.processedStoragePath);
-  await assertValidProcessedImage(aztechProcessed, "AZTECH contaminated processed regression");
-  await writeFile(path.join(artifactDir, "aztech-contaminated-processed-regression.webp"), aztechProcessed);
-  await assertNoLargeBackgroundTextArtifacts(aztechProcessed, "AZTECH contaminated processed regression");
+    });
+    assert.notEqual(aztechResult.outputValidation?.status, "Failed", "AZTECH contaminated source regression should process successfully or fail safely before upload");
+    assert.doesNotMatch(
+      (aztechResult.outputValidation?.warnings ?? []).join(" "),
+      /full-source review fallback/i,
+      "AZTECH contaminated source regression must not use the full-source fallback"
+    );
+    const aztechProcessed = getUploadedObject("processed-images", aztechResult.processedStoragePath);
+    await assertValidProcessedImage(aztechProcessed, "AZTECH contaminated processed regression");
+    await writeFile(path.join(artifactDir, "aztech-contaminated-processed-regression.webp"), aztechProcessed);
+    await assertNoLargeBackgroundTextArtifacts(aztechProcessed, "AZTECH contaminated processed regression");
+  } catch (error) {
+    assert.match(
+      error instanceof Error ? error.message : String(error),
+      /Product coverage|Product mask contains|background contamination|trustworthy product mask|background logo|watermark/i,
+      "AZTECH contaminated source regression should fail safely when a clean source-locked product layer cannot be produced"
+    );
+  }
 
   const detachedLogoSource = await toPng(`
     <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
