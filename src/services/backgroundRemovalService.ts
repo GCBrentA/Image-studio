@@ -152,56 +152,6 @@ export const removeImageBackground = async (
   return Buffer.from(imageBase64, "base64");
 };
 
-export const editProductImageWithOpenAi = async (
-  imageBuffer: Buffer,
-  prompt: string
-): Promise<Buffer> => {
-  if (!env.openAiApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  const formData = new FormData();
-  formData.append(
-    "image",
-    new Blob([new Uint8Array(imageBuffer)], {
-      type: "image/png"
-    }),
-    "product.png"
-  );
-  formData.append("model", openAiImageEditModel);
-  formData.append("prompt", prompt);
-  formData.append("input_fidelity", "high");
-  formData.append("output_format", "png");
-  formData.append("quality", openAiImageEditQuality);
-  formData.append("size", openAiImageEditSize);
-
-  const response = await fetch(openAiImageEditEndpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.openAiApiKey}`
-    },
-    body: formData
-  });
-
-  if (!response.ok) {
-    const responseBody = await response.text().catch(() => "");
-    throw new Error(`OpenAI image edit failed with ${response.status}: ${responseBody}`);
-  }
-
-  const body = await response.json() as {
-    data?: Array<{
-      b64_json?: string;
-    }>;
-  };
-  const imageBase64 = body.data?.[0]?.b64_json;
-
-  if (!imageBase64) {
-    throw new Error("OpenAI image edit did not return image data");
-  }
-
-  return Buffer.from(imageBase64, "base64");
-};
-
 export const removeImageBackgroundWithSpecialistModel = async (
   imageBuffer: Buffer,
   contentType = "image/jpeg"

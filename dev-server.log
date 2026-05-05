@@ -33,3 +33,4 @@ Billing configuration {
   appBaseUrl: false,
   billingCurrency: 'usd'
 }
+{"method":"GET","path":"/health","statusCode":200,"durationMs":1528,"ip":"::1"}

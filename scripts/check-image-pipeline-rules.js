@@ -66,6 +66,7 @@ assert.doesNotMatch(imageProcessing, /console\.(info|warn|error)\([\s\S]{0,400}o
 assert.match(backgroundRemoval, /openAiImageEditEndpoint = "https:\/\/api\.openai\.com\/v1\/images\/edits"/, "OpenAI image edit endpoint is explicit");
 assert.match(backgroundRemoval, /openAiImageEditModel = env\.imageEditModel/, "OpenAI image edit model is environment driven");
 assert.match(backgroundRemoval, /buildOpenAiBackgroundOnlyPrompt/, "background-only prompt is separated from product cutout logic");
+assert.doesNotMatch(backgroundRemoval, /editProductImageWithOpenAi/, "full product image edit helper must not exist in the processing service layer");
 assert.match(backgroundRemoval, /openAiImageEditQuality = "high"/, "OpenAI quality is high");
 assert.match(backgroundRemoval, /openAiImageEditSize = "1024x1024"/, "OpenAI size is 1024x1024");
 
@@ -89,7 +90,8 @@ assert.match(imageProcessing, /Remove[d]? low-saturation background marks outsid
 assert.match(imageProcessing, /validateProtectedProductRegion/, "backend validates a protected product region before accepting output");
 assert.match(imageProcessing, /protectedProductValidation/, "output validation stores protected product metrics");
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
-assert.match(imageProcessing, /buildAiAssistedStudioBackground/, "flexible mode uses OpenAI scene guidance only for the background layer");
+assert.match(imageProcessing, /compositeSourceLockedProductLayers/, "final image is composed from source-locked layers");
+assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/, "final product image must not be rendered by an image edit model");
 assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/, "flexible mode validates product detail preservation before accepting output");
 assert.match(imageProcessing, /preserveMode: preserveProductExactly\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation uses strict thresholds only in pixel-perfect mode");
 assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");

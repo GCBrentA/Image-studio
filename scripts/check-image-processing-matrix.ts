@@ -485,13 +485,13 @@ const assertPromptPolicy = (): void => {
   assert.doesNotMatch(backgroundRemoval, /freely redesign|make it look better however/i);
 
   assert.match(imageProcessing, /if \(preserveProductExactly\) \{\s+try \{\s+cutoutResult = await processImagePreserveMode/s);
-  assert.match(imageProcessing, /Strict preserve masks failed; trying source-locked review rescue before failing the job/);
-  assert.match(imageProcessing, /source-locked-strict-review-rescue/);
+  assert.match(imageProcessing, /Strict preserve mode failed; refusing non-pixel-perfect fallback/);
+  assert.doesNotMatch(imageProcessing, /source-locked-strict-review-rescue/);
   assert.match(imageProcessing, /processImageFlexiblePreserveMode/);
-  assert.match(imageProcessing, /editProductImageWithOpenAi/);
-  assert.match(imageProcessing, /OpenAI flexible studio scene failed; final image will still use source-locked product compositing/);
+  assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/);
+  assert.match(imageProcessing, /compositeSourceLockedProductLayers/);
+  assert.match(imageProcessing, /refineAlphaMatteWithTrimap/);
   assert.match(imageProcessing, /cutoutResult = await processImageFlexiblePreserveMode/);
-  assert.match(imageProcessing, /buildAiAssistedStudioBackground/);
   assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/);
   assert.match(imageProcessing, /const webpOptions = preserveProductExactly/);
   assert.match(imageProcessing, /quality: 100,\s+lossless: true/s);
@@ -657,17 +657,8 @@ const run = async (): Promise<void> => {
         assert.notEqual(result.processedUrl, "", `${label}: processed URL should be present`);
 
         if (mode.preserveProductExactly) {
-          const usedSourceLockedRescue = result.outputValidation.cutoutProvider.includes("source-locked-strict-review-rescue");
-          assert.ok(result.preserveDebug || usedSourceLockedRescue, `${label}: strict mode should include preserve debug data or a source-locked review rescue marker`);
-          if (result.preserveDebug) {
-            assert.equal(result.preserveDebug.rgbIntegrity.passed, true, `${label}: strict mode should preserve source pixels`);
-          } else {
-            assert.match(
-              result.outputValidation.warnings.join(" "),
-              /source-locked review rescue/i,
-              `${label}: strict source-locked rescue should be clearly review-labelled`
-            );
-          }
+          assert.ok(result.preserveDebug, `${label}: strict mode should include preserve debug data`);
+          assert.equal(result.preserveDebug.rgbIntegrity.passed, true, `${label}: strict mode should preserve source pixels`);
           assert.equal(result.outputValidation.processingMode, "seo_product_feed_safe_preserve_background_replacement", `${label}: strict validation mode mismatch`);
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: strict protected product check should pass`);
         } else {
@@ -707,11 +698,7 @@ const run = async (): Promise<void> => {
 
   assert.deepEqual(failures, [], `Normal product matrix failures:\n${failures.join("\n")}`);
   assert.equal(outputs.length, products.length * matrixModes.length, "Every normal product/mode combination should produce output");
-  assert.ok(openAiStudioScenePrompts.length >= products.length * 2, "Flexible product matrix should exercise OpenAI studio scene prompts for non-transparent preset backgrounds");
-  assert.ok(
-    openAiStudioScenePrompts.every((prompt) => /source of truth/i.test(prompt) && /Only minor adjustments/i.test(prompt) && /Do not redraw, reshape, simplify, blur/i.test(prompt)),
-    "Flexible OpenAI studio prompts must preserve product identity and allow only minor realism/compositing adjustments"
-  );
+  assert.equal(openAiStudioScenePrompts.length, 0, "Flexible product matrix must not render full final images with OpenAI studio scene prompts");
 
   const fallbackCutout = await __optiimstImageProcessingTestHooks.buildFlexibleFullSourceReviewCutout(
     fixtureBuffers.get("plain-bottle") ?? Buffer.alloc(0),
@@ -762,81 +749,70 @@ const run = async (): Promise<void> => {
       </g>
     </svg>
   `);
-  const darkPreserveRescueResult = await processImageForProduct({
-    imageJobId: "matrix-dark-preserve-source-locked-rescue",
-    userId: "matrix-user",
-    imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
-    imageBuffer: darkPreserveRescueSource,
-    imageContentType: "image/png",
-    background: "white",
-    settings: {
-      preserveProductExactly: true,
-      processingMode: "seo_product_feed_preserve",
-      promptVersion: "ecommerce_preserve_v2",
-      autoFailIfProductAltered: true,
-      preserveFallbackFromStrictMode: false,
-      output: {
-        size: 1024,
-        aspectRatio: "1:1"
+  await assert.rejects(
+    () => processImageForProduct({
+      imageJobId: "matrix-dark-preserve-source-locked-rescue",
+      userId: "matrix-user",
+      imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
+      imageBuffer: darkPreserveRescueSource,
+      imageContentType: "image/png",
+      background: "white",
+      settings: {
+        preserveProductExactly: true,
+        processingMode: "seo_product_feed_preserve",
+        promptVersion: "ecommerce_preserve_v2",
+        autoFailIfProductAltered: true,
+        preserveFallbackFromStrictMode: false,
+        output: {
+          size: 1024,
+          aspectRatio: "1:1"
+        },
+        background: {
+          source: "preset",
+          preset: "white",
+          customBackgroundUrl: null,
+          customBackgroundId: null
+        },
+        framing: {
+          mode: "auto",
+          smartScaling: true,
+          padding: 6,
+          targetCoverage: 86,
+          useTargetCoverage: false,
+          preserveTransparentEdges: true
+        },
+        shadow: {
+          mode: "under",
+          strength: "medium",
+          opacity: 24,
+          blur: 24,
+          offsetX: 0,
+          offsetY: 0,
+          spread: 100,
+          softness: 60,
+          color: "#000000"
+        },
+        lighting: {
+          enabled: false,
+          mode: "auto",
+          brightness: 0,
+          contrast: 0,
+          highlightRecovery: true,
+          shadowLift: true,
+          neutralizeTint: true,
+          strength: "light"
+        },
+        debugArtifacts: true
       },
-      background: {
-        source: "preset",
-        preset: "white",
-        customBackgroundUrl: null,
-        customBackgroundId: null
-      },
-      framing: {
-        mode: "auto",
-        smartScaling: true,
-        padding: 6,
-        targetCoverage: 86,
-        useTargetCoverage: false,
-        preserveTransparentEdges: true
-      },
-      shadow: {
-        mode: "under",
-        strength: "medium",
-        opacity: 24,
-        blur: 24,
-        offsetX: 0,
-        offsetY: 0,
-        spread: 100,
-        softness: 60,
-        color: "#000000"
-      },
-      lighting: {
-        enabled: false,
-        mode: "auto",
-        brightness: 0,
-        contrast: 0,
-        highlightRecovery: true,
-        shadowLift: true,
-        neutralizeTint: true,
-        strength: "light"
-      },
-      debugArtifacts: true
-    },
-    jobOverrides: {
-      productId: "dark-preserve-rescue",
-      imageId: "dark-preserve-rescue-main",
-      edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
-    }
-  });
-  assert.notEqual(darkPreserveRescueResult.outputValidation?.status, "Failed", "Strict preserve dark product rescue should complete for ordinary dark products");
-  assert.match(
-    darkPreserveRescueResult.outputValidation?.cutoutProvider ?? "",
-    /source-locked-strict-review-rescue/,
-    "Strict preserve should use source-locked review rescue after provider masks fail"
+      jobOverrides: {
+        productId: "dark-preserve-rescue",
+        imageId: "dark-preserve-rescue-main",
+        edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
+      }
+    }),
+    /Preserve mode could not produce a trustworthy product mask|failed product image validation|programmatic validation failed/i,
+    "Strict preserve must fail safely when provider masks are not trustworthy"
   );
-  assert.match(
-    darkPreserveRescueResult.outputValidation?.warnings.join(" ") ?? "",
-    /source-locked review rescue/i,
-    "Strict preserve rescue should be clearly labelled for review"
-  );
-  assert.equal(darkPreserveRescueResult.outputValidation?.checks.protectedProduct, "Passed", "Strict preserve rescue must keep source product pixels");
-  const darkPreserveRescueProcessed = getUploadedObject("processed-images", darkPreserveRescueResult.processedStoragePath);
-  await assertValidProcessedImage(darkPreserveRescueProcessed, "dark preserve source-locked rescue");
-  await writeFile(path.join(artifactDir, "dark-preserve-source-locked-rescue.webp"), darkPreserveRescueProcessed);
 
   const greyRetainerSource = await toPng(`
     <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">

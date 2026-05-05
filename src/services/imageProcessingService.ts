@@ -3,8 +3,6 @@ import sharp from "sharp";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
 import {
-  buildProductImageProcessingPrompt,
-  editProductImageWithOpenAi,
   ecommercePreservePromptVersion,
   openAiImageEditModel,
   openAiImageEditQuality,
@@ -157,6 +155,7 @@ type CutoutResult = {
     foregroundMeanDelta: number;
   };
   debugAlphaMask?: Buffer;
+  debugTrimap?: Buffer;
   debugInteriorDropoutOverlay?: Buffer;
   debugRestoredRegionOverlay?: Buffer;
   debugFinalRepairedCutout?: Buffer;
@@ -177,8 +176,8 @@ export type PreserveDebugAsset = {
     | "source_normalized"
     | "debug_cutout"
     | "ai_cutout"
-    | "ai_scene"
     | "raw_mask"
+    | "trimap"
     | "cleaned_mask"
     | "product_mask"
     | "alpha_mask"
@@ -1086,7 +1085,11 @@ const buildCutoutFromExistingSourceAlpha = async (
   const sourceRgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
   const sourceRgb = rgbaToRgb(sourceRgba);
   const sourceAlpha = await sharp(sourceBuffer).ensureAlpha().extractChannel("alpha").raw().toBuffer();
-  const safeAlpha = keepMainAlphaComponents(thresholdAlphaMask(sourceAlpha, 96), width, height);
+  const componentMask = keepMainAlphaComponents(thresholdAlphaMask(sourceAlpha, 96), width, height);
+  const safeAlpha = Buffer.alloc(sourceAlpha.length);
+  for (let pixel = 0; pixel < sourceAlpha.length; pixel += 1) {
+    safeAlpha[pixel] = (componentMask[pixel] ?? 0) >= 24 ? (sourceAlpha[pixel] ?? 0) : 0;
+  }
   const coverage = getAlphaCoverage(safeAlpha);
   const totalPixels = width * height;
 
@@ -1156,6 +1159,10 @@ const processImagePreserveMode = async (
         .extractChannel("alpha")
         .raw()
         .toBuffer();
+      const existingSourceRgba = await sharp(preservedOriginalBuffer)
+        .ensureAlpha()
+        .raw()
+        .toBuffer();
       const validation = await validatePreservedForegroundIntegrity(preservedOriginalBuffer, existingAlphaCutout);
       const programmaticValidation = await validatePreserveModeProgrammatic({
         sourceBuffer: preservedOriginalBuffer,
@@ -1175,7 +1182,13 @@ const processImagePreserveMode = async (
 
       const acceptedProgrammaticValidation = acceptExistingSourceAlphaValidation(programmaticValidation);
       const alphaMaskPreview = await buildAlphaMaskPreview(existingAlpha, existingMetadata.width, existingMetadata.height);
+      const trimapPreview = await buildTrimapPreview(
+        buildAdaptiveTrimap(existingSourceRgba, existingAlpha, existingMetadata.width, existingMetadata.height),
+        existingMetadata.width,
+        existingMetadata.height
+      );
       await uploadPreserveDebugAsset(context, debug, "alpha_mask", `source-alpha-mask-${randomUUID()}.png`, alphaMaskPreview, "image/png");
+      await uploadPreserveDebugAsset(context, debug, "trimap", `source-alpha-trimap-${randomUUID()}.png`, trimapPreview, "image/png");
       await uploadPreserveDebugAsset(context, debug, "preserved_cutout", `source-alpha-preserved-cutout-${randomUUID()}.png`, existingAlphaCutout, "image/png");
 
       console.info("Image preserve-mode used existing source alpha", {
@@ -1192,6 +1205,7 @@ const processImagePreserveMode = async (
         attempts: 0,
         validation,
         debugAlphaMask: alphaMaskPreview,
+        debugTrimap: trimapPreview,
         preserveDebug: {
           ...debug,
           finalStatus: "validating_foreground_integrity",
@@ -1303,6 +1317,9 @@ const processImagePreserveMode = async (
     }
     if (programmaticOverlays?.alphaMaskPreview) {
       await uploadPreserveDebugAsset(context, debug, "alpha_mask_preview", `attempt-${attempt}-alpha-mask-preview-${randomUUID()}.png`, programmaticOverlays.alphaMaskPreview, "image/png");
+    }
+    if (result.debugTrimap) {
+      await uploadPreserveDebugAsset(context, debug, "trimap", `attempt-${attempt}-trimap-${randomUUID()}.png`, result.debugTrimap, "image/png");
     }
     if (programmaticOverlays?.checkerboardPreview) {
       await uploadPreserveDebugAsset(context, debug, "product_cutout_checkerboard", `attempt-${attempt}-checkerboard-preview-${randomUUID()}.png`, programmaticOverlays.checkerboardPreview, "image/png");
@@ -1498,6 +1515,16 @@ const processImagePreserveMode = async (
           "alpha_mask",
           `source-locked-rescue-alpha-mask-${randomUUID()}.png`,
           fallback.debugAlphaMask,
+          "image/png"
+        );
+      }
+      if (fallback.debugTrimap) {
+        await uploadPreserveDebugAsset(
+          context,
+          debug,
+          "trimap",
+          `source-locked-rescue-trimap-${randomUUID()}.png`,
+          fallback.debugTrimap,
           "image/png"
         );
       }
@@ -1698,7 +1725,9 @@ const buildPreservedProductCutoutFromAlpha = async (
     throw new Error(`Preserve mode detected unresolved interior product dropout: ${interiorRepair.diagnostics.failureReasons.join("; ")}`);
   }
 
-  let approvedAlpha = interiorRepair.alpha;
+  const initialMatte = await refineAlphaMatteWithTrimap(originalRgba, interiorRepair.alpha, width, height);
+  let approvedAlpha = initialMatte.alpha;
+  let approvedTrimap = initialMatte.trimap;
   let productRgba = applyApprovedAlphaToOriginalPixels(originalRaw, approvedAlpha, width, height);
   const visualValidation = getCutoutVisualPresence(productRgba, approvedAlpha);
 
@@ -1730,7 +1759,7 @@ const buildPreservedProductCutoutFromAlpha = async (
       ["Edge Halo / Background Residue", "Mask Includes Background", "Dirty Alpha Edge", "Disconnected Background Artifact"].includes(reason)
     )
   ) {
-    const harderAlpha = keepMainAlphaComponents(
+    const harderAlphaCandidate = keepMainAlphaComponents(
       removePaleBackgroundEdgeRemnants(
         originalRgba,
         removeBackgroundLikePixelsFromMask(originalRaw, approvedAlpha, backgroundPalette),
@@ -1740,6 +1769,8 @@ const buildPreservedProductCutoutFromAlpha = async (
       width,
       height
     );
+    const harderMatte = await refineAlphaMatteWithTrimap(originalRgba, harderAlphaCandidate, width, height);
+    const harderAlpha = harderMatte.alpha;
     const harderCoverage = getAlphaCoverage(harderAlpha);
     if (harderCoverage >= getAlphaCoverage(approvedAlpha) * 0.78) {
       const harderProductRgba = applyApprovedAlphaToOriginalPixels(originalRaw, harderAlpha, width, height);
@@ -1762,6 +1793,7 @@ const buildPreservedProductCutoutFromAlpha = async (
 
       if (harderValidation.passed || harderValidation.overallScore > programmaticValidation.overallScore) {
         approvedAlpha = harderAlpha;
+        approvedTrimap = harderMatte.trimap;
         productRgba = harderProductRgba;
         cutout = harderCutout;
         validation = await validatePreservedForegroundIntegrity(preservedOriginalBuffer, cutout);
@@ -1788,6 +1820,7 @@ const buildPreservedProductCutoutFromAlpha = async (
     attempts,
     validation,
     debugAlphaMask: await buildAlphaMaskPreview(approvedAlpha, width, height),
+    debugTrimap: await buildTrimapPreview(approvedTrimap, width, height),
     debugInteriorDropoutOverlay: interiorRepair.debugSuspiciousOverlay,
     debugRestoredRegionOverlay: interiorRepair.debugRestoredOverlay,
     debugFinalRepairedCutout: cutout,
@@ -1968,7 +2001,7 @@ const applyApprovedAlphaToOriginalPixels = (
     rgba[targetIndex] = originalRgb[sourceIndex] ?? 0;
     rgba[targetIndex + 1] = originalRgb[sourceIndex + 1] ?? 0;
     rgba[targetIndex + 2] = originalRgb[sourceIndex + 2] ?? 0;
-    rgba[targetIndex + 3] = (alpha[pixel] ?? 0) >= 24 ? 255 : 0;
+    rgba[targetIndex + 3] = alpha[pixel] ?? 0;
   }
 
   return rgba;
@@ -2037,156 +2070,6 @@ const wantsCustomBackground = (settings: unknown): boolean => {
   const backgroundSettings = getObject(getObject(settings).background);
 
   return backgroundSettings.source === "custom";
-};
-
-const describeBackgroundForOpenAiPrompt = (
-  background: string,
-  settings: Record<string, unknown>,
-  hasCustomBackground: boolean
-): string => {
-  const backgroundSettings = getObject(settings.background);
-  const preset = getString(backgroundSettings.preset, background);
-  const source = getString(backgroundSettings.source, hasCustomBackground ? "custom" : "preset");
-  const shadow = getObject(settings.shadow);
-  const lighting = getObject(settings.lighting);
-  const shadowMode = getString(shadow.mode, "under");
-  const lightingEnabled = lighting.enabled === true;
-
-  const presetDescriptions: Record<string, string> = {
-    "optivra-default": "off-white premium ecommerce studio background",
-    white: "clean pure white ecommerce background",
-    "light-grey": "clean light grey ecommerce studio background",
-    transparent: "transparent or very clean white ecommerce background with no clutter",
-    "soft-white": "soft warm white ecommerce studio background",
-    "cool-studio": "cool light grey studio background",
-    "warm-studio": "warm light grey studio background"
-  };
-  const baseDescription = hasCustomBackground || source === "custom"
-    ? "match the selected custom brand background/reference while keeping the product as the clear ecommerce subject"
-    : presetDescriptions[preset] ?? presetDescriptions[background] ?? "clean light ecommerce studio background";
-  const shadowDescription = shadowMode === "off"
-    ? "No artificial shadow is required unless a subtle natural grounding shadow improves realism."
-    : `Use a ${getString(shadow.strength, "medium")} ${shadowMode === "behind" ? "background/contact" : "under-product contact"} shadow that grounds the product naturally.`;
-  const lightingDescription = lightingEnabled
-    ? `Use ${getString(lighting.strength, "medium")} lighting harmonisation only for realism; do not redesign or recolour the product.`
-    : "Keep source product lighting natural; only adjust the scene/background enough for a coherent ecommerce image.";
-
-  return `${baseDescription}. ${shadowDescription} ${lightingDescription} Output must be a finished 1024x1024 product image, not a transparent cutout or mask.`;
-};
-
-const normalizeOpenAiEditedProductImage = async (imageBuffer: Buffer): Promise<Buffer> =>
-  sharp(imageBuffer)
-    .rotate()
-    .resize(outputSize, outputSize, {
-      fit: "cover",
-      withoutEnlargement: false,
-      position: "centre"
-    })
-    .flatten({
-      background: {
-        r: 247,
-        g: 247,
-        b: 244
-      }
-    })
-    .png()
-    .toBuffer();
-
-const assertUsableOpenAiStudioScene = async (imageBuffer: Buffer): Promise<void> => {
-  const metadata = await sharp(imageBuffer).metadata();
-  if (metadata.width !== outputSize || metadata.height !== outputSize) {
-    throw new Error("OpenAI studio scene returned an invalid output size.");
-  }
-
-  const raw = await sharp(imageBuffer)
-    .ensureAlpha()
-    .raw()
-    .toBuffer();
-  let meaningfulPixels = 0;
-  let strongEdgePixels = 0;
-
-  for (let pixel = 0; pixel < raw.length / 4; pixel += 1) {
-    const index = pixel * 4;
-    const r = raw[index] ?? 0;
-    const g = raw[index + 1] ?? 0;
-    const b = raw[index + 2] ?? 0;
-    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
-    const saturation = getRgbSaturation(r, g, b);
-
-    if (luminance < 238 || saturation > 0.08 || channelSpread > 24) {
-      meaningfulPixels += 1;
-    }
-
-    if (getRgbGradientMagnitude(raw, outputSize, outputSize, pixel) > 18) {
-      strongEdgePixels += 1;
-    }
-  }
-
-  const totalPixels = outputSize * outputSize;
-  if (meaningfulPixels / totalPixels < 0.012 || strongEdgePixels < 600) {
-    throw new Error("OpenAI studio scene did not return a visibly usable background reference.");
-  }
-};
-
-const buildAiAssistedStudioBackground = async (
-  aiSceneBuffer: Buffer,
-  fallbackBackgroundBuffer: Buffer
-): Promise<Buffer> => {
-  const [sceneWash, fallbackBackground] = await Promise.all([
-    sharp(aiSceneBuffer)
-      .rotate()
-      .resize(outputSize, outputSize, {
-        fit: "cover",
-        position: "centre"
-      })
-      .blur(36)
-      .modulate({
-        saturation: 0.16,
-        brightness: 1.08
-      })
-      .removeAlpha()
-      .joinChannel(Buffer.alloc(outputSize * outputSize, 58), {
-        raw: {
-          width: outputSize,
-          height: outputSize,
-          channels: 1
-        }
-      })
-      .png()
-      .toBuffer(),
-    sharp(fallbackBackgroundBuffer)
-      .resize(outputSize, outputSize, {
-        fit: "cover",
-        position: "centre"
-      })
-      .ensureAlpha()
-      .png()
-      .toBuffer()
-  ]);
-  const neutralWash = await sharp({
-    create: {
-      width: outputSize,
-      height: outputSize,
-      channels: 4,
-      background: {
-        r: 249,
-        g: 249,
-        b: 246,
-        alpha: 0.62
-      }
-    }
-  })
-    .png()
-    .toBuffer();
-
-  return sharp(fallbackBackground)
-    .composite([
-      { input: sceneWash, blend: "over" },
-      { input: neutralWash, blend: "over" }
-    ])
-    .png()
-    .toBuffer();
 };
 
 const buildProductAlphaMaskPreview = async (productBuffer: Buffer): Promise<Buffer> =>
@@ -3497,7 +3380,7 @@ const normalizeAlphaBufferLength = (alpha: Buffer, width: number, height: number
 };
 
 const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Promise<Buffer> =>
-  thresholdAlphaMask(normalizeAlphaBufferLength(await sharp(alpha, {
+  normalizeAlphaBufferLength(await sharp(alpha, {
     raw: {
       width,
       height,
@@ -3506,7 +3389,154 @@ const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Pr
   })
     .blur(0.35)
     .raw()
-    .toBuffer(), width, height), 140);
+    .toBuffer(), width, height);
+
+const buildAdaptiveTrimap = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const binary = thresholdAlphaMask(alpha, 24);
+  const confidentForeground = erodeBinaryAlphaMask(binary, width, height, 1);
+  const expandedUnknown = dilateBinaryAlphaMask(binary, width, height, 2);
+  const trimap = Buffer.alloc(alpha.length);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    const value = alpha[pixel] ?? 0;
+    if ((confidentForeground[pixel] ?? 0) >= 245 && value >= 220) {
+      trimap[pixel] = 255;
+      continue;
+    }
+    if ((expandedUnknown[pixel] ?? 0) < 24 && value <= 8) {
+      trimap[pixel] = 0;
+      continue;
+    }
+    trimap[pixel] = 128;
+  }
+
+  const bounds = getAlphaBounds(binary, width, height, 24);
+  if (!bounds) {
+    return trimap;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height);
+  const minX = Math.max(0, bounds.minX - 10);
+  const maxX = Math.min(width - 1, bounds.maxX + 10);
+  const minY = Math.max(0, bounds.minY - 10);
+  const maxY = Math.min(height - 1, bounds.maxY + 10);
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const pixel = y * width + x;
+      if ((trimap[pixel] ?? 0) !== 255) {
+        continue;
+      }
+
+      const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+      const index = pixel * 4;
+      const backgroundDistance = backgroundPalette.length > 0
+        ? closestPaletteDistance(originalRgba[index] ?? 0, originalRgba[index + 1] ?? 0, originalRgba[index + 2] ?? 0, backgroundPalette)
+        : 255;
+      const lowContrastTransition = backgroundDistance < 42;
+      const complexBoundary = gradient > 22 || hasTransparentNeighbor(binary, width, height, x, y, 3);
+
+      if (complexBoundary || lowContrastTransition) {
+        for (let yy = Math.max(minY, y - 1); yy <= Math.min(maxY, y + 1); yy += 1) {
+          for (let xx = Math.max(minX, x - 1); xx <= Math.min(maxX, x + 1); xx += 1) {
+            const neighbour = yy * width + xx;
+            if ((trimap[neighbour] ?? 0) !== 0) {
+              trimap[neighbour] = 128;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return trimap;
+};
+
+const refineAlphaMatteWithTrimap = async (
+  originalRgba: Buffer,
+  candidateAlpha: Buffer,
+  width: number,
+  height: number
+): Promise<{ alpha: Buffer; trimap: Buffer }> => {
+  const trimap = buildAdaptiveTrimap(originalRgba, candidateAlpha, width, height);
+  const softAlpha = normalizeAlphaBufferLength(await sharp(candidateAlpha, {
+    raw: {
+      width,
+      height,
+      channels: 1
+    }
+  })
+    .resize(width * 2, height * 2, {
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3
+    })
+    .blur(0.45)
+    .resize(width, height, {
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3
+    })
+    .raw()
+    .toBuffer(), width, height);
+  const binary = thresholdAlphaMask(candidateAlpha, 24);
+  const foregroundCore = erodeBinaryAlphaMask(binary, width, height, 2);
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height);
+  const refined = Buffer.alloc(candidateAlpha.length);
+
+  for (let pixel = 0; pixel < refined.length; pixel += 1) {
+    const trimapValue = trimap[pixel] ?? 0;
+    if (trimapValue === 255) {
+      refined[pixel] = 255;
+      continue;
+    }
+    if (trimapValue === 0) {
+      refined[pixel] = 0;
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const backgroundDistance = backgroundPalette.length > 0
+      ? closestPaletteDistance(r, g, b, backgroundPalette)
+      : 96;
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const sourceAlpha = candidateAlpha[pixel] ?? 0;
+    const blurredAlpha = softAlpha[pixel] ?? sourceAlpha;
+    const edgeEvidence = Math.max(sourceAlpha, blurredAlpha);
+
+    if ((foregroundCore[pixel] ?? 0) >= 24 && sourceAlpha >= 160) {
+      refined[pixel] = 255;
+    } else if (backgroundDistance < 18 && gradient < 8 && sourceAlpha < 220) {
+      refined[pixel] = Math.min(96, Math.round(edgeEvidence * 0.45));
+    } else if (backgroundDistance > 72 || gradient > 24) {
+      refined[pixel] = Math.max(sourceAlpha, Math.min(255, Math.round(blurredAlpha * 1.05)));
+    } else {
+      refined[pixel] = Math.round((sourceAlpha * 0.72) + (blurredAlpha * 0.28));
+    }
+  }
+
+  return {
+    alpha: getSafeAlphaMask(candidateAlpha, refined, 0.86),
+    trimap
+  };
+};
+
+const buildTrimapPreview = async (trimap: Buffer, width: number, height: number): Promise<Buffer> =>
+  sharp(trimap, {
+    raw: {
+      width,
+      height,
+      channels: 1
+    }
+  })
+    .png()
+    .toBuffer();
 
 const erodeBinaryAlphaMask = (
   alpha: Buffer,
@@ -4271,7 +4301,7 @@ const analyzeAlphaMask = (alpha: Buffer, width: number, height: number): Preserv
     failureReasons.push(`mask bounding box area ${bboxAreaPercent.toFixed(3)}% is too small`);
   }
 
-  if (hasForeground && bboxAreaPercent > 18 && bboxFillPercent > 88) {
+  if (hasForeground && bboxAreaPercent > 55 && bboxFillPercent > 88) {
     failureReasons.push(`mask appears to contain a filled rectangular photo area (${bboxFillPercent.toFixed(1)}% of bounds), not an isolated product`);
   }
 
@@ -4806,12 +4836,12 @@ const applyProductLighting = async (productBuffer: Buffer, settings?: unknown): 
     return productBuffer;
   }
 
-  const brightness = 1 + getNumber(lightingSettings.brightness, 0, -100, 100) / 200;
-  const contrast = getNumber(lightingSettings.contrast, 0, -100, 100);
+  const brightness = 1 + getNumber(lightingSettings.brightness, 0, -12, 12) / 200;
+  const contrast = getNumber(lightingSettings.contrast, 0, -10, 10);
   const contrastFactor = 1 + contrast / 100;
   const contrastIntercept = -128 * (contrastFactor - 1);
-  const saturation = lightingSettings.neutralizeTint === true ? 0.98 : 1;
-  const gamma = lightingSettings.shadowLift === true ? 1.08 : 1;
+  const saturation = lightingSettings.neutralizeTint === true ? 0.99 : 1;
+  const gamma = lightingSettings.shadowLift === true ? 1.035 : 1;
 
   return sharp(productBuffer)
     .modulate({
@@ -5726,6 +5756,30 @@ const buildBackgroundFromImage = async (
     .toBuffer();
 };
 
+const compositeSourceLockedProductLayers = async ({
+  backgroundBuffer,
+  shadowBuffer,
+  productBuffer,
+  productTop,
+  productLeft
+}: {
+  backgroundBuffer: Buffer;
+  shadowBuffer: Buffer | null;
+  productBuffer: Buffer;
+  productTop: number;
+  productLeft: number;
+}): Promise<Buffer> => {
+  const composites = [
+    ...(shadowBuffer ? [{ input: shadowBuffer, top: 0, left: 0 }] : []),
+    { input: productBuffer, top: productTop, left: productLeft }
+  ];
+
+  return sharp(backgroundBuffer)
+    .composite(composites)
+    .png()
+    .toBuffer();
+};
+
 export const __optiimstImageProcessingTestHooks = {
   buildFlexibleFullSourceReviewCutout,
   buildFlexibleLocalForegroundCutout,
@@ -5850,7 +5904,6 @@ export const processImageForProduct = async ({
     originalHeight: originalImageDimensions.height
   });
 
-  let flexibleAiStudioScene: Buffer | null = null;
   const flexiblePipelineWarnings: string[] = [];
   if (!preserveProductExactly) {
     if (requiresCustomBackground && !effectiveBackgroundImageUrl && !backgroundImageBuffer) {
@@ -5858,43 +5911,15 @@ export const processImageForProduct = async ({
     }
 
     const backgroundIsTransparent = getString(getObject(processingSettings.background).preset, background) === "transparent" || background === "transparent";
-    const useOpenAiBackgroundScene = !backgroundIsTransparent && !effectiveBackgroundImageUrl && !backgroundImageBuffer;
+    console.info("Flexible studio enhancement selected; final image will be built by source-locked layer compositing", {
+      imageJobId,
+      backgroundIsTransparent,
+      hasCustomBackground: Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer)
+    });
 
-    if (useOpenAiBackgroundScene) {
-      try {
-        const backgroundDescription = describeBackgroundForOpenAiPrompt(background, processingSettings, false);
-        const prompt = buildProductImageProcessingPrompt({
-          preserveProductExactly: false,
-          processingMode: getString(processingSettings.processingMode, "standard_background_replacement"),
-          backgroundDescription
-        });
-        const openAiEdited = await editProductImageWithOpenAi(openAiInput, prompt);
-        flexibleAiStudioScene = await normalizeOpenAiEditedProductImage(openAiEdited);
-        await validateImage(flexibleAiStudioScene);
-        await assertUsableOpenAiStudioScene(flexibleAiStudioScene);
-
-        if (savePipelineDebugAssets) {
-          await uploadPipelineDebugAsset(
-            userId,
-            imageJobId,
-            pipelineDebugAssets,
-            "ai_scene",
-            `openai-studio-scene-${randomUUID()}.png`,
-            flexibleAiStudioScene,
-            "image/png"
-          );
-        }
-      } catch (openAiEditError) {
-        const reason = openAiEditError instanceof Error ? openAiEditError.message : "Unknown OpenAI image edit error";
-        console.warn("OpenAI flexible studio scene failed; final image will still use source-locked product compositing", {
-          imageJobId,
-          reason
-        });
-        flexiblePipelineWarnings.push(`OpenAI studio background guidance was unavailable, so the source-locked local studio background was used: ${reason}.`);
-      }
-    } else if (backgroundIsTransparent) {
+    if (backgroundIsTransparent) {
       flexiblePipelineWarnings.push("Transparent background selected; OpenAI studio background generation was skipped and the product layer was composited onto transparency.");
-    } else {
+    } else if (effectiveBackgroundImageUrl || backgroundImageBuffer) {
       flexiblePipelineWarnings.push("Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.");
     }
   }
@@ -5919,31 +5944,11 @@ export const processImageForProduct = async ({
         throw preserveError;
       }
 
-      console.warn("Strict preserve masks failed; trying source-locked review rescue before failing the job", {
+      console.warn("Strict preserve mode failed; refusing non-pixel-perfect fallback", {
         imageJobId,
         reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
       });
-
-      const rescueResult = await processImageFlexiblePreserveMode(
-        originalImage.buffer,
-        openAiInput,
-        originalImage.contentType,
-        true
-      );
-
-      if (rescueResult.provider.includes("flexible-full-source-review-fallback")) {
-        throw preserveError;
-      }
-
-      cutoutResult = {
-        ...rescueResult,
-        provider: `source-locked-strict-review-rescue:${rescueResult.provider}`,
-        attempts: Math.max(3, rescueResult.attempts),
-        preserveDebug: undefined
-      };
-      strictSourceLockedRescueWarnings = [
-        "Strict provider masks failed, so Optivra used a source-locked review rescue. The product pixels still come from the original source, but review this output before approval."
-      ];
+      throw preserveError;
     }
   } else {
     cutoutResult = await processImageFlexiblePreserveMode(
@@ -6002,7 +6007,7 @@ export const processImageForProduct = async ({
       .toBuffer();
     productMetadata = await sharp(productBuffer).metadata();
   }
-  if (!cutoutResult.provider.startsWith("source-alpha:")) {
+  if (!preserveProductExactly && !cutoutResult.provider.startsWith("source-alpha:")) {
     productBuffer = await removeDetachedBackgroundMarksFromProductBuffer(productBuffer);
     productBuffer = await removePalePhotoCardFromProductBuffer(productBuffer);
   }
@@ -6194,18 +6199,15 @@ export const processImageForProduct = async ({
   const baseBackgroundBuffer = effectiveBackgroundImageUrl || backgroundImageBuffer
     ? await buildBackgroundFromImage(effectiveBackgroundImageUrl, backgroundImageBuffer, backgroundImageContentType)
     : await buildBrandedBackground(background);
-  const backgroundBuffer = flexibleAiStudioScene && !preserveProductExactly && background !== "transparent"
-    ? await buildAiAssistedStudioBackground(flexibleAiStudioScene, baseBackgroundBuffer)
-    : baseBackgroundBuffer;
+  const backgroundBuffer = baseBackgroundBuffer;
 
-  const composites = [
-    ...(shadow ? [{ input: shadow, top: 0, left: 0 }] : []),
-    { input: productBuffer, top, left }
-  ];
-  const composedImage = await sharp(backgroundBuffer)
-    .composite(composites)
-    .png()
-    .toBuffer();
+  const composedImage = await compositeSourceLockedProductLayers({
+    backgroundBuffer,
+    shadowBuffer: shadow,
+    productBuffer,
+    productTop: top,
+    productLeft: left
+  });
 
   if (savePipelineDebugAssets) {
     await uploadPipelineDebugAsset(

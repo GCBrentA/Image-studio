@@ -99,7 +99,7 @@ export const validatePreserveModeProgrammatic = async ({
     failReasons.add("Low Confidence Preserve Result");
   }
 
-  if (semiTransparentPixels > Math.max(600, foregroundPixels * 0.025)) {
+  if (semiTransparentPixels > Math.max(2400, foregroundPixels * 0.08)) {
     failReasons.add("Dirty Alpha Edge");
   }
 
