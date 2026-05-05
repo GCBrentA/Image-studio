@@ -210,14 +210,14 @@ const run = async (): Promise<void> => {
   const summary: Array<Record<string, unknown>> = [];
   const rows: Array<{ original: Buffer; processed?: Buffer; label: string; status: string }> = [];
 
-  for (const file of selectedProducts) {
+  for (const [productIndex, file] of selectedProducts.entries()) {
     const sourcePath = path.join(uploadDir, file);
     const source = await readFile(sourcePath);
     const originalOut = path.join(artifactDir, `${safeName(file)}--original${path.extname(file)}`);
     await writeFile(originalOut, source);
 
     for (const mode of selectedModes) {
-      const jobId = `real-${mode.name}-${safeName(file).slice(0, 72)}`;
+      const jobId = `real-${String(productIndex + 1).padStart(2, "0")}-${mode.name}-${safeName(file).slice(0, 64)}`;
       const jobDir = path.join(artifactDir, safeName(jobId));
       await mkdir(jobDir, { recursive: true });
       let processed: Buffer | undefined;

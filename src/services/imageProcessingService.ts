@@ -1902,7 +1902,13 @@ const buildPreservedProductCutoutFromAlpha = async (
   const initialMatte = await refineAlphaMatteWithTrimap(originalRgba, interiorRepair.alpha, width, height);
   let approvedAlpha = initialMatte.alpha;
   let approvedTrimap = initialMatte.trimap;
-  let productRgba = applyApprovedAlphaToOriginalPixels(originalRaw, approvedAlpha, width, height);
+  let productRgba = decontaminatePreserveEdgeRgb(
+    applyApprovedAlphaToOriginalPixels(originalRaw, approvedAlpha, width, height),
+    originalRgba,
+    approvedAlpha,
+    width,
+    height
+  );
   const visualValidation = getCutoutVisualPresence(productRgba, approvedAlpha);
 
   if (!visualValidation.isVisible) {
@@ -1947,7 +1953,13 @@ const buildPreservedProductCutoutFromAlpha = async (
     const harderAlpha = harderMatte.alpha;
     const harderCoverage = getAlphaCoverage(harderAlpha);
     if (harderCoverage >= getAlphaCoverage(approvedAlpha) * 0.78) {
-      const harderProductRgba = applyApprovedAlphaToOriginalPixels(originalRaw, harderAlpha, width, height);
+      const harderProductRgba = decontaminatePreserveEdgeRgb(
+        applyApprovedAlphaToOriginalPixels(originalRaw, harderAlpha, width, height),
+        originalRgba,
+        harderAlpha,
+        width,
+        height
+      );
       const harderCutout = await sharp(harderProductRgba, {
         raw: {
           width,
@@ -2171,15 +2183,17 @@ const validatePreservedForegroundIntegrity = async (
   ]);
   const pixelCount = metadata.width * metadata.height;
   const alpha = Buffer.alloc(pixelCount);
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    alpha[pixel] = cutoutRgba[pixel * 4 + 3] ?? 0;
+  }
+  const confidentForeground = erodeBinaryAlphaMask(thresholdAlphaMask(alpha, 245), metadata.width, metadata.height, 4);
   let solidPixelCount = 0;
   let totalDelta = 0;
 
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const cutoutIndex = pixel * 4;
-    const currentAlpha = cutoutRgba[cutoutIndex + 3] ?? 0;
-    alpha[pixel] = currentAlpha;
 
-    if (currentAlpha < 245) {
+    if ((confidentForeground[pixel] ?? 0) < 245) {
       continue;
     }
 
@@ -2227,6 +2241,160 @@ const applyApprovedAlphaToOriginalPixels = (
 };
 
 const removeEdgeMatte = applyApprovedAlphaToOriginalPixels;
+
+const decontaminatePreserveEdgeRgb = (
+  productRgba: Buffer,
+  sourceRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const backgroundPalette = buildSourceBackgroundPalette(sourceRgba, width, height);
+  if (backgroundPalette.length === 0) {
+    return productRgba;
+  }
+
+  const cleaned = Buffer.from(productRgba);
+  let changedPixels = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+      const currentAlpha = alpha[pixel] ?? 0;
+
+      if (currentAlpha < 24 || !hasTransparentNeighbor(alpha, width, height, x, y, 8)) {
+        continue;
+      }
+
+      const index = pixel * 4;
+      const r = productRgba[index] ?? 0;
+      const g = productRgba[index + 1] ?? 0;
+      const b = productRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const gradient = getRgbGradientMagnitude(sourceRgba, width, height, pixel);
+      const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+      const paleEdgeResidue =
+        luminance > 148 &&
+        saturation < 0.17 &&
+        channelSpread < 62 &&
+        backgroundDistance < 118;
+      const greyMaskScar =
+        luminance > 82 &&
+        luminance < 212 &&
+        saturation < 0.12 &&
+        channelSpread < 42 &&
+        backgroundDistance < 98 &&
+        gradient < 22;
+      const darkContourScar =
+        luminance < 96 &&
+        saturation < 0.2 &&
+        channelSpread < 58 &&
+        gradient >= 7 &&
+        backgroundDistance < 132 &&
+        hasTransparentNeighbor(alpha, width, height, x, y, 2);
+      const softFringe = currentAlpha > 0 && currentAlpha < 245 && backgroundDistance < 136;
+
+      if (!paleEdgeResidue && !greyMaskScar && !darkContourScar && !softFringe) {
+        continue;
+      }
+
+      const replacement = findNearestTrustedPreserveProductColor(
+        productRgba,
+        sourceRgba,
+        alpha,
+        backgroundPalette,
+        width,
+        height,
+        x,
+        y,
+        28
+      );
+
+      if (!replacement) {
+        continue;
+      }
+
+      cleaned[index] = replacement.r;
+      cleaned[index + 1] = replacement.g;
+      cleaned[index + 2] = replacement.b;
+      changedPixels += 1;
+    }
+  }
+
+  const alphaCoverage = getAlphaCoverage(alpha);
+  if (changedPixels > Math.max(3200, alphaCoverage * 0.045)) {
+    console.warn("Skipped preserve-mode RGB edge decontamination because the edge band was too broad", {
+      changedPixels,
+      alphaCoverage
+    });
+    return productRgba;
+  }
+
+  if (changedPixels > 0) {
+    console.info("Decontaminated preserve-mode RGB edge band", {
+      changedPixels,
+      totalPixels: width * height
+    });
+  }
+
+  return cleaned;
+};
+
+const findNearestTrustedPreserveProductColor = (
+  productRgba: Buffer,
+  sourceRgba: Buffer,
+  alpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  radius: number
+): { r: number; g: number; b: number } | null => {
+  let best: { r: number; g: number; b: number; distance: number } | null = null;
+
+  for (let ny = Math.max(0, y - radius); ny <= Math.min(height - 1, y + radius); ny += 1) {
+    for (let nx = Math.max(0, x - radius); nx <= Math.min(width - 1, x + radius); nx += 1) {
+      const pixel = ny * width + nx;
+
+      if ((alpha[pixel] ?? 0) < 245 || hasTransparentNeighbor(alpha, width, height, nx, ny, 3)) {
+        continue;
+      }
+
+      const index = pixel * 4;
+      const r = productRgba[index] ?? 0;
+      const g = productRgba[index + 1] ?? 0;
+      const b = productRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+      const gradient = getRgbGradientMagnitude(sourceRgba, width, height, pixel);
+      const backgroundLike =
+        luminance > 140 &&
+        saturation < 0.12 &&
+        channelSpread < 42 &&
+        backgroundDistance < 92 &&
+        gradient < 18;
+
+      if (backgroundLike) {
+        continue;
+      }
+
+      const dx = nx - x;
+      const dy = ny - y;
+      const distance = dx * dx + dy * dy;
+
+      if (!best || distance < best.distance) {
+        best = { r, g, b, distance };
+      }
+    }
+  }
+
+  return best;
+};
 
 const findNearestSolidProductColor = (
   rgba: Buffer,
@@ -4202,7 +4370,8 @@ const repairInteriorProductDropouts = async (
     for (let x = minX; x <= maxX; x += 1) {
       const pixel = y * width + x;
 
-      if ((alpha[pixel] ?? 0) >= 24 || !hasMaskedNeighbor(alpha, width, height, x, y, 10)) {
+      const interiorSupportRadius = Math.max(10, Math.round(Math.min(width, height) * 0.045));
+      if ((alpha[pixel] ?? 0) >= 24 || !hasMaskedNeighbor(alpha, width, height, x, y, interiorSupportRadius)) {
         continue;
       }
 
@@ -4377,7 +4546,9 @@ const getInteriorPixelEvidence = (
   const saturation = getRgbSaturation(r, g, b);
   const boundaryGradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
   const secondOpinionForeground = (secondOpinionAlpha[pixel] ?? 0) >= 128;
-  const darkProductMaterial = luminance < 96 && distance > 10 && boundaryGradient > 4;
+  const darkProductMaterial =
+    (luminance < 104 && distance > 18 && (boundaryGradient > 2 || saturation > 0.03 || secondOpinionForeground)) ||
+    (luminance < 54 && distance > 64);
   const productTexture = distance > 30 && (saturation > 0.08 || boundaryGradient > 8 || luminance < 135);
   const fineProductStructure = distance > 16 && boundaryGradient > 18;
   const strongBackgroundEvidence = distance < 22 && saturation < 0.18 && boundaryGradient < 16 && !secondOpinionForeground;

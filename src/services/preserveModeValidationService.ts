@@ -86,7 +86,7 @@ export const validatePreserveModeProgrammatic = async ({
   const components = getConnectedComponents(alpha, width, height);
   const largestComponentPixels = components[0]?.length ?? 0;
   const largestShare = foregroundPixels > 0 ? largestComponentPixels / foregroundPixels : 0;
-  const sourceIntegrity = getSourcePixelIntegrity(sourceRgba, cutoutRgba, alpha);
+  const sourceIntegrity = getSourcePixelIntegrity(sourceRgba, cutoutRgba, alpha, width, height);
   const referenceAlpha = sourceReferenceAlpha && referenceWidth === width && referenceHeight === height
     ? sourceReferenceAlpha
     : null;
@@ -260,13 +260,20 @@ const getConnectedComponents = (alpha: Buffer, width: number, height: number): n
   return components.sort((a, b) => b.length - a.length);
 };
 
-const getSourcePixelIntegrity = (sourceRgba: Buffer, cutoutRgba: Buffer, alpha: Buffer) => {
+const getSourcePixelIntegrity = (
+  sourceRgba: Buffer,
+  cutoutRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+) => {
   let checked = 0;
   let changed = 0;
   let totalDelta = 0;
+  const confidentForeground = erode(alpha, width, height, 4);
 
   for (let pixel = 0; pixel < alpha.length; pixel += 1) {
-    if ((alpha[pixel] ?? 0) < alphaThreshold) continue;
+    if ((confidentForeground[pixel] ?? 0) < alphaThreshold) continue;
     const index = pixel * 4;
     const delta =
       Math.abs((sourceRgba[index] ?? 0) - (cutoutRgba[index] ?? 0)) +
