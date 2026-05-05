@@ -3778,15 +3778,22 @@ const removeNeutralEdgeResidueWithProductSupport = (
         const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
         const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
         const supportedProduct = (support[pixel] ?? 0) >= 24;
-        const strongProductSignal =
-          gradient > 28 ||
-          saturation > 0.22 ||
-          luminance < 42 ||
-          (supportedProduct && gradient > 13);
         const smoothNeutral =
           saturation < 0.18 &&
           channelSpread < 58 &&
           gradient < 18;
+        const highGradientNeutralScar =
+          luminance > 48 &&
+          luminance < 232 &&
+          saturation < 0.16 &&
+          channelSpread < 54 &&
+          gradient > 22 &&
+          hasTransparentNeighbor(current, width, height, x, y, 2);
+        const strongProductSignal =
+          saturation > 0.22 ||
+          luminance < 42 ||
+          (backgroundDistance > 150 && (saturation > 0.1 || luminance < 92)) ||
+          (supportedProduct && gradient > 13 && !highGradientNeutralScar);
         const paleHaloOrPhotoCard =
           smoothNeutral &&
           luminance > 156 &&
@@ -3801,7 +3808,7 @@ const removeNeutralEdgeResidueWithProductSupport = (
           luminance < 186 &&
           saturation < 0.17 &&
           channelSpread < 62 &&
-          backgroundDistance < 132 &&
+          (backgroundDistance < 180 || highGradientNeutralScar) &&
           gradient >= 6 &&
           hasTransparentNeighbor(current, width, height, x, y, 1);
         const softAlphaFringe =
@@ -3809,13 +3816,16 @@ const removeNeutralEdgeResidueWithProductSupport = (
           (current[pixel] ?? 0) < 245 &&
           backgroundDistance < 116;
         const nearProductCore = hasMaskedNeighbor(support, width, height, x, y, 2);
-        const trueDarkProductEdge = luminance < 42 || saturation > 0.24 || backgroundDistance > 150;
+        const trueDarkProductEdge =
+          luminance < 42 ||
+          saturation > 0.24 ||
+          (backgroundDistance > 170 && luminance < 82);
 
         if (
           (strongProductSignal && !thinNeutralContourScar) ||
           trueDarkProductEdge ||
-          (supportedProduct && !softAlphaFringe && !greyShadowOrBackdrop) ||
-          (nearProductCore && gradient > 18 && luminance < 232)
+          (supportedProduct && !thinNeutralContourScar && !softAlphaFringe && !greyShadowOrBackdrop) ||
+          (nearProductCore && !thinNeutralContourScar && gradient > 18 && luminance < 232)
         ) {
           continue;
         }
