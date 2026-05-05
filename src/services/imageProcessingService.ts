@@ -3796,21 +3796,31 @@ const removeNeutralEdgeResidueWithProductSupport = (
           luminance > 36 &&
           luminance < 198 &&
           (backgroundDistance < 108 || (saturation < 0.11 && gradient < 13));
+        const thinNeutralContourScar =
+          luminance > 48 &&
+          luminance < 186 &&
+          saturation < 0.17 &&
+          channelSpread < 62 &&
+          backgroundDistance < 132 &&
+          gradient >= 6 &&
+          hasTransparentNeighbor(current, width, height, x, y, 1);
         const softAlphaFringe =
           smoothNeutral &&
           (current[pixel] ?? 0) < 245 &&
           backgroundDistance < 116;
         const nearProductCore = hasMaskedNeighbor(support, width, height, x, y, 2);
+        const trueDarkProductEdge = luminance < 42 || saturation > 0.24 || backgroundDistance > 150;
 
         if (
-          strongProductSignal ||
+          (strongProductSignal && !thinNeutralContourScar) ||
+          trueDarkProductEdge ||
           (supportedProduct && !softAlphaFringe && !greyShadowOrBackdrop) ||
           (nearProductCore && gradient > 18 && luminance < 232)
         ) {
           continue;
         }
 
-        if (!paleHaloOrPhotoCard && !greyShadowOrBackdrop && !softAlphaFringe) {
+        if (!paleHaloOrPhotoCard && !greyShadowOrBackdrop && !softAlphaFringe && !thinNeutralContourScar) {
           continue;
         }
 
