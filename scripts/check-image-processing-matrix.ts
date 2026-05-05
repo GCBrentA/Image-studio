@@ -484,11 +484,13 @@ const assertPromptPolicy = (): void => {
   assert.match(backgroundRemoval, /User background settings:/);
   assert.doesNotMatch(backgroundRemoval, /freely redesign|make it look better however/i);
 
-  assert.match(imageProcessing, /preserveProductExactly\s+\?\s+await processImagePreserveMode/);
+  assert.match(imageProcessing, /if \(preserveProductExactly\) \{\s+try \{\s+cutoutResult = await processImagePreserveMode/s);
+  assert.match(imageProcessing, /Strict preserve masks failed; trying source-locked review rescue before failing the job/);
+  assert.match(imageProcessing, /source-locked-strict-review-rescue/);
   assert.match(imageProcessing, /processImageFlexiblePreserveMode/);
   assert.match(imageProcessing, /editProductImageWithOpenAi/);
   assert.match(imageProcessing, /OpenAI flexible studio scene failed; final image will still use source-locked product compositing/);
-  assert.match(imageProcessing, /:\s+await processImageFlexiblePreserveMode/);
+  assert.match(imageProcessing, /cutoutResult = await processImageFlexiblePreserveMode/);
   assert.match(imageProcessing, /buildAiAssistedStudioBackground/);
   assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/);
   assert.match(imageProcessing, /const webpOptions = preserveProductExactly/);
@@ -655,8 +657,17 @@ const run = async (): Promise<void> => {
         assert.notEqual(result.processedUrl, "", `${label}: processed URL should be present`);
 
         if (mode.preserveProductExactly) {
-          assert.ok(result.preserveDebug, `${label}: strict mode should include preserve debug data`);
-          assert.equal(result.preserveDebug.rgbIntegrity.passed, true, `${label}: strict mode should preserve source pixels`);
+          const usedSourceLockedRescue = result.outputValidation.cutoutProvider.includes("source-locked-strict-review-rescue");
+          assert.ok(result.preserveDebug || usedSourceLockedRescue, `${label}: strict mode should include preserve debug data or a source-locked review rescue marker`);
+          if (result.preserveDebug) {
+            assert.equal(result.preserveDebug.rgbIntegrity.passed, true, `${label}: strict mode should preserve source pixels`);
+          } else {
+            assert.match(
+              result.outputValidation.warnings.join(" "),
+              /source-locked review rescue/i,
+              `${label}: strict source-locked rescue should be clearly review-labelled`
+            );
+          }
           assert.equal(result.outputValidation.processingMode, "seo_product_feed_safe_preserve_background_replacement", `${label}: strict validation mode mismatch`);
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: strict protected product check should pass`);
         } else {
@@ -711,6 +722,121 @@ const run = async (): Promise<void> => {
     await sharp(fallbackCutout.cutout).webp({ quality: 92 }).toBuffer(),
     "forced full-source fallback"
   );
+
+  const blackProductWithEdgeNoise = await toPng(`
+    <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="720" fill="none"/>
+      <g transform="translate(360 360) rotate(-12)" fill="#101217" stroke="#101217" stroke-linecap="round">
+        <rect x="-245" y="-32" width="372" height="64" rx="30"/>
+        <rect x="104" y="-86" width="126" height="172" rx="24"/>
+        <path d="M218 -58 L282 -82" stroke-width="22"/>
+        <path d="M218 -18 L296 -34" stroke-width="22"/>
+        <path d="M218 22 L288 32" stroke-width="22"/>
+        <path d="M-220 -34 C-236 -50 -246 -64 -258 -82" stroke-width="2"/>
+        <path d="M-150 -42 C-166 -58 -178 -72 -196 -86" stroke-width="2"/>
+        <path d="M34 -44 C18 -58 6 -70 -8 -84" stroke-width="2"/>
+        <path d="M120 72 C112 82 102 84 88 86" stroke-width="2"/>
+      </g>
+    </svg>
+  `);
+  const edgeNoiseCleanup = await __optiimstImageProcessingTestHooks.removeThinEdgeNoiseFromProductBuffer(blackProductWithEdgeNoise);
+  assert.ok(edgeNoiseCleanup.removedPixels > 20, "Flexible edge cleanup should remove thin alpha whiskers around dark products");
+  await writeFile(path.join(artifactDir, "black-product-edge-noise-before.png"), blackProductWithEdgeNoise);
+  await writeFile(path.join(artifactDir, "black-product-edge-noise-after.png"), edgeNoiseCleanup.buffer);
+
+  const darkPreserveRescueSource = await toPng(`
+    <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="720" fill="#a8a8a5"/>
+      <g opacity="0.35" fill="#4e4e4e">
+        <path d="M330 118 H390 V170 H430 V220 H390 V330 H330 V220 H290 V170 H330 Z"/>
+        <text x="360" y="548" font-family="Arial Black, Arial, Helvetica, sans-serif" text-anchor="middle" font-size="74" font-weight="900">AZTECH</text>
+        <text x="360" y="605" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-size="32" font-weight="700" letter-spacing="7">INNOVATIONS</text>
+      </g>
+      <g transform="translate(360 345) rotate(-18)" fill="#101217" stroke="#050608" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="-192" y="-24" width="282" height="48" rx="22" stroke-width="9"/>
+        <rect x="72" y="-68" width="128" height="136" rx="24" stroke-width="9"/>
+        <path d="M190 -46 L252 -64" stroke-width="24"/>
+        <path d="M190 -8 L260 -12" stroke-width="24"/>
+        <path d="M190 32 L248 48" stroke-width="24"/>
+        <circle cx="88" cy="-18" r="18" fill="#a8a8a5" stroke="none"/>
+      </g>
+    </svg>
+  `);
+  const darkPreserveRescueResult = await processImageForProduct({
+    imageJobId: "matrix-dark-preserve-source-locked-rescue",
+    userId: "matrix-user",
+    imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
+    imageBuffer: darkPreserveRescueSource,
+    imageContentType: "image/png",
+    background: "white",
+    settings: {
+      preserveProductExactly: true,
+      processingMode: "seo_product_feed_preserve",
+      promptVersion: "ecommerce_preserve_v2",
+      autoFailIfProductAltered: true,
+      preserveFallbackFromStrictMode: false,
+      output: {
+        size: 1024,
+        aspectRatio: "1:1"
+      },
+      background: {
+        source: "preset",
+        preset: "white",
+        customBackgroundUrl: null,
+        customBackgroundId: null
+      },
+      framing: {
+        mode: "auto",
+        smartScaling: true,
+        padding: 6,
+        targetCoverage: 86,
+        useTargetCoverage: false,
+        preserveTransparentEdges: true
+      },
+      shadow: {
+        mode: "under",
+        strength: "medium",
+        opacity: 24,
+        blur: 24,
+        offsetX: 0,
+        offsetY: 0,
+        spread: 100,
+        softness: 60,
+        color: "#000000"
+      },
+      lighting: {
+        enabled: false,
+        mode: "auto",
+        brightness: 0,
+        contrast: 0,
+        highlightRecovery: true,
+        shadowLift: true,
+        neutralizeTint: true,
+        strength: "light"
+      },
+      debugArtifacts: true
+    },
+    jobOverrides: {
+      productId: "dark-preserve-rescue",
+      imageId: "dark-preserve-rescue-main",
+      edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
+    }
+  });
+  assert.notEqual(darkPreserveRescueResult.outputValidation?.status, "Failed", "Strict preserve dark product rescue should complete for ordinary dark products");
+  assert.match(
+    darkPreserveRescueResult.outputValidation?.cutoutProvider ?? "",
+    /source-locked-strict-review-rescue/,
+    "Strict preserve should use source-locked review rescue after provider masks fail"
+  );
+  assert.match(
+    darkPreserveRescueResult.outputValidation?.warnings.join(" ") ?? "",
+    /source-locked review rescue/i,
+    "Strict preserve rescue should be clearly labelled for review"
+  );
+  assert.equal(darkPreserveRescueResult.outputValidation?.checks.protectedProduct, "Passed", "Strict preserve rescue must keep source product pixels");
+  const darkPreserveRescueProcessed = getUploadedObject("processed-images", darkPreserveRescueResult.processedStoragePath);
+  await assertValidProcessedImage(darkPreserveRescueProcessed, "dark preserve source-locked rescue");
+  await writeFile(path.join(artifactDir, "dark-preserve-source-locked-rescue.webp"), darkPreserveRescueProcessed);
 
   const greyRetainerSource = await toPng(`
     <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">

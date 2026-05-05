@@ -107,6 +107,7 @@ export type OutputQualityValidation = {
   status: ValidationStatus;
   promptVersion: string;
   processingMode: string;
+  cutoutProvider: string;
   retryCount: number;
   productCoveragePercent: number;
   productCoverageWidthPercent: number;
@@ -1055,12 +1056,6 @@ const buildFlexibleLocalForegroundCutout = async (
   };
 };
 
-export const __optiimstImageProcessingTestHooks = {
-  buildFlexibleFullSourceReviewCutout,
-  buildFlexibleLocalForegroundCutout,
-  processImageFlexiblePreserveMode
-};
-
 const getImageAlphaMaskDiagnostics = async (imageBuffer: Buffer): Promise<PreserveMaskDiagnostics> => {
   const metadata = await sharp(imageBuffer).metadata();
 
@@ -1467,52 +1462,80 @@ const processImagePreserveMode = async (
     }
   }
 
-  if (context.fallbackMode === "local_experimental") {
-    console.warn("Image preserve-mode local fallback enabled by experimental config", {
+  if (context.fallbackMode !== "external_provider") {
+    console.warn("Image preserve-mode source-locked local rescue enabled after provider mask rejection", {
       imageJobId: context.imageJobId,
-      attempt: 2,
+      attempt: 3,
       fallbackMode: context.fallbackMode
     });
 
-    const fallback = await buildPreservedProductCutoutFromLocalMask(preservedOriginalBuffer);
-    const localMask = fallback.preserveDebug?.mask ?? null;
+    try {
+      const fallback = await buildPreservedProductCutoutFromLocalMask(preservedOriginalBuffer);
+      const localMask = fallback.preserveDebug?.mask ?? null;
 
-    if (!localMask?.passed) {
-      throw new PreserveModeProcessingError("Experimental local foreground fallback did not pass strict mask quality checks.", {
-        ...debug,
-        finalStatus: "failed",
-        maskSource: "local_fallback",
-        mask: localMask,
-        failureReason: "Experimental local foreground fallback did not pass strict mask quality checks."
+      if (!localMask?.passed) {
+        throw new PreserveModeProcessingError("Source-locked local rescue did not pass strict mask quality checks.", {
+          ...debug,
+          finalStatus: "failed",
+          maskSource: "local_fallback",
+          mask: localMask,
+          failureReason: "Source-locked local rescue did not pass strict mask quality checks."
+        });
+      }
+
+      await uploadPreserveDebugAsset(
+        context,
+        debug,
+        "preserved_cutout",
+        `source-locked-rescue-preserved-cutout-${randomUUID()}.png`,
+        fallback.cutout,
+        "image/png"
+      );
+      if (fallback.debugAlphaMask) {
+        await uploadPreserveDebugAsset(
+          context,
+          debug,
+          "alpha_mask",
+          `source-locked-rescue-alpha-mask-${randomUUID()}.png`,
+          fallback.debugAlphaMask,
+          "image/png"
+        );
+      }
+
+      console.info("Image preserve-mode source-locked local rescue passed", {
+        imageJobId: context.imageJobId,
+        alphaCoveragePercent: localMask.alphaCoveragePercent,
+        maskBBox: localMask.bbox,
+        connectedComponentCount: localMask.connectedComponentCount
+      });
+
+      return {
+        ...fallback,
+        attempts: 3,
+        preserveDebug: {
+          ...debug,
+          finalStatus: "validating_foreground_integrity",
+          maskSource: "local_fallback",
+          mask: localMask,
+          interiorDropout: fallback.preserveDebug?.interiorDropout ?? null,
+          programmaticValidation: fallback.preserveDebug?.programmaticValidation,
+          rgbIntegrity: {
+            passed: true,
+            foregroundMeanDelta: fallback.validation.foregroundMeanDelta,
+            alphaCoverage: fallback.validation.alphaCoverage
+          },
+          failureReason: null
+        }
+      };
+    } catch (fallbackError) {
+      const message = fallbackError instanceof Error ? fallbackError.message : "Unknown source-locked local rescue error";
+      errors.push(message);
+      console.warn("Image preserve-mode source-locked local rescue rejected", {
+        imageJobId: context.imageJobId,
+        fallbackMode: context.fallbackMode,
+        error: message
       });
     }
-
-    await uploadPreserveDebugAsset(
-      context,
-      debug,
-      "preserved_cutout",
-      `local-fallback-preserved-cutout-${randomUUID()}.png`,
-      fallback.cutout,
-      "image/png"
-    );
-
-    return {
-      ...fallback,
-      attempts: 2,
-      preserveDebug: {
-        ...debug,
-        finalStatus: "validating_foreground_integrity",
-        maskSource: "local_fallback",
-        mask: localMask,
-        interiorDropout: fallback.preserveDebug?.interiorDropout ?? null,
-        rgbIntegrity: {
-          passed: true,
-          foregroundMeanDelta: fallback.validation.foregroundMeanDelta,
-          alphaCoverage: fallback.validation.alphaCoverage
-        },
-        failureReason: null
-      }
-    };
   }
 
   if (context.fallbackMode === "external_provider") {
@@ -3485,6 +3508,135 @@ const smoothAlphaMask = async (alpha: Buffer, width: number, height: number): Pr
     .raw()
     .toBuffer(), width, height), 140);
 
+const erodeBinaryAlphaMask = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  radius: number
+): Buffer => {
+  const eroded = Buffer.alloc(alpha.length);
+  const diameter = radius * 2 + 1;
+  const requiredNeighbours = Math.max(1, Math.ceil(diameter * diameter * 0.68));
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) < 24) {
+        continue;
+      }
+
+      let neighbours = 0;
+      for (let ny = Math.max(0, y - radius); ny <= Math.min(height - 1, y + radius); ny += 1) {
+        for (let nx = Math.max(0, x - radius); nx <= Math.min(width - 1, x + radius); nx += 1) {
+          if ((alpha[ny * width + nx] ?? 0) >= 24) {
+            neighbours += 1;
+          }
+        }
+      }
+
+      if (neighbours >= requiredNeighbours) {
+        eroded[pixel] = 255;
+      }
+    }
+  }
+
+  return eroded;
+};
+
+const dilateBinaryAlphaMask = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  radius: number
+): Buffer => {
+  const dilated = Buffer.from(alpha);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) >= 24) {
+        dilated[pixel] = 255;
+        continue;
+      }
+
+      let hasNeighbour = false;
+      for (let ny = Math.max(0, y - radius); ny <= Math.min(height - 1, y + radius) && !hasNeighbour; ny += 1) {
+        for (let nx = Math.max(0, x - radius); nx <= Math.min(width - 1, x + radius); nx += 1) {
+          if ((alpha[ny * width + nx] ?? 0) >= 24) {
+            hasNeighbour = true;
+            break;
+          }
+        }
+      }
+
+      if (hasNeighbour) {
+        dilated[pixel] = 255;
+      }
+    }
+  }
+
+  return dilated;
+};
+
+const removeThinAlphaWhiskers = (
+  alpha: Buffer,
+  width: number,
+  height: number
+): { alpha: Buffer; removedPixels: number } => {
+  const binaryAlpha = thresholdAlphaMask(alpha, 24);
+  const buildOpened = (radius: number): { alpha: Buffer; removedPixels: number; coverage: number } => {
+    const openedAlpha = dilateBinaryAlphaMask(erodeBinaryAlphaMask(binaryAlpha, width, height, radius), width, height, radius);
+    let removed = 0;
+
+    for (let pixel = 0; pixel < binaryAlpha.length; pixel += 1) {
+      if ((binaryAlpha[pixel] ?? 0) >= 24 && (openedAlpha[pixel] ?? 0) < 24) {
+        removed += 1;
+      }
+    }
+
+    return {
+      alpha: openedAlpha,
+      removedPixels: removed,
+      coverage: getAlphaCoverage(openedAlpha)
+    };
+  };
+  const initialCoverage = getAlphaCoverage(binaryAlpha);
+
+  if (initialCoverage <= 0) {
+    return { alpha: binaryAlpha, removedPixels: 0 };
+  }
+
+  const openedOne = buildOpened(1);
+  const openedTwo = buildOpened(2);
+  const selected = openedTwo.coverage >= initialCoverage * 0.92 && openedTwo.removedPixels > openedOne.removedPixels * 1.35
+    ? openedTwo
+    : openedOne;
+
+  if (selected.coverage < initialCoverage * 0.94 || selected.removedPixels < Math.max(12, initialCoverage * 0.0004)) {
+    return { alpha: binaryAlpha, removedPixels: 0 };
+  }
+
+  const originalBounds = getAlphaBounds(binaryAlpha, width, height, 24);
+  const selectedBounds = getAlphaBounds(selected.alpha, width, height, 24);
+  if (
+    !originalBounds ||
+    !selectedBounds ||
+    selectedBounds.width < originalBounds.width * 0.975 ||
+    selectedBounds.height < originalBounds.height * 0.975
+  ) {
+    return { alpha: binaryAlpha, removedPixels: 0 };
+  }
+
+  const openedDiagnostics = analyzeAlphaMask(selected.alpha, width, height);
+  if (!openedDiagnostics.passed || hasCatastrophicMaskFailure(openedDiagnostics)) {
+    return { alpha: binaryAlpha, removedPixels: 0 };
+  }
+
+  return { alpha: selected.alpha, removedPixels: selected.removedPixels };
+};
+
 const getSafeAlphaMask = (fallbackAlpha: Buffer, candidateAlpha: Buffer, minCoverageRatio = 0.65): Buffer => {
   const fallbackCoverage = getAlphaCoverage(fallbackAlpha);
   const candidateCoverage = getAlphaCoverage(candidateAlpha);
@@ -5211,6 +5363,48 @@ const removeDetachedTextLogoComponentsFromProductBuffer = async (
   return { buffer, removedPixels };
 };
 
+const removeThinEdgeNoiseFromProductBuffer = async (
+  productBuffer: Buffer
+): Promise<{ buffer: Buffer; removedPixels: number }> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = rgba[pixel * 4 + 3] ?? 0;
+  }
+
+  const cleanup = removeThinAlphaWhiskers(alpha, width, height);
+
+  if (cleanup.removedPixels <= 0) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const cleanedRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), cleanup.alpha, width, height);
+  const buffer = await sharp(cleanedRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+
+  console.info("Removed thin flexible-mode edge noise from product layer", {
+    removedPixels: cleanup.removedPixels
+  });
+
+  return { buffer, removedPixels: cleanup.removedPixels };
+};
+
 const assertCompositeContainsProduct = async (
   backgroundBuffer: Buffer,
   composedImage: Buffer,
@@ -5410,7 +5604,7 @@ const buildOutputQualityValidation = async (
     edgeQuality,
     protectedProduct,
     shadow,
-    programmaticValidation: preserveProductExactly ? (programmaticValidation?.passed ? "Passed" as const : "Failed" as const) : undefined
+    programmaticValidation: preserveProductExactly && programmaticValidation ? (programmaticValidation.passed ? "Passed" as const : "Failed" as const) : undefined
   };
   const status: ValidationStatus = failureReasons.length > 0
     ? "Failed"
@@ -5428,6 +5622,7 @@ const buildOutputQualityValidation = async (
     processingMode: preserveProductExactly
       ? "seo_product_feed_safe_preserve_background_replacement"
       : "standard_background_replacement",
+    cutoutProvider: cutoutResult.provider,
     retryCount: Math.max(0, cutoutResult.attempts - 1),
     productCoveragePercent: Number((primaryCoverage * 100).toFixed(2)),
     productCoverageWidthPercent: Number((coverageWidth * 100).toFixed(2)),
@@ -5529,6 +5724,13 @@ const buildBackgroundFromImage = async (
     .composite([{ input: wash, blend: "over" }])
     .png()
     .toBuffer();
+};
+
+export const __optiimstImageProcessingTestHooks = {
+  buildFlexibleFullSourceReviewCutout,
+  buildFlexibleLocalForegroundCutout,
+  processImageFlexiblePreserveMode,
+  removeThinEdgeNoiseFromProductBuffer
 };
 
 export const processImageForProduct = async ({
@@ -5697,8 +5899,11 @@ export const processImageForProduct = async ({
     }
   }
 
-  const cutoutResult = preserveProductExactly
-    ? await processImagePreserveMode(preservedOriginalInput, openAiInput, {
+  let strictSourceLockedRescueWarnings: string[] = [];
+  let cutoutResult: CutoutResult;
+  if (preserveProductExactly) {
+    try {
+      cutoutResult = await processImagePreserveMode(preservedOriginalInput, openAiInput, {
         userId,
         imageJobId,
         specialistSourceBuffer: originalImage.buffer,
@@ -5707,13 +5912,47 @@ export const processImageForProduct = async ({
         originalContentType: originalImage.contentType,
         sourceDimensions: originalImageDimensions,
         fallbackMode: preserveModeFallback
-      })
-    : await processImageFlexiblePreserveMode(
+      });
+    } catch (preserveError) {
+      const preserveDebug = getPreserveDebugFromError(preserveError);
+      if (!preserveDebug) {
+        throw preserveError;
+      }
+
+      console.warn("Strict preserve masks failed; trying source-locked review rescue before failing the job", {
+        imageJobId,
+        reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
+      });
+
+      const rescueResult = await processImageFlexiblePreserveMode(
+        originalImage.buffer,
+        openAiInput,
+        originalImage.contentType,
+        true
+      );
+
+      if (rescueResult.provider.includes("flexible-full-source-review-fallback")) {
+        throw preserveError;
+      }
+
+      cutoutResult = {
+        ...rescueResult,
+        provider: `source-locked-strict-review-rescue:${rescueResult.provider}`,
+        attempts: Math.max(3, rescueResult.attempts),
+        preserveDebug: undefined
+      };
+      strictSourceLockedRescueWarnings = [
+        "Strict provider masks failed, so Optivra used a source-locked review rescue. The product pixels still come from the original source, but review this output before approval."
+      ];
+    }
+  } else {
+    cutoutResult = await processImageFlexiblePreserveMode(
         originalImage.buffer,
         openAiInput,
         originalImage.contentType,
         processingSettings.preserveFallbackFromStrictMode === true
       );
+  }
   const cutout = cutoutResult.cutout;
   await validateImage(cutout);
 
@@ -5771,6 +6010,15 @@ export const processImageForProduct = async ({
     processingSettings.removeBackgroundTextLogos === true ||
     processingSettings.removeDetachedBackgroundTextLogos === true;
   const productFallbackWarnings: string[] = [];
+  if (!preserveProductExactly && !cutoutResult.provider.startsWith("source-alpha:")) {
+    const edgeNoiseCleanup = await removeThinEdgeNoiseFromProductBuffer(productBuffer);
+    if (edgeNoiseCleanup.removedPixels > 0) {
+      productBuffer = edgeNoiseCleanup.buffer;
+      productFallbackWarnings.push(
+        `Removed ${edgeNoiseCleanup.removedPixels} thin edge-noise pixels from the flexible product mask.`
+      );
+    }
+  }
   if (!preserveProductExactly && removeBackgroundTextLogos) {
     const detachedTextCleanup = await removeDetachedTextLogoComponentsFromProductBuffer(productBuffer);
     if (detachedTextCleanup.removedPixels > 0) {
@@ -5846,7 +6094,7 @@ export const processImageForProduct = async ({
     Boolean(shadow),
     reframedProduct.autoFixedFraming,
     protectedProductValidation,
-    [...flexiblePipelineWarnings, ...productFallbackWarnings]
+    [...strictSourceLockedRescueWarnings, ...flexiblePipelineWarnings, ...productFallbackWarnings]
   );
   if (
     processingSettings.preserveFallbackFromStrictMode === true &&
