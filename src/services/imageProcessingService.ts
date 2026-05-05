@@ -7,6 +7,7 @@ import {
   openAiImageEditModel,
   openAiImageEditQuality,
   openAiImageEditSize,
+  renderPreserveMonochromeMask,
   renderFlexibleStudioProductImage,
   removeImageBackground,
   removeImageBackgroundWithSpecialistModel
@@ -1451,6 +1452,17 @@ const processImagePreserveMode = async (
       stage: "refining_edges" as const,
       alphaAlignment: "square-fill" as const,
       getMaskCutoutBuffer: () => removeImageBackground(openAiInput, "preserve-mask-hard-contamination")
+    },
+    {
+      provider: `openai:${openAiImageEditModel}:preserve-monochrome-mask`,
+      attempt: 4,
+      stage: "refining_edges" as const,
+      alphaAlignment: "square-fill" as const,
+      getMaskCutoutBuffer: async () => buildTransparentCutoutFromMonochromeMask(
+        await renderPreserveMonochromeMask(openAiInput),
+        workingDimensions.width,
+        workingDimensions.height
+      )
     }
   ];
 
@@ -1514,9 +1526,93 @@ const processImagePreserveMode = async (
   }
 
   if (context.fallbackMode !== "external_provider") {
+    console.warn("Image preserve-mode raw local consensus enabled after provider mask rejection", {
+      imageJobId: context.imageJobId,
+      attempt: 5,
+      fallbackMode: context.fallbackMode
+    });
+
+    try {
+      const rawLocal = await buildPreservedProductCutoutFromRawLocalMask(preservedOriginalBuffer);
+      const rawLocalMask = rawLocal.preserveDebug?.mask ?? null;
+
+      if (!rawLocalMask?.passed) {
+        throw new PreserveModeProcessingError("Raw local consensus did not pass strict mask quality checks.", {
+          ...debug,
+          finalStatus: "failed",
+          maskSource: "local_fallback",
+          mask: rawLocalMask,
+          failureReason: "Raw local consensus did not pass strict mask quality checks."
+        });
+      }
+
+      await uploadPreserveDebugAsset(
+        context,
+        debug,
+        "preserved_cutout",
+        `raw-local-consensus-preserved-cutout-${randomUUID()}.png`,
+        rawLocal.cutout,
+        "image/png"
+      );
+      if (rawLocal.debugAlphaMask) {
+        await uploadPreserveDebugAsset(
+          context,
+          debug,
+          "alpha_mask",
+          `raw-local-consensus-alpha-mask-${randomUUID()}.png`,
+          rawLocal.debugAlphaMask,
+          "image/png"
+        );
+      }
+      if (rawLocal.debugTrimap) {
+        await uploadPreserveDebugAsset(
+          context,
+          debug,
+          "trimap",
+          `raw-local-consensus-trimap-${randomUUID()}.png`,
+          rawLocal.debugTrimap,
+          "image/png"
+        );
+      }
+
+      console.info("Image preserve-mode raw local consensus passed", {
+        imageJobId: context.imageJobId,
+        alphaCoveragePercent: rawLocalMask.alphaCoveragePercent,
+        maskBBox: rawLocalMask.bbox,
+        connectedComponentCount: rawLocalMask.connectedComponentCount
+      });
+
+      return {
+        ...rawLocal,
+        attempts: 5,
+        preserveDebug: {
+          ...debug,
+          finalStatus: "validating_foreground_integrity",
+          maskSource: "local_fallback",
+          mask: rawLocalMask,
+          interiorDropout: rawLocal.preserveDebug?.interiorDropout ?? null,
+          programmaticValidation: rawLocal.preserveDebug?.programmaticValidation,
+          rgbIntegrity: {
+            passed: true,
+            foregroundMeanDelta: rawLocal.validation.foregroundMeanDelta,
+            alphaCoverage: rawLocal.validation.alphaCoverage
+          },
+          failureReason: null
+        }
+      };
+    } catch (rawLocalError) {
+      const message = rawLocalError instanceof Error ? rawLocalError.message : "Unknown raw local consensus error";
+      errors.push(message);
+      console.warn("Image preserve-mode raw local consensus rejected", {
+        imageJobId: context.imageJobId,
+        fallbackMode: context.fallbackMode,
+        error: message
+      });
+    }
+
       console.warn("Image preserve-mode source-locked local rescue enabled after provider mask rejection", {
         imageJobId: context.imageJobId,
-      attempt: 4,
+      attempt: 6,
       fallbackMode: context.fallbackMode
     });
 
@@ -1572,7 +1668,7 @@ const processImagePreserveMode = async (
 
       return {
         ...fallback,
-        attempts: 4,
+        attempts: 6,
         preserveDebug: {
           ...debug,
           finalStatus: "validating_foreground_integrity",
@@ -1677,6 +1773,34 @@ const buildPreservedProductCutoutFromLocalMask = async (
   );
 };
 
+const buildPreservedProductCutoutFromRawLocalMask = async (
+  preservedOriginalBuffer: Buffer
+): Promise<CutoutResult> => {
+  const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
+
+  if (!originalMetadata.width || !originalMetadata.height) {
+    throw new Error("Original product image could not be read");
+  }
+
+  const originalRgba = await sharp(preservedOriginalBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  const localAlpha = buildLocalForegroundAlpha(originalRgba, originalMetadata.width, originalMetadata.height);
+
+  return buildPreservedProductCutoutFromAlpha(
+    preservedOriginalBuffer,
+    localAlpha,
+    "local-source-analysis-consensus",
+    5,
+    {
+      allowLocalAssist: false,
+      maskSource: "local_fallback",
+      skipStructuralCleanup: true
+    }
+  );
+};
+
 const buildPreservedProductCutoutFromAlpha = async (
   preservedOriginalBuffer: Buffer,
   candidateAlpha: Buffer,
@@ -1687,6 +1811,7 @@ const buildPreservedProductCutoutFromAlpha = async (
     maskSource: PreserveMaskSource;
     prevalidatedMask?: PreserveMaskDiagnostics;
     removeBackgroundRemnants?: boolean;
+    skipStructuralCleanup?: boolean;
   }
 ): Promise<CutoutResult> => {
   const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
@@ -1702,17 +1827,32 @@ const buildPreservedProductCutoutFromAlpha = async (
   const originalRaw = rgbaToRgb(originalRgba);
   const localAlpha = options.allowLocalAssist ? buildLocalForegroundAlpha(originalRgba, width, height) : null;
   const secondOpinionAlpha = localAlpha ?? buildLocalForegroundAlpha(originalRgba, width, height);
-  const structurallyCleanAlpha = cleanFlexibleForegroundAlpha(
-    originalRgba,
-    removeLikelyBackgroundMarkComponents(originalRgba, candidateAlpha, width, height),
+  const structurallyCleanAlpha = options.skipStructuralCleanup
+    ? thresholdAlphaMask(candidateAlpha, 24)
+    : cleanFlexibleForegroundAlpha(
+      originalRgba,
+      removeLikelyBackgroundMarkComponents(originalRgba, candidateAlpha, width, height),
+      width,
+      height
+    );
+  const chosenAlphaBase = localAlpha ? chooseBaseProductAlpha(structurallyCleanAlpha, localAlpha) : structurallyCleanAlpha;
+  const chosenAlpha = options.skipStructuralCleanup
+    ? thresholdAlphaMask(chosenAlphaBase, 24)
+    : cleanFlexibleForegroundAlpha(originalRgba, chosenAlphaBase, width, height);
+  const residueCleanedAlpha = keepMainAlphaComponents(
+    removeNeutralEdgeResidueWithProductSupport(
+      originalRgba,
+      chosenAlpha,
+      secondOpinionAlpha,
+      width,
+      height
+    ),
     width,
     height
   );
-  const chosenAlphaBase = localAlpha ? chooseBaseProductAlpha(structurallyCleanAlpha, localAlpha) : structurallyCleanAlpha;
-  const chosenAlpha = cleanFlexibleForegroundAlpha(originalRgba, chosenAlphaBase, width, height);
   const alpha = options.removeBackgroundRemnants
-    ? removePaleBackgroundEdgeRemnants(originalRgba, chosenAlpha, width, height)
-    : chosenAlpha;
+    ? removePaleBackgroundEdgeRemnants(originalRgba, residueCleanedAlpha, width, height)
+    : residueCleanedAlpha;
   const initialMaskDiagnostics = analyzeAlphaMask(alpha, width, height);
 
   if (!initialMaskDiagnostics.passed) {
@@ -1913,6 +2053,51 @@ const getImageAlphaCoverage = async (imageBuffer: Buffer): Promise<number> => {
     .toBuffer();
 
   return getAlphaCoverage(alpha);
+};
+
+const buildTransparentCutoutFromMonochromeMask = async (
+  maskBuffer: Buffer,
+  width: number,
+  height: number
+): Promise<Buffer> => {
+  const rgb = await sharp(maskBuffer)
+    .rotate()
+    .resize(width, height, {
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3
+    })
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+  const rgba = Buffer.alloc(width * height * 4);
+
+  for (let pixel = 0; pixel < width * height; pixel += 1) {
+    const sourceIndex = pixel * 3;
+    const r = rgb[sourceIndex] ?? 0;
+    const g = rgb[sourceIndex + 1] ?? 0;
+    const b = rgb[sourceIndex + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const alpha = luminance <= 18
+      ? 0
+      : luminance >= 236
+        ? 255
+        : Math.round(Math.max(0, Math.min(255, (luminance - 18) * (255 / 218))));
+    const targetIndex = pixel * 4;
+    rgba[targetIndex] = 255;
+    rgba[targetIndex + 1] = 255;
+    rgba[targetIndex + 2] = 255;
+    rgba[targetIndex + 3] = alpha;
+  }
+
+  return sharp(rgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
 };
 
 const getCutoutVisualPresence = (
@@ -3290,6 +3475,124 @@ const removePaleBackgroundEdgeRemnants = (
   if (totalRemovedPixels <= 0 || getAlphaCoverage(cleaned) < initialCoverage * 0.62) {
     return alpha;
   }
+
+  return cleaned;
+};
+
+const removeNeutralEdgeResidueWithProductSupport = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  supportAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 36);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const support = dilateBinaryAlphaMask(thresholdAlphaMask(supportAlpha, 24), width, height, 3);
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (let pass = 0; pass < 16; pass += 1) {
+    const current = Buffer.from(cleaned);
+    let removedThisPass = 0;
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const pixel = y * width + x;
+
+        if ((current[pixel] ?? 0) < 24 || !hasTransparentNeighbor(current, width, height, x, y, 2)) {
+          continue;
+        }
+
+        const rgbaIndex = pixel * 4;
+        const r = originalRgba[rgbaIndex] ?? 0;
+        const g = originalRgba[rgbaIndex + 1] ?? 0;
+        const b = originalRgba[rgbaIndex + 2] ?? 0;
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const saturation = getRgbSaturation(r, g, b);
+        const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+        const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+        const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+        const supportedProduct = (support[pixel] ?? 0) >= 24;
+        const strongProductSignal =
+          gradient > 28 ||
+          saturation > 0.22 ||
+          luminance < 42 ||
+          (supportedProduct && gradient > 13);
+        const smoothNeutral =
+          saturation < 0.18 &&
+          channelSpread < 58 &&
+          gradient < 18;
+        const paleHaloOrPhotoCard =
+          smoothNeutral &&
+          luminance > 156 &&
+          (backgroundDistance < 96 || luminance > 214);
+        const greyShadowOrBackdrop =
+          smoothNeutral &&
+          luminance > 36 &&
+          luminance < 198 &&
+          (backgroundDistance < 108 || (saturation < 0.11 && gradient < 13));
+        const softAlphaFringe =
+          smoothNeutral &&
+          (current[pixel] ?? 0) < 245 &&
+          backgroundDistance < 116;
+        const nearProductCore = hasMaskedNeighbor(support, width, height, x, y, 2);
+
+        if (
+          strongProductSignal ||
+          (supportedProduct && !softAlphaFringe && !greyShadowOrBackdrop) ||
+          (nearProductCore && gradient > 18 && luminance < 232)
+        ) {
+          continue;
+        }
+
+        if (!paleHaloOrPhotoCard && !greyShadowOrBackdrop && !softAlphaFringe) {
+          continue;
+        }
+
+        cleaned[pixel] = 0;
+        removedThisPass += 1;
+      }
+    }
+
+    removedPixels += removedThisPass;
+
+    if (removedThisPass <= 0 || getAlphaCoverage(cleaned) < initialCoverage * 0.56) {
+      break;
+    }
+  }
+
+  if (removedPixels <= 0) {
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.56)) {
+    return alpha;
+  }
+
+  const cleanedDiagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(cleanedDiagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed neutral edge-connected background residue from preserve mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    supportCoverage: getAlphaCoverage(support)
+  });
 
   return cleaned;
 };
@@ -6276,6 +6579,7 @@ const processFlexibleOpenAiStudioRecovery = async ({
 export const __optiimstImageProcessingTestHooks = {
   buildFlexibleFullSourceReviewCutout,
   buildFlexibleLocalForegroundCutout,
+  buildPreservedProductCutoutFromRawLocalMask,
   processImageFlexiblePreserveMode,
   removeThinEdgeNoiseFromProductBuffer
 };

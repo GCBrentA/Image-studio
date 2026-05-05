@@ -97,3 +97,5 @@ tmp/preserve-debug-smoke-e318/diagnostics.json
 tmp/preserve-debug-smoke-e318/original-source.png
 tmp/reconstructed-rgb.png
 tmp/reconstructed-rgba.png
+*.png
+/tmp

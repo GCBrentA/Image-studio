@@ -91,6 +91,9 @@ const preserveMaskRefinedPrompt =
 const preserveMaskHardContaminationPrompt =
   `${strictProductPreservationBlock} This request is only for exact product segmentation on a source photo that may already contain a bad previous cutout, watermark, grey photo card, old shadow, jagged alpha outline, black contour scar, white ghost edge, or pale halo baked into the background. Return only a transparent PNG alpha cutout/mask for the real physical product. Exclude every detached background logo, background watermark, old mask outline, old cutout shell, halo, grey/white fringe, black edge scar, floor shadow, reflection, and background residue, even if it touches the product edge. Preserve the real product silhouette, holes, dark openings, threads, screws, ridges, tabs, fine geometry, transparent parts, and product-mounted text/logos. For white/silver/metal parts on light backgrounds, keep actual metal pixels but remove pale ghost shells and dark jagged contours that are not physical product edges. For black products on light backgrounds, keep dark product detail and holes but remove detached black background graphics. Do not fill holes. Do not shrink real tabs or protrusions. Do not generate, redraw, repair, relight, recolour, smooth, sharpen, or reinterpret the product. Return alpha only through a transparent product PNG; RGB content is diagnostic and will not be used as final product pixels.`;
 
+const preserveMonochromeMaskPrompt =
+  `${strictProductPreservationBlock} Create a segmentation mask only, not a product render. Output a pure black and white image: white means the real physical product foreground, black means background. Use no grey background, no gradient background, no shadow, no texture, no checkerboard, no text, no labels, and no product recolouring. Exclude every detached watermark, background logo, old photo-card edge, old alpha outline, grey/white halo, black contour scar, shadow, reflection, and background residue. Preserve true product silhouette, tabs, holes, openings, black interiors, threads, screws, ridges, transparent-looking product parts, and product-mounted text/logos as white foreground where they are physically part of the product. Keep open empty background gaps black. The output is used only as an alpha matte over the original pixels.`;
+
 export const buildOpenAiBackgroundOnlyPrompt = (): string =>
   "Create a clean premium ecommerce studio background suitable for this product. No text, no logos, no props, no watermark, no product changes. Background only.";
 
@@ -227,6 +230,54 @@ export const renderFlexibleStudioProductImage = async ({
 
   if (!imageBase64) {
     throw new Error("OpenAI flexible studio render did not return image data");
+  }
+
+  return Buffer.from(imageBase64, "base64");
+};
+
+export const renderPreserveMonochromeMask = async (imageBuffer: Buffer): Promise<Buffer> => {
+  if (!env.openAiApiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  const formData = new FormData();
+  formData.append(
+    "image",
+    new Blob([new Uint8Array(imageBuffer)], {
+      type: "image/png"
+    }),
+    "product.png"
+  );
+  formData.append("model", openAiImageEditModel);
+  formData.append("prompt", preserveMonochromeMaskPrompt);
+  formData.append("background", "opaque");
+  formData.append("input_fidelity", "high");
+  formData.append("output_format", "png");
+  formData.append("quality", openAiImageEditQuality);
+  formData.append("size", openAiImageEditSize);
+
+  const response = await fetch(openAiImageEditEndpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.openAiApiKey}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.text().catch(() => "");
+    throw new Error(`OpenAI preserve monochrome mask failed with ${response.status}: ${responseBody}`);
+  }
+
+  const body = await response.json() as {
+    data?: Array<{
+      b64_json?: string;
+    }>;
+  };
+  const imageBase64 = body.data?.[0]?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error("OpenAI preserve monochrome mask did not return image data");
   }
 
   return Buffer.from(imageBase64, "base64");
