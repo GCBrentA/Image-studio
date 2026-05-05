@@ -1311,6 +1311,7 @@ const processImagePreserveMode = async (
       );
     }
 
+    const edgeRgbGuide = await buildSourceAlignedGuideRgba(aiCutoutBuffer, workingDimensions.width, workingDimensions.height, alphaAlignment);
     const result = await buildPreservedProductCutoutFromAlpha(
       preservedOriginalBuffer,
       aiAlpha,
@@ -1320,7 +1321,8 @@ const processImagePreserveMode = async (
         allowLocalAssist: false,
         maskSource: "ai_mask",
         prevalidatedMask: maskDiagnostics,
-        removeBackgroundRemnants: errors.some((message) => message.includes("background logo or watermark"))
+        removeBackgroundRemnants: errors.some((message) => message.includes("background logo or watermark")),
+        edgeRgbGuide
       }
     );
     debug.finalStatus = "validating_foreground_integrity";
@@ -1812,6 +1814,7 @@ const buildPreservedProductCutoutFromAlpha = async (
     prevalidatedMask?: PreserveMaskDiagnostics;
     removeBackgroundRemnants?: boolean;
     skipStructuralCleanup?: boolean;
+    edgeRgbGuide?: Buffer;
   }
 ): Promise<CutoutResult> => {
   const originalMetadata = await sharp(preservedOriginalBuffer).metadata();
@@ -1907,7 +1910,8 @@ const buildPreservedProductCutoutFromAlpha = async (
     originalRgba,
     approvedAlpha,
     width,
-    height
+    height,
+    options.edgeRgbGuide
   );
   const visualValidation = getCutoutVisualPresence(productRgba, approvedAlpha);
 
@@ -1958,7 +1962,8 @@ const buildPreservedProductCutoutFromAlpha = async (
         originalRgba,
         harderAlpha,
         width,
-        height
+        height,
+        options.edgeRgbGuide
       );
       const harderCutout = await sharp(harderProductRgba, {
         raw: {
@@ -2112,6 +2117,37 @@ const buildTransparentCutoutFromMonochromeMask = async (
     .toBuffer();
 };
 
+const buildSourceAlignedGuideRgba = async (
+  guideBuffer: Buffer,
+  width: number,
+  height: number,
+  alignment: "source-contain" | "square-fill"
+): Promise<Buffer> => {
+  const image = sharp(guideBuffer).rotate().ensureAlpha();
+  const metadata = await image.metadata();
+  const needsResize = metadata.width !== width || metadata.height !== height;
+
+  if (!needsResize) {
+    return image.raw().toBuffer();
+  }
+
+  return image
+    .resize({
+      width,
+      height,
+      fit: alignment === "source-contain" ? "contain" : "fill",
+      withoutEnlargement: false,
+      background: {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0
+      }
+    })
+    .raw()
+    .toBuffer();
+};
+
 const getCutoutVisualPresence = (
   rgba: Buffer,
   alpha: Buffer
@@ -2247,7 +2283,8 @@ const decontaminatePreserveEdgeRgb = (
   sourceRgba: Buffer,
   alpha: Buffer,
   width: number,
-  height: number
+  height: number,
+  edgeRgbGuide?: Buffer
 ): Buffer => {
   const backgroundPalette = buildSourceBackgroundPalette(sourceRgba, width, height);
   if (backgroundPalette.length === 0) {
@@ -2255,6 +2292,7 @@ const decontaminatePreserveEdgeRgb = (
   }
 
   const cleaned = Buffer.from(productRgba);
+  const confidentForeground = erodeBinaryAlphaMask(thresholdAlphaMask(alpha, 245), width, height, 3);
   let changedPixels = 0;
 
   for (let y = 0; y < height; y += 1) {
@@ -2262,7 +2300,11 @@ const decontaminatePreserveEdgeRgb = (
       const pixel = y * width + x;
       const currentAlpha = alpha[pixel] ?? 0;
 
-      if (currentAlpha < 24 || !hasTransparentNeighbor(alpha, width, height, x, y, 8)) {
+      if (
+        currentAlpha < 24 ||
+        (confidentForeground[pixel] ?? 0) >= 245 ||
+        !hasTransparentNeighbor(alpha, width, height, x, y, 4)
+      ) {
         continue;
       }
 
@@ -2300,7 +2342,10 @@ const decontaminatePreserveEdgeRgb = (
         continue;
       }
 
-      const replacement = findNearestTrustedPreserveProductColor(
+      const guidedReplacement = edgeRgbGuide
+        ? getTrustedEdgeGuideColor(edgeRgbGuide, sourceRgba, backgroundPalette, width, height, pixel)
+        : null;
+      const replacement = guidedReplacement ?? findNearestTrustedPreserveProductColor(
         productRgba,
         sourceRgba,
         alpha,
@@ -2324,7 +2369,10 @@ const decontaminatePreserveEdgeRgb = (
   }
 
   const alphaCoverage = getAlphaCoverage(alpha);
-  if (changedPixels > Math.max(3200, alphaCoverage * 0.045)) {
+  const maxChangedPixels = edgeRgbGuide
+    ? Math.max(5200, alphaCoverage * 0.075)
+    : Math.max(3200, alphaCoverage * 0.045);
+  if (changedPixels > maxChangedPixels) {
     console.warn("Skipped preserve-mode RGB edge decontamination because the edge band was too broad", {
       changedPixels,
       alphaCoverage
@@ -2394,6 +2442,43 @@ const findNearestTrustedPreserveProductColor = (
   }
 
   return best;
+};
+
+const getTrustedEdgeGuideColor = (
+  guideRgba: Buffer,
+  sourceRgba: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number,
+  pixel: number
+): { r: number; g: number; b: number } | null => {
+  const index = pixel * 4;
+  const alpha = guideRgba[index + 3] ?? 0;
+
+  if (alpha < 180) {
+    return null;
+  }
+
+  const r = guideRgba[index] ?? 0;
+  const g = guideRgba[index + 1] ?? 0;
+  const b = guideRgba[index + 2] ?? 0;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const saturation = getRgbSaturation(r, g, b);
+  const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+  const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+  const gradient = getRgbGradientMagnitude(sourceRgba, width, height, pixel);
+  const guideLooksLikeBackground =
+    luminance > 132 &&
+    saturation < 0.13 &&
+    channelSpread < 46 &&
+    backgroundDistance < 88 &&
+    gradient < 16;
+
+  if (guideLooksLikeBackground) {
+    return null;
+  }
+
+  return { r, g, b };
 };
 
 const findNearestSolidProductColor = (
