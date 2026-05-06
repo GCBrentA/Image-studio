@@ -1442,22 +1442,33 @@ const processImagePreserveMode = async (
       )
     },
     {
-      provider: `openai:${openAiImageEditModel}:preserve-mask-refined`,
+      provider: "imgly:background-removal-node:small",
       attempt: 2,
+      stage: "masking" as const,
+      alphaAlignment: "source-contain" as const,
+      getMaskCutoutBuffer: () => removeImageBackgroundWithSpecialistModel(
+        context.specialistSourceBuffer,
+        context.specialistSourceContentType,
+        "small"
+      )
+    },
+    {
+      provider: `openai:${openAiImageEditModel}:preserve-mask-refined`,
+      attempt: 3,
       stage: "refining_edges" as const,
       alphaAlignment: "square-fill" as const,
       getMaskCutoutBuffer: () => removeImageBackground(openAiInput, "preserve-mask-refined")
     },
     {
       provider: `openai:${openAiImageEditModel}:preserve-mask-hard-contamination`,
-      attempt: 3,
+      attempt: 4,
       stage: "refining_edges" as const,
       alphaAlignment: "square-fill" as const,
       getMaskCutoutBuffer: () => removeImageBackground(openAiInput, "preserve-mask-hard-contamination")
     },
     {
       provider: `openai:${openAiImageEditModel}:preserve-monochrome-mask`,
-      attempt: 4,
+      attempt: 5,
       stage: "refining_edges" as const,
       alphaAlignment: "square-fill" as const,
       getMaskCutoutBuffer: async () => buildTransparentCutoutFromMonochromeMask(
@@ -1906,6 +1917,20 @@ const buildPreservedProductCutoutFromAlpha = async (
     width,
     height
   );
+  safeAlpha = removeExteriorBackgroundLikeAlphaResidue(
+    originalRgba,
+    safeAlpha,
+    secondOpinionAlpha,
+    width,
+    height
+  );
+  safeAlpha = removeUnsupportedNeutralInteriorResidue(
+    originalRgba,
+    safeAlpha,
+    secondOpinionAlpha,
+    width,
+    height
+  );
 
   const finalMaskDiagnostics = options.allowLocalAssist
     ? analyzeAlphaMask(safeAlpha, width, height)
@@ -1942,7 +1967,14 @@ const buildPreservedProductCutoutFromAlpha = async (
   }
 
   const initialMatte = await refineAlphaMatteWithTrimap(originalRgba, interiorRepair.alpha, width, height);
-  let approvedAlpha = initialMatte.alpha;
+  let approvedAlpha = fillSmallProductSurfaceAlphaDropouts(
+    originalRgba,
+    initialMatte.alpha,
+    secondOpinionAlpha,
+    backgroundPalette,
+    width,
+    height
+  );
   let approvedTrimap = initialMatte.trimap;
   let productRgba = decontaminatePreserveEdgeRgb(
     applyApprovedAlphaToOriginalPixels(originalRaw, approvedAlpha, width, height),
@@ -1985,7 +2017,19 @@ const buildPreservedProductCutoutFromAlpha = async (
     const harderAlphaCandidate = keepMainAlphaComponents(
       removePaleBackgroundEdgeRemnants(
         originalRgba,
-        removeBackgroundLikePixelsFromMask(originalRaw, approvedAlpha, backgroundPalette),
+        removeUnsupportedNeutralInteriorResidue(
+          originalRgba,
+          removeExteriorBackgroundLikeAlphaResidue(
+            originalRgba,
+            removeBackgroundLikePixelsFromMask(originalRaw, approvedAlpha, backgroundPalette),
+            secondOpinionAlpha,
+            width,
+            height
+          ),
+          secondOpinionAlpha,
+          width,
+          height
+        ),
         width,
         height
       ),
@@ -1993,7 +2037,14 @@ const buildPreservedProductCutoutFromAlpha = async (
       height
     );
     const harderMatte = await refineAlphaMatteWithTrimap(originalRgba, harderAlphaCandidate, width, height);
-    const harderAlpha = harderMatte.alpha;
+    const harderAlpha = fillSmallProductSurfaceAlphaDropouts(
+      originalRgba,
+      harderMatte.alpha,
+      secondOpinionAlpha,
+      backgroundPalette,
+      width,
+      height
+    );
     const harderCoverage = getAlphaCoverage(harderAlpha);
     if (harderCoverage >= getAlphaCoverage(approvedAlpha) * 0.78) {
       const harderProductRgba = decontaminatePreserveEdgeRgb(
@@ -3265,12 +3316,158 @@ const cleanFlexibleForegroundAlpha = (
   width: number,
   height: number
 ): Buffer => {
-  const detachedCleaned = removeSuspiciousDetachedBackgroundMarks(originalRgba, alpha, width, height);
+  const boundedStructureCleaned = removeNeutralMarksOutsideStrongProductStructure(originalRgba, alpha, width, height);
+  const detachedCleaned = removeSuspiciousDetachedBackgroundMarks(originalRgba, boundedStructureCleaned, width, height);
   const edgeCleaned = removePaleBackgroundEdgeRemnants(originalRgba, detachedCleaned, width, height);
   const islandCleaned = removeConnectedBackgroundPaletteRemnants(originalRgba, edgeCleaned, width, height);
   const cleanedDiagnostics = analyzeAlphaMask(islandCleaned, width, height);
 
   return cleanedDiagnostics.passed ? islandCleaned : detachedCleaned;
+};
+
+const removeNeutralMarksOutsideStrongProductStructure = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 38);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  let minX = width;
+  let maxX = 0;
+  let minY = height;
+  let maxY = 0;
+  let structurePixels = 0;
+  let darkStructurePixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const darkProductStructure =
+      luminance < 118 &&
+      (gradient > 4 || backgroundDistance > 24 || channelSpread > 18);
+    const colouredProductStructure = saturation > 0.18 && backgroundDistance > 28;
+    const crispProductEdgeOrMarking =
+      gradient > 24 &&
+      backgroundDistance > 38 &&
+      (luminance < 150 || saturation > 0.1 || channelSpread > 32);
+
+    if (!darkProductStructure && !colouredProductStructure && !crispProductEdgeOrMarking) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    structurePixels += 1;
+    if (luminance < 118) {
+      darkStructurePixels += 1;
+    }
+  }
+
+  if (
+    structurePixels < Math.max(900, initialCoverage * 0.055) ||
+    darkStructurePixels < Math.max(420, initialCoverage * 0.025) ||
+    minX > maxX ||
+    minY > maxY
+  ) {
+    return alpha;
+  }
+
+  const structureWidth = maxX - minX + 1;
+  const structureHeight = maxY - minY + 1;
+  const padX = Math.min(Math.round(structureWidth * 0.24), Math.round(width * 0.12));
+  const padY = Math.min(Math.round(structureHeight * 0.2), Math.round(height * 0.1));
+  const keepMinX = Math.max(0, minX - padX);
+  const keepMaxX = Math.min(width - 1, maxX + padX);
+  const keepMinY = Math.max(0, minY - padY);
+  const keepMaxY = Math.min(height - 1, maxY + padY);
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (x >= keepMinX && x <= keepMaxX && y >= keepMinY && y <= keepMaxY) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const neutralDetachedMark =
+      luminance > 42 &&
+      luminance < 248 &&
+      saturation < 0.2 &&
+      channelSpread < 62 &&
+      (backgroundDistance < 132 || gradient < 14);
+
+    if (!neutralDetachedMark) {
+      continue;
+    }
+
+    cleaned[pixel] = 0;
+    removedPixels += 1;
+  }
+
+  if (removedPixels < Math.max(420, initialCoverage * 0.01)) {
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.38)) {
+    return alpha;
+  }
+
+  const diagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(diagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed neutral background marks outside strong product structure", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    structurePixels,
+    keepBounds: { minX: keepMinX, maxX: keepMaxX, minY: keepMinY, maxY: keepMaxY }
+  });
+
+  return cleaned;
 };
 
 const removeSuspiciousDetachedBackgroundMarks = (
@@ -4066,6 +4263,338 @@ const repairEdgeProductBiteMarks = (
   return repaired;
 };
 
+const removeExteriorBackgroundLikeAlphaResidue = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  supportAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 34);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const support = thresholdAlphaMask(supportAlpha, 24);
+  const structure = Buffer.alloc(alpha.length);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const neutralBackdropStroke =
+      luminance > 72 &&
+      saturation < 0.13 &&
+      channelSpread < 42 &&
+      backgroundDistance < 132;
+    const darkProductMaterial =
+      luminance < 122 &&
+      (backgroundDistance > 18 || saturation > 0.07 || channelSpread > 16 || gradient > 5) &&
+      !neutralBackdropStroke;
+    const colouredProductMaterial = saturation > 0.18 && backgroundDistance > 24;
+    const crispProductStructure =
+      gradient > 24 &&
+      backgroundDistance > 30 &&
+      (luminance < 218 || saturation > 0.08 || channelSpread > 28) &&
+      !neutralBackdropStroke;
+    const supportBackedDetail =
+      (support[pixel] ?? 0) >= 24 &&
+      gradient > 18 &&
+      backgroundDistance > 22 &&
+      luminance < 232 &&
+      !neutralBackdropStroke;
+
+    if (darkProductMaterial || colouredProductMaterial || crispProductStructure || supportBackedDetail) {
+      structure[pixel] = 255;
+    }
+  }
+
+  const protectedStructure = dilateBinaryAlphaMask(structure, width, height, 4);
+  const removable = Buffer.alloc(alpha.length);
+  let removablePixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24 || (protectedStructure[pixel] ?? 0) >= 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const neutralBackdrop =
+      luminance > 42 &&
+      luminance < 250 &&
+      saturation < 0.2 &&
+      channelSpread < 68 &&
+      (backgroundDistance < 126 || gradient < 15);
+    const paleLogoOrPaper =
+      luminance > 138 &&
+      saturation < 0.16 &&
+      channelSpread < 58 &&
+      backgroundDistance < 152;
+    const softDirtyFringe =
+      (alpha[pixel] ?? 0) < 238 &&
+      luminance > 54 &&
+      saturation < 0.22 &&
+      backgroundDistance < 136;
+
+    if (!neutralBackdrop && !paleLogoOrPaper && !softDirtyFringe) {
+      continue;
+    }
+
+    removable[pixel] = 255;
+    removablePixels += 1;
+  }
+
+  if (removablePixels < Math.max(180, initialCoverage * 0.002)) {
+    return alpha;
+  }
+
+  const visited = new Uint8Array(alpha.length);
+  const stack: number[] = [];
+  const enqueue = (pixel: number): void => {
+    if (pixel < 0 || pixel >= alpha.length || visited[pixel]) {
+      return;
+    }
+    if ((alpha[pixel] ?? 0) >= 24 && (removable[pixel] ?? 0) < 24) {
+      return;
+    }
+    visited[pixel] = 1;
+    stack.push(pixel);
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y += 1) {
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  while (stack.length > 0) {
+    const pixel = stack.pop() as number;
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+
+    if ((alpha[pixel] ?? 0) >= 24 && (removable[pixel] ?? 0) >= 24) {
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+
+    const neighbours = [
+      x > 0 ? pixel - 1 : -1,
+      x < width - 1 ? pixel + 1 : -1,
+      y > 0 ? pixel - width : -1,
+      y < height - 1 ? pixel + width : -1
+    ];
+
+    for (const next of neighbours) {
+      enqueue(next);
+    }
+  }
+
+  if (removedPixels < Math.max(120, initialCoverage * 0.001)) {
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.58)) {
+    return alpha;
+  }
+
+  const diagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(diagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed exterior background-like alpha residue from preserve mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    removablePixels
+  });
+
+  return cleaned;
+};
+
+const removeUnsupportedNeutralInteriorResidue = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  supportAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 34);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const support = thresholdAlphaMask(supportAlpha, 24);
+  const structure = Buffer.alloc(alpha.length);
+  let structurePixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const neutralBackdropStroke =
+      luminance > 72 &&
+      saturation < 0.13 &&
+      channelSpread < 42 &&
+      backgroundDistance < 132;
+    const productStructure =
+      !neutralBackdropStroke &&
+      (
+        luminance < 116 ||
+        saturation > 0.18 ||
+        (backgroundDistance > 72 && luminance < 226) ||
+        (gradient > 24 && backgroundDistance > 38) ||
+        ((support[pixel] ?? 0) >= 24 && gradient > 20 && backgroundDistance > 34)
+      );
+
+    if (productStructure) {
+      structure[pixel] = 255;
+      structurePixels += 1;
+    }
+  }
+
+  if (structurePixels < Math.max(900, initialCoverage * 0.08)) {
+    return alpha;
+  }
+
+  const protectedStructure = dilateBinaryAlphaMask(structure, width, height, 1);
+  const neutralResidue = Buffer.alloc(alpha.length);
+  let residueCandidates = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24 || (protectedStructure[pixel] ?? 0) >= 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const neutralBackgroundMaterial =
+      luminance > 48 &&
+      luminance < 248 &&
+      saturation < 0.22 &&
+      channelSpread < 74 &&
+      (backgroundDistance < 178 || gradient < 16);
+
+    if (!neutralBackgroundMaterial) {
+      continue;
+    }
+
+    neutralResidue[pixel] = 255;
+    residueCandidates += 1;
+  }
+
+  const minResidueCandidates = Math.max(120, initialCoverage * 0.0014);
+  if (residueCandidates < minResidueCandidates) {
+    console.info("Skipped unsupported neutral interior residue cleanup; too few candidates", {
+      residueCandidates,
+      minResidueCandidates,
+      initialCoverage,
+      structurePixels
+    });
+    return alpha;
+  }
+
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (let pixel = 0; pixel < neutralResidue.length; pixel += 1) {
+    if ((neutralResidue[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    cleaned[pixel] = 0;
+    removedPixels += 1;
+  }
+
+  const minRemovedPixels = Math.max(28, initialCoverage * 0.00022);
+  if (removedPixels < minRemovedPixels) {
+    console.info("Skipped unsupported neutral interior residue cleanup; components retained", {
+      removedPixels,
+      minRemovedPixels,
+      residueCandidates,
+      componentCount: 0
+    });
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.58)) {
+    return alpha;
+  }
+
+  const diagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(diagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed unsupported neutral interior residue from preserve mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    residueCandidates
+  });
+
+  return cleaned;
+};
+
 const removeConnectedBackgroundPaletteRemnants = (
   originalRgba: Buffer,
   alpha: Buffer,
@@ -4694,7 +5223,7 @@ const repairInteriorProductDropouts = async (
   }
 
   const components = getConnectedMaskComponents(candidateSeed, width, height);
-  const minComponentPixels = Math.max(18, Math.round(width * height * 0.000015));
+  const minComponentPixels = Math.max(4, Math.round(width * height * 0.000004));
   const diagnostics: InteriorDropoutDiagnostics = {
     ...emptyDiagnostics,
     candidateCount: components.length
@@ -4727,8 +5256,11 @@ const repairInteriorProductDropouts = async (
         (bounds.maxX - bounds.minX + 1 > width * 0.12 || bounds.maxY - bounds.minY + 1 > height * 0.08) &&
         metrics.meanBoundaryGradient < 24;
       const strongSecondOpinion = metrics.secondOpinionForegroundPercent >= 38;
-      const productBridge = metrics.bridgesForeground && metrics.productLikePercent >= 58 && metrics.backgroundLikePercent < 52;
-      const productTexture = metrics.productLikePercent >= 72 && metrics.backgroundLikePercent < 42;
+      const productBridge = metrics.bridgesForeground && metrics.productLikePercent >= 48 && metrics.backgroundLikePercent < 62;
+      const productTexture =
+        metrics.productLikePercent >= 58 &&
+        metrics.backgroundLikePercent < 62 &&
+        metrics.meanBoundaryGradient >= 5;
 
       if (largeSparseBackgroundShape) {
         classification = "ignored";
@@ -4741,7 +5273,7 @@ const repairInteriorProductDropouts = async (
         reason = strongSecondOpinion
           ? "second-opinion mask supports foreground inside the primary preserve mask"
           : "region bridges foreground structure and matches product colour or texture";
-      } else if (metrics.bridgesForeground && metrics.productLikePercent >= 35 && metrics.backgroundLikePercent < 68) {
+    } else if (metrics.bridgesForeground && metrics.productLikePercent >= 35 && metrics.backgroundLikePercent < 68) {
         classification = "needs_review";
         reason = "internal missing region is ambiguous after structural and second-opinion checks";
       }
@@ -4852,10 +5384,14 @@ const getInteriorPixelEvidence = (
     (luminance < 54 && distance > 64);
   const productTexture = distance > 30 && (saturation > 0.08 || boundaryGradient > 8 || luminance < 135);
   const fineProductStructure = distance > 16 && boundaryGradient > 18;
-  const strongBackgroundEvidence = distance < 22 && saturation < 0.18 && boundaryGradient < 16 && !secondOpinionForeground;
+  const brightProductHighlight =
+    luminance > 126 &&
+    boundaryGradient > 10 &&
+    (distance > 10 || saturation > 0.035 || secondOpinionForeground);
+  const strongBackgroundEvidence = distance < 18 && saturation < 0.16 && boundaryGradient < 10 && !secondOpinionForeground;
 
   return {
-    productLike: secondOpinionForeground || darkProductMaterial || productTexture || fineProductStructure,
+    productLike: secondOpinionForeground || darkProductMaterial || productTexture || fineProductStructure || brightProductHighlight,
     strongBackgroundEvidence,
     secondOpinionForeground,
     boundaryGradient
@@ -5062,6 +5598,137 @@ const growRestoredDropoutPixels = (
 
     next.copy(repairedAlpha);
   }
+};
+
+const fillSmallProductSurfaceAlphaDropouts = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  secondOpinionAlpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number
+): Buffer => {
+  const productBounds = getAlphaBounds(alpha, width, height, 24);
+  const coverage = getAlphaCoverage(alpha);
+
+  if (!productBounds || coverage < 1200 || backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const repaired = Buffer.from(alpha);
+  const visited = new Uint8Array(alpha.length);
+  const maxPixels = Math.max(90, Math.round(coverage * 0.0028));
+  const maxWidth = Math.max(8, Math.round(productBounds.width * 0.085));
+  const maxHeight = Math.max(8, Math.round(productBounds.height * 0.085));
+  let restoredPixels = 0;
+  let restoredRegions = 0;
+
+  for (let y = productBounds.minY; y <= productBounds.maxY; y += 1) {
+    for (let x = productBounds.minX; x <= productBounds.maxX; x += 1) {
+      const start = y * width + x;
+
+      if (visited[start] || (alpha[start] ?? 0) >= 24) {
+        continue;
+      }
+
+      const stack = [start];
+      const pixels: number[] = [];
+      visited[start] = 1;
+      let touchesBounds = false;
+
+      while (stack.length > 0) {
+        const pixel = stack.pop() as number;
+        const px = pixel % width;
+        const py = Math.floor(pixel / width);
+        pixels.push(pixel);
+        touchesBounds = touchesBounds ||
+          px === productBounds.minX ||
+          px === productBounds.maxX ||
+          py === productBounds.minY ||
+          py === productBounds.maxY;
+
+        const neighbours = [
+          px > productBounds.minX ? pixel - 1 : -1,
+          px < productBounds.maxX ? pixel + 1 : -1,
+          py > productBounds.minY ? pixel - width : -1,
+          py < productBounds.maxY ? pixel + width : -1
+        ];
+
+        for (const next of neighbours) {
+          if (next < 0) {
+            continue;
+          }
+          if ((alpha[next] ?? 0) >= 24 || visited[next]) {
+            continue;
+          }
+          visited[next] = 1;
+          stack.push(next);
+        }
+      }
+
+      if (touchesBounds || pixels.length <= 0 || pixels.length > maxPixels) {
+        continue;
+      }
+
+      const bounds = getPixelComponentBounds(pixels, width, height);
+      const componentWidth = bounds.maxX - bounds.minX + 1;
+      const componentHeight = bounds.maxY - bounds.minY + 1;
+      if (componentWidth > maxWidth || componentHeight > maxHeight) {
+        continue;
+      }
+
+      const metrics = getInteriorDropoutMetrics(
+        pixels,
+        bounds,
+        alpha,
+        secondOpinionAlpha,
+        rgbaToRgb(originalRgba),
+        originalRgba,
+        backgroundPalette,
+        width,
+        height
+      );
+      const aspect = componentWidth / Math.max(1, componentHeight);
+      const surroundedByProduct = metrics.bridgesForeground;
+      const productSurfaceDropout =
+        metrics.productLikePercent >= 34 &&
+        metrics.meanBoundaryGradient >= 6 &&
+        metrics.backgroundLikePercent < 86;
+      const secondOpinionProduct = metrics.secondOpinionForegroundPercent >= 26 && metrics.backgroundLikePercent < 92;
+      const tinySurfaceSpeck =
+        pixels.length <= 22 &&
+        metrics.backgroundLikePercent < 98;
+      const elongatedSurfaceSlit =
+        (aspect > 2.2 || aspect < 0.45) &&
+        metrics.meanBoundaryGradient >= 2 &&
+        metrics.backgroundLikePercent < 98;
+
+      if (
+        (!surroundedByProduct && !tinySurfaceSpeck && !elongatedSurfaceSlit) ||
+        (!productSurfaceDropout && !secondOpinionProduct && !tinySurfaceSpeck && !elongatedSurfaceSlit)
+      ) {
+        continue;
+      }
+
+      for (const pixel of pixels) {
+        repaired[pixel] = 255;
+        restoredPixels += 1;
+      }
+      restoredRegions += 1;
+    }
+  }
+
+  if (restoredPixels <= 0) {
+    return alpha;
+  }
+
+  console.info("Filled small preserve-mode product surface alpha dropouts", {
+    restoredPixels,
+    restoredRegions,
+    coverage
+  });
+
+  return repaired;
 };
 
 const buildMaskOverlayPreview = async (

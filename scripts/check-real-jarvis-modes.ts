@@ -194,14 +194,19 @@ const run = async (): Promise<void> => {
   const exactOnly = process.argv.includes("--exact-only");
   const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
   const skipArg = process.argv.find((arg) => arg.startsWith("--skip="));
+  const modeArg = process.argv.find((arg) => arg.startsWith("--mode="));
   const limit = limitArg ? Math.max(1, Number(limitArg.split("=")[1])) : undefined;
   const skip = skipArg ? Math.max(0, Number(skipArg.split("=")[1])) : 0;
+  const modeFilter = modeArg ? modeArg.split("=")[1] : "";
   const selectedProducts = (quick ? products.slice(0, 5) : products).slice(skip).slice(0, limit);
-  const selectedModes = exactOnly
+  const modePool = exactOnly
     ? allModes.filter((mode) => mode.preserveProductExactly)
     : quick
       ? quickModes
       : allModes;
+  const selectedModes = modeFilter ? modePool.filter((mode) => mode.name === modeFilter) : modePool;
+
+  assert.ok(selectedModes.length > 0, `No real Jarvis mode matched --mode=${modeFilter}`);
 
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   const artifactDir = path.join(artifactBaseDir, runId);

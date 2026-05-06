@@ -3,7 +3,7 @@
 const fs = require("node:fs/promises");
 
 const main = async () => {
-  const [, , inputPath, outputPath, contentType = "image/jpeg"] = process.argv;
+  const [, , inputPath, outputPath, contentType = "image/jpeg", model = "medium"] = process.argv;
 
   if (!inputPath || !outputPath) {
     throw new Error("Usage: node scripts/imgly-background-removal-worker.js <input> <output> [contentType]");
@@ -16,7 +16,7 @@ const main = async () => {
       type: contentType
     }),
     {
-      model: "medium",
+      model,
       output: {
         format: "image/png",
         quality: 1

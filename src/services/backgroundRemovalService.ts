@@ -285,7 +285,8 @@ export const renderPreserveMonochromeMask = async (imageBuffer: Buffer): Promise
 
 export const removeImageBackgroundWithSpecialistModel = async (
   imageBuffer: Buffer,
-  contentType = "image/jpeg"
+  contentType = "image/jpeg",
+  model: "small" | "medium" = "medium"
 ): Promise<Buffer> => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "optivra-imgly-"));
   const inputPath = path.join(tempDir, "source-image");
@@ -294,7 +295,7 @@ export const removeImageBackgroundWithSpecialistModel = async (
 
   try {
     await writeFile(inputPath, imageBuffer);
-    await runSpecialistWorker(workerPath, inputPath, outputPath, contentType);
+    await runSpecialistWorker(workerPath, inputPath, outputPath, contentType, model);
 
     return await readFile(outputPath);
   } finally {
@@ -309,10 +310,11 @@ const runSpecialistWorker = (
   workerPath: string,
   inputPath: string,
   outputPath: string,
-  contentType: string
+  contentType: string,
+  model: "small" | "medium"
 ): Promise<void> =>
   new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [workerPath, inputPath, outputPath, contentType], {
+    const child = spawn(process.execPath, [workerPath, inputPath, outputPath, contentType, model], {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
