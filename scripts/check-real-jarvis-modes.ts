@@ -193,8 +193,10 @@ const run = async (): Promise<void> => {
   const quick = process.argv.includes("--quick");
   const exactOnly = process.argv.includes("--exact-only");
   const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
+  const skipArg = process.argv.find((arg) => arg.startsWith("--skip="));
   const limit = limitArg ? Math.max(1, Number(limitArg.split("=")[1])) : undefined;
-  const selectedProducts = (quick ? products.slice(0, 5) : products).slice(0, limit);
+  const skip = skipArg ? Math.max(0, Number(skipArg.split("=")[1])) : 0;
+  const selectedProducts = (quick ? products.slice(0, 5) : products).slice(skip).slice(0, limit);
   const selectedModes = exactOnly
     ? allModes.filter((mode) => mode.preserveProductExactly)
     : quick
