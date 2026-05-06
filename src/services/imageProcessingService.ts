@@ -3392,7 +3392,7 @@ const removeNeutralMarksOutsideStrongProductStructure = (
 
   if (
     structurePixels < Math.max(900, initialCoverage * 0.055) ||
-    darkStructurePixels < Math.max(420, initialCoverage * 0.025) ||
+    darkStructurePixels < Math.max(420, initialCoverage * 0.18) ||
     minX > maxX ||
     minY > maxY
   ) {
@@ -4468,6 +4468,7 @@ const removeUnsupportedNeutralInteriorResidue = (
   const support = thresholdAlphaMask(supportAlpha, 24);
   const structure = Buffer.alloc(alpha.length);
   let structurePixels = 0;
+  let darkOrColouredStructurePixels = 0;
 
   for (let pixel = 0; pixel < alpha.length; pixel += 1) {
     if ((alpha[pixel] ?? 0) < 24) {
@@ -4501,10 +4502,16 @@ const removeUnsupportedNeutralInteriorResidue = (
     if (productStructure) {
       structure[pixel] = 255;
       structurePixels += 1;
+      if (luminance < 124 || saturation > 0.18) {
+        darkOrColouredStructurePixels += 1;
+      }
     }
   }
 
-  if (structurePixels < Math.max(900, initialCoverage * 0.08)) {
+  if (
+    structurePixels < Math.max(900, initialCoverage * 0.08) ||
+    darkOrColouredStructurePixels < Math.max(720, initialCoverage * 0.24)
+  ) {
     return alpha;
   }
 
