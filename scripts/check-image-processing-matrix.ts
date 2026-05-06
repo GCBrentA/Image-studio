@@ -662,22 +662,38 @@ const run = async (): Promise<void> => {
           assert.equal(result.outputValidation.processingMode, "seo_product_feed_safe_preserve_background_replacement", `${label}: strict validation mode mismatch`);
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: strict protected product check should pass`);
         } else {
-          assert.equal(result.outputValidation.processingMode, "standard_background_replacement", `${label}: flexible validation mode mismatch`);
+          const flexibleOpenAiExpected = !mode.backgroundImageBuffer && mode.background !== "transparent";
+          assert.equal(
+            result.outputValidation.processingMode,
+            flexibleOpenAiExpected ? "flexible_openai_studio_recovery" : "standard_background_replacement",
+            `${label}: flexible validation mode mismatch`
+          );
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: flexible protected product check should pass`);
           assert.doesNotMatch(result.outputValidation.failureReasons.join(" "), /failed|could not generate|processing error/i, `${label}: flexible mode should not return generic give-up errors`);
-          assert.match(
-            result.outputValidation.warnings.join(" "),
-            /source-locked product pixels/i,
-            `${label}: flexible mode should preserve source product pixels`
-          );
-          assert.ok(
-            result.outputValidation.debugAssets?.some((asset) => asset.kind === "source_product_layer"),
-            `${label}: flexible mode should save source product layer debug artifact`
-          );
-          assert.ok(
-            result.outputValidation.debugAssets?.some((asset) => asset.kind === "product_mask"),
-            `${label}: flexible mode should save product mask debug artifact`
-          );
+          if (flexibleOpenAiExpected) {
+            assert.match(
+              result.outputValidation.warnings.join(" "),
+              /OpenAI studio renderer/i,
+              `${label}: flexible preset mode should use the OpenAI studio renderer`
+            );
+            assert.ok(
+              result.outputValidation.debugAssets?.some((asset) => asset.kind === "final_composite"),
+              `${label}: flexible OpenAI mode should save final composite debug artifact`
+            );
+            assert.ok(
+              result.outputValidation.debugAssets?.some((asset) => asset.kind === "vision_qa_json"),
+              `${label}: flexible OpenAI mode should save vision QA debug artifact`
+            );
+          } else {
+            assert.ok(
+              result.outputValidation.debugAssets?.some((asset) => asset.kind === "source_product_layer"),
+              `${label}: flexible compositing mode should save source product layer debug artifact`
+            );
+            assert.ok(
+              result.outputValidation.debugAssets?.some((asset) => asset.kind === "product_mask"),
+              `${label}: flexible compositing mode should save product mask debug artifact`
+            );
+          }
         }
 
         const processed = getUploadedObject("processed-images", result.processedStoragePath);
@@ -698,7 +714,11 @@ const run = async (): Promise<void> => {
 
   assert.deepEqual(failures, [], `Normal product matrix failures:\n${failures.join("\n")}`);
   assert.equal(outputs.length, products.length * matrixModes.length, "Every normal product/mode combination should produce output");
-  assert.equal(openAiStudioScenePrompts.length, 0, "Flexible product matrix must not render full final images with OpenAI studio scene prompts");
+  assert.equal(
+    openAiStudioScenePrompts.length,
+    products.length * matrixModes.filter((mode) => !mode.preserveProductExactly && !mode.backgroundImageBuffer && mode.background !== "transparent").length,
+    "Flexible preset product matrix should render full final images with OpenAI studio scene prompts"
+  );
 
   const fallbackCutout = await __optiimstImageProcessingTestHooks.buildFlexibleFullSourceReviewCutout(
     fixtureBuffers.get("plain-bottle") ?? Buffer.alloc(0),
@@ -1059,6 +1079,7 @@ const run = async (): Promise<void> => {
 
   const detachedLogoBaseSettings = {
     preserveProductExactly: false,
+    disableOpenAiStudioRender: true,
     processingMode: "standard_ecommerce_cleanup",
     promptVersion: "ecommerce_preserve_v2",
     autoFailIfProductAltered: false,

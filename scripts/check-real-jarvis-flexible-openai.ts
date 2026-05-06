@@ -50,18 +50,29 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
 }) as typeof fetch;
 
 const uploadDir = "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04";
-const artifactDir = path.resolve("tmp", "real-jarvis-flexible-openai");
+const artifactBaseDir = path.resolve("tmp", "real-jarvis-flexible-openai");
 
 const products = [
   "aztech-adjustable-spring-retainer-aztech-innovations-aeg-upgrade-collection-4-lu-6.webp",
   "aztech-adjustable-spring-retainer-aztech-innovations-aeg-upgrade-collection-4-lu-7.webp",
+  "aztech-innovations-patch-accessories-aztech-167158.jpg",
   "aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087.jpg",
   "aztech-hardened-hybrid-anti-reverse-latch-aztech-innovations-aeg-upgrade-collect.webp",
   "aztech-air-pressure-activated-cylinder-head-engine-apache-spare-parts-gearbox-parts-aztech-115711.jpg",
   "aztech-air-pressure-activated-cylinder-head-engine-apache-spare-parts-gearbox-parts-aztech-275060.jpg",
   "aztech-cnc-range-warrior-barrel-fit-hop-up-spare-parts-aztech-231777.jpg",
-  "aztech-accu-port-cnc-piston-head-spare-parts-gearbox-parts-aztech-418168.jpg"
+  "aztech-accu-port-cnc-piston-head-spare-parts-gearbox-parts-aztech-418168.jpg",
+  "dsg-dual-sector-gear-spare-parts-chainsaw-products-868470.jpg",
+  "aps-gbb-nozzle-spring-for-co2-pistol-spare-parts-aps-271842.jpg",
+  "cnc-aluminum-double-o-ring-cylinder-head-spare-parts-chainsaw-products-202300.jpg"
 ] as const;
+
+const parseNumberArg = (name: string): number | undefined => {
+  const arg = process.argv.find((value) => value.startsWith(`--${name}=`));
+  if (!arg) return undefined;
+  const parsed = Number(arg.split("=")[1]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
 
 const storageKey = (bucket: string, objectPath: string | null): string => {
   assert.ok(objectPath, "Expected a storage object path");
@@ -137,6 +148,14 @@ const buildContactSheet = async (rows: Array<{ original: Buffer; processed: Buff
 
 const run = async (): Promise<void> => {
   const { processImageForProduct } = await import("../src/services/imageProcessingService");
+  const limit = parseNumberArg("limit");
+  const skip = Math.max(0, parseNumberArg("skip") ?? 0);
+  const selectedProducts = products.slice(skip).slice(0, limit ? Math.max(1, limit) : undefined);
+  assert.ok(selectedProducts.length > 0, "No real Jarvis products selected for flexible OpenAI recovery test.");
+
+  const runId = new Date().toISOString().replace(/[:.]/g, "-");
+  const artifactDir = path.join(artifactBaseDir, runId);
+  await mkdir(artifactBaseDir, { recursive: true });
   await rm(artifactDir, { recursive: true, force: true });
   await mkdir(artifactDir, { recursive: true });
 
@@ -151,7 +170,7 @@ const run = async (): Promise<void> => {
     failureReasons: string[];
   }> = [];
 
-  for (const file of products) {
+  for (const file of selectedProducts) {
     const sourcePath = path.join(uploadDir, file);
     const source = await readFile(sourcePath);
     const result = await processImageForProduct({

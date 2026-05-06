@@ -7509,9 +7509,9 @@ const compositeSourceLockedProductLayers = async ({
 };
 
 const flexibleStudioRecoveryInstructions = [
-  "Create a flawless professional WooCommerce product image from the supplied photo. Remove the old background, detached background watermarks/logos/text, baked-in alpha or mask outlines, jagged dark borders, grey/white halos, staircase cutout artifacts, and shadow bleed around the product. Preserve the same sellable product identity, shape, holes, openings, threading, tabs, screws, ridges, labels, printed product text, orientation, material, colour family, reflective finish, and fine geometry. Do not draw an outline around the product. Use a clean off-white ecommerce studio background and a very soft natural shadow only behind or beneath the product. The final product must have smooth anti-aliased professional edges and no visible mask artifacts.",
-  "Professional product retouching edit. Treat the original image as the reference for the actual product. Rebuild only the studio presentation: remove the source background, watermark, embedded halo, edge dirt, dark contour artifacts, cutout stair-stepping, and background fragments. Keep the product as the same object with the same proportions, openings, material finish, visible product markings, holes, tabs, ridges, screws, transparent areas, and orientation. Use a plain light grey/off-white background with subtle realistic shadow separated from the product. No visible alpha mask, no edge outline, no jagged contour, no background bleed, no extra objects, no new text.",
-  "Make a clean ecommerce catalogue photo of this exact product. Remove all background branding and every visible cutout/mask artifact. Preserve the real product, including silhouettes, negative spaces, transparent or dark openings, threads, tabs, labels, logos physically on the product, surface texture, and reflective finish. The product edges must be naturally anti-aliased with absolutely no dark fringe or grey halo. Place on a soft off-white studio background with a gentle shadow beneath only. Do not stylize, warp, crop, recolour, add text, or add extra objects."
+  "Create a flawless professional WooCommerce product image from the supplied photo using OpenAI as the final studio renderer. Keep the product as close to the source product as possible: same sellable SKU, silhouette, number of parts, holes, openings, threading, tabs, screws, ridges, labels, printed product text, orientation, material, colour family, reflective finish, and fine geometry. Remove the old background, detached background watermarks/logos/text, baked-in alpha or mask outlines, jagged dark borders, grey/white halos, staircase cutout artifacts, dirty edge scars, and shadow bleed around the product. Do not draw an outline around the product. Use a clean off-white ecommerce studio background and a very soft natural shadow only behind or beneath the product. The final product must have smooth anti-aliased professional edges and no visible mask artifacts.",
+  "Professional product retouching edit with the original image as the product identity reference. Rebuild the studio presentation fully: remove the source background, watermark, embedded halo, edge dirt, dark contour artifacts, cutout stair-stepping, and background fragments. Keep the product as the same object with the same proportions, openings, material finish, visible product markings, holes, tabs, ridges, screws, transparent areas, part count, attachment points, and orientation. Use a plain light grey/off-white background with subtle realistic shadow separated from the product. No visible alpha mask, no edge outline, no jagged contour, no background bleed, no extra objects, no new text, no redesigned SKU.",
+  "Make a clean ecommerce catalogue photo of this exact product. Remove all background branding and every visible cutout/mask artifact. Preserve the real product identity, including silhouette, negative spaces, transparent or dark openings, threads, tabs, labels, logos physically on the product, surface texture, reflective finish, part count, and mechanical details. The product edges must be naturally anti-aliased with absolutely no dark fringe or grey halo. Place on a soft off-white studio background with a gentle shadow beneath only. Do not stylize, warp, crop, recolour, add text, add extra objects, fill holes, remove tabs, or invent product detail."
 ];
 
 const buildFlexibleStudioBackgroundDescription = (
@@ -7622,7 +7622,7 @@ const processFlexibleOpenAiStudioRecovery = async ({
       },
       visionQa,
       warnings: [
-        `Flexible OpenAI studio recovery was used after source-locked matting failed: ${recoveryReason}`,
+        `Flexible OpenAI studio renderer was used: ${recoveryReason}`,
         `Flexible studio recovery attempt ${attempt + 1} of ${flexibleStudioRecoveryInstructions.length}.`
       ],
       failureReasons: qaPassed
@@ -7854,7 +7854,7 @@ export const processImageForProduct = async ({
       throw new Error("Custom background is selected but no custom background image was received. Save the background setting and reprocess this image.");
     }
 
-    console.info("Flexible studio enhancement selected; final image will be built by source-locked layer compositing", {
+    console.info("Flexible studio enhancement selected", {
       imageJobId,
       backgroundIsTransparent,
       hasCustomBackground: Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer)
@@ -7873,31 +7873,27 @@ export const processImageForProduct = async ({
       !backgroundImageBuffer &&
       Boolean(env.openAiApiKey);
     if (shouldUseOpenAiStudioRender) {
-      const existingAlphaCutout = await buildCutoutFromExistingSourceAlpha(originalImage.buffer).catch(() => null);
+      console.info("Flexible studio enhancement selected OpenAI studio renderer as primary path for preset background", {
+        imageJobId,
+        backgroundIsTransparent,
+        hasCustomBackground: false
+      });
 
-      if (!existingAlphaCutout) {
-        console.info("Flexible studio enhancement selected OpenAI studio recovery renderer for non-transparent source", {
-          imageJobId,
-          backgroundIsTransparent,
-          hasCustomBackground: false
-        });
-
-        return await processFlexibleOpenAiStudioRecovery({
-          userId,
-          imageJobId,
-          originalImage,
-          originalImageHash,
-          originalStoragePath,
-          originalUploadedAt,
-          storageCleanupAfter,
-          seoMetadata,
-          preservedOriginalInput,
-          processingSettings,
-          background,
-          pipelineDebugAssets,
-          recoveryReason: "Flexible mode source image has no trustworthy transparency; using OpenAI studio recovery before publishing."
-        });
-      }
+      return await processFlexibleOpenAiStudioRecovery({
+        userId,
+        imageJobId,
+        originalImage,
+        originalImageHash,
+        originalStoragePath,
+        originalUploadedAt,
+        storageCleanupAfter,
+        seoMetadata,
+        preservedOriginalInput,
+        processingSettings,
+        background,
+        pipelineDebugAssets,
+        recoveryReason: "Pixel Perfect is OFF and a preset studio background is selected, so OpenAI is used as the primary studio renderer while preserving the product identity as closely as possible."
+      });
     }
   }
 
