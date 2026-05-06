@@ -4,7 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
 
-export type BackgroundRemovalMode = "preserve-mask" | "preserve-mask-refined" | "preserve-mask-hard-contamination" | "flexible-cutout";
+export type BackgroundRemovalMode =
+  | "preserve-mask"
+  | "preserve-mask-refined"
+  | "preserve-mask-hard-contamination"
+  | "transparent-studio-recovery"
+  | "flexible-cutout";
 export type ImagePromptVariant =
   | "seo_product_feed_preserve"
   | "preserve_background_replacement"
@@ -89,10 +94,10 @@ const preserveMaskRefinedPrompt =
   `${strictProductPreservationBlock} Return a clean product-only mask. Exclude all background, watermark, logo, floor, shadows, halos, grey smears, pale residue, and semi-transparent edge contamination. Preserve all dark product details, thin structures, interior openings, and exact silhouette. Perform only professional product foreground segmentation. Return a transparent PNG alpha cutout that isolates the real product from the supplied image. Do not generate, redraw, repair, stylize, relight, recolour, or reinterpret the product. Keep thin rails, trigger guards, holes, vents, sights, nozzles, logos, markings, translucent sections, small accessories, screws, seams, and internal openings exactly as segmentation requires. If uncertain, prefer a conservative transparent cutout over inventing product pixels. ${negativeProductInstructionBlock}`;
 
 const preserveMaskHardContaminationPrompt =
-  `${strictProductPreservationBlock} This request is only for exact product segmentation on a source photo that may already contain a bad previous cutout, watermark, grey photo card, old shadow, jagged alpha outline, black contour scar, white ghost edge, or pale halo baked into the background. Return only a transparent PNG alpha cutout/mask for the real physical product. Exclude every detached background logo, background watermark, old mask outline, old cutout shell, halo, grey/white fringe, black edge scar, floor shadow, reflection, and background residue, even if it touches the product edge. Preserve the real product silhouette, holes, dark openings, threads, screws, ridges, tabs, fine geometry, transparent parts, and product-mounted text/logos. For white/silver/metal parts on light backgrounds, keep actual metal pixels but remove pale ghost shells and dark jagged contours that are not physical product edges. For black products on light backgrounds, keep dark product detail and holes but remove detached black background graphics. Do not fill holes. Do not shrink real tabs or protrusions. Do not generate, redraw, repair, relight, recolour, smooth, sharpen, or reinterpret the product. Return alpha only through a transparent product PNG; RGB content is diagnostic and will not be used as final product pixels.`;
+  `${strictProductPreservationBlock} This request is only for exact product segmentation on a source photo that may already contain a bad previous cutout, watermark, grey photo card, old shadow, jagged alpha outline, black contour scar, white ghost edge, pale halo, translucent paste-in sheet, or old failed alpha matte baked into the background. Return only a transparent PNG alpha cutout/mask for the real physical product. Exclude every detached background logo, background watermark, old mask outline, old cutout shell, halo, grey/white fringe, black edge scar, floor shadow, reflection, translucent backdrop sheet, speckled photo-card residue, and background residue, even if it touches the product edge or lies behind springs, rods, loops, holes, retainers, clips, vents, trigger guards, or open gaps. Preserve the real product silhouette, holes, dark openings, threads, screws, ridges, tabs, fine geometry, transparent parts, and product-mounted text/logos. Mechanical products may include black metal housings, cylindrical bodies, latch arms, rods, retaining clips, springs, coils, hooks, small pins, dark tabs, and curved protrusions: keep these physical parts as foreground even when they are thin, dark, reflective, partially occluded, or crossing a light background. Empty space visible between spring coils, around rods, through hooks, through latch openings, or inside product gaps must be transparent background unless it is a physical product surface. For white/silver/metal parts on light backgrounds, keep actual metal pixels but remove pale ghost shells and dark jagged contours that are not physical product edges. For black products on light backgrounds, keep dark product detail and holes but remove detached black background graphics. Do not include translucent grey sheets, rectangular old-card blocks, staircase cutout artifacts, or speckled residual mask islands as product. Do not fill holes. Do not shrink real tabs, spring coils, rods, latch arms, or protrusions. Do not generate, redraw, repair, relight, recolour, smooth, sharpen, or reinterpret the product. Return alpha only through a transparent product PNG; RGB content is diagnostic and will not be used as final product pixels.`;
 
 const preserveMonochromeMaskPrompt =
-  `${strictProductPreservationBlock} Create a segmentation mask only, not a product render. Output a pure black and white image: white means the real physical product foreground, black means background. Use no grey background, no gradient background, no shadow, no texture, no checkerboard, no text, no labels, and no product recolouring. Exclude every detached watermark, background logo, old photo-card edge, old alpha outline, grey/white halo, black contour scar, shadow, reflection, and background residue. Preserve true product silhouette, tabs, holes, openings, black interiors, threads, screws, ridges, transparent-looking product parts, and product-mounted text/logos as white foreground where they are physically part of the product. Keep open empty background gaps black. The output is used only as an alpha matte over the original pixels.`;
+  `${strictProductPreservationBlock} Create a segmentation mask only, not a product render. Output a pure black and white image: white means the real physical product foreground, black means background. Use no grey background, no gradient background, no shadow, no texture, no checkerboard, no text, no labels, and no product recolouring. Exclude every detached watermark, background logo, old photo-card edge, old alpha outline, grey/white halo, black contour scar, shadow, reflection, translucent old cutout sheet, speckled mask residue, and background residue. Preserve true product silhouette, tabs, holes, openings, black interiors, threads, screws, ridges, springs, coils, rods, clips, latch arms, transparent-looking product parts, and product-mounted text/logos as white foreground where they are physically part of the product. Keep open empty background gaps black, especially gaps between spring coils, around rods, through hooks, through retaining clips, and inside mechanical openings. The output is used only as an alpha matte over the original pixels.`;
 
 export const buildOpenAiBackgroundOnlyPrompt = (): string =>
   "Create a clean premium ecommerce studio background suitable for this product. No text, no logos, no props, no watermark, no product changes. Background only.";
@@ -102,6 +107,9 @@ export const buildOpenAiRelightingShadowGuidancePrompt = (): string =>
 
 const flexibleCutoutPrompt =
   `${buildOpenAiImagePrompt("standard_background_replacement")} Create a precise ecommerce product alpha mask/cutout from this image. Isolate only the actual product object. Remove all background, floor, wall, table, shadows, reflections, glare patches, gaps, holes, empty spaces between parts, and background visible through openings in the product. Return a clean transparent-background PNG with only the product foreground isolated, no added objects and no background remnants.`;
+
+const transparentStudioRecoveryPrompt =
+  `${flexibleProductPreservationBlock} Create a clean transparent-background PNG product cutout for ecommerce. The output must contain only the product with a precise alpha channel and no background. Remove all old background, detached source watermarks/logos/text, grey card residue, baked-in alpha artifacts, jagged dark outlines, staircase mask scars, white/grey halos, shadow bleed, and dirty residue around or behind open mechanical gaps. Preserve the same sellable SKU identity, orientation, proportions, number of parts, holes, springs, tabs, retainers, screws, ridges, threads, product-mounted text/logos, material family, colour family, reflective finish, and fine geometry as closely as possible. Keep true empty holes/openings transparent. Do not draw outlines, add shadows, add a background, add objects, redesign the item, remove product parts, add product parts, fill real openings, change branding, recolour, stylise, smooth away detail, or make the product look AI-generated.`;
 
 const flexibleStudioRecoveryInstruction =
   "This is Product Preservation OFF / Flexible OpenAI Studio Mode. Use OpenAI as the premium product retoucher for the final studio image, while keeping the product as close to the source item as possible. Remove the old background, detached watermarks, background logos, background text, grey card residue, cutout outlines, jagged alpha borders, staircase mask artifacts, edge halos, shadow bleed, and dirty mask scars. The final product edges must be clean, naturally anti-aliased, and free of visible alpha artifacts. Preserve the product identity, proportions, orientation, number of visible parts, attachment points, material, colour family, openings, holes, transparent areas, screws, ridges, grooves, labels, printed product text, branding physically on the product, and fine geometry. Do not add product parts, remove product parts, fill real holes, invent openings, change product-mounted text/logos, draw outlines, stylise the item, melt/smooth detail, or make the product look AI-generated. Use only a clean light ecommerce studio background and subtle realistic shadow behind or beneath the product.";
@@ -114,10 +122,58 @@ const getPromptForMode = (mode: BackgroundRemovalMode): string => {
       return preserveMaskRefinedPrompt;
     case "preserve-mask-hard-contamination":
       return preserveMaskHardContaminationPrompt;
+    case "transparent-studio-recovery":
+      return transparentStudioRecoveryPrompt;
     case "flexible-cutout":
     default:
       return flexibleCutoutPrompt;
   }
+};
+
+const openAiRetryDelaysMs = [1000, 2500, 5000];
+
+const sleep = (durationMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, durationMs));
+
+const isRetryableOpenAiStatus = (status: number): boolean =>
+  status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+
+const postOpenAiImageEditWithRetry = async (
+  operation: string,
+  buildFormData: () => FormData
+): Promise<Response> => {
+  let lastError = "";
+
+  for (let attempt = 0; attempt <= openAiRetryDelaysMs.length; attempt += 1) {
+    const response = await fetch(openAiImageEditEndpoint, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.openAiApiKey}`
+      },
+      body: buildFormData()
+    });
+
+    if (response.ok) {
+      return response;
+    }
+
+    const responseBody = await response.text().catch(() => "");
+    lastError = `${operation} failed with ${response.status}: ${responseBody}`;
+    if (!isRetryableOpenAiStatus(response.status) || attempt >= openAiRetryDelaysMs.length) {
+      throw new Error(lastError);
+    }
+
+    const retryDelayMs = openAiRetryDelaysMs[attempt] ?? 5000;
+    console.warn("Retrying OpenAI image edit after transient failure", {
+      operation,
+      status: response.status,
+      attempt: attempt + 1,
+      retryDelayMs
+    });
+    await sleep(retryDelayMs);
+  }
+
+  throw new Error(lastError || `${operation} failed before receiving a response.`);
 };
 
 export const removeImageBackground = async (
@@ -128,34 +184,25 @@ export const removeImageBackground = async (
     throw new Error("OPENAI_API_KEY is not configured");
   }
 
-  const formData = new FormData();
-  formData.append(
-    "image",
-    new Blob([new Uint8Array(imageBuffer)], {
-      type: "image/png"
-    }),
-    "product.png"
-  );
-  formData.append("model", openAiImageEditModel);
-  formData.append("prompt", getPromptForMode(mode));
-  formData.append("background", "transparent");
-  formData.append("input_fidelity", "high");
-  formData.append("output_format", "png");
-  formData.append("quality", openAiImageEditQuality);
-  formData.append("size", openAiImageEditSize);
-
-  const response = await fetch(openAiImageEditEndpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.openAiApiKey}`
-    },
-    body: formData
+  const prompt = getPromptForMode(mode);
+  const response = await postOpenAiImageEditWithRetry("OpenAI background removal", () => {
+    const formData = new FormData();
+    formData.append(
+      "image",
+      new Blob([new Uint8Array(imageBuffer)], {
+        type: "image/png"
+      }),
+      "product.png"
+    );
+    formData.append("model", openAiImageEditModel);
+    formData.append("prompt", prompt);
+    formData.append("background", "transparent");
+    formData.append("input_fidelity", "high");
+    formData.append("output_format", "png");
+    formData.append("quality", openAiImageEditQuality);
+    formData.append("size", openAiImageEditSize);
+    return formData;
   });
-
-  if (!response.ok) {
-    const responseBody = await response.text().catch(() => "");
-    throw new Error(`OpenAI background removal failed with ${response.status}: ${responseBody}`);
-  }
 
   const body = await response.json() as {
     data?: Array<{
@@ -192,34 +239,24 @@ export const renderFlexibleStudioProductImage = async ({
     backgroundDescription
   })} ${recoveryInstruction ?? flexibleStudioRecoveryInstruction}`;
 
-  const formData = new FormData();
-  formData.append(
-    "image",
-    new Blob([new Uint8Array(imageBuffer)], {
-      type: "image/png"
-    }),
-    "product.png"
-  );
-  formData.append("model", openAiImageEditModel);
-  formData.append("prompt", prompt);
-  formData.append("background", "opaque");
-  formData.append("input_fidelity", "high");
-  formData.append("output_format", "png");
-  formData.append("quality", openAiImageEditQuality);
-  formData.append("size", openAiImageEditSize);
-
-  const response = await fetch(openAiImageEditEndpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.openAiApiKey}`
-    },
-    body: formData
+  const response = await postOpenAiImageEditWithRetry("OpenAI flexible studio render", () => {
+    const formData = new FormData();
+    formData.append(
+      "image",
+      new Blob([new Uint8Array(imageBuffer)], {
+        type: "image/png"
+      }),
+      "product.png"
+    );
+    formData.append("model", openAiImageEditModel);
+    formData.append("prompt", prompt);
+    formData.append("background", "opaque");
+    formData.append("input_fidelity", "high");
+    formData.append("output_format", "png");
+    formData.append("quality", openAiImageEditQuality);
+    formData.append("size", openAiImageEditSize);
+    return formData;
   });
-
-  if (!response.ok) {
-    const responseBody = await response.text().catch(() => "");
-    throw new Error(`OpenAI flexible studio render failed with ${response.status}: ${responseBody}`);
-  }
 
   const body = await response.json() as {
     data?: Array<{
@@ -240,34 +277,24 @@ export const renderPreserveMonochromeMask = async (imageBuffer: Buffer): Promise
     throw new Error("OPENAI_API_KEY is not configured");
   }
 
-  const formData = new FormData();
-  formData.append(
-    "image",
-    new Blob([new Uint8Array(imageBuffer)], {
-      type: "image/png"
-    }),
-    "product.png"
-  );
-  formData.append("model", openAiImageEditModel);
-  formData.append("prompt", preserveMonochromeMaskPrompt);
-  formData.append("background", "opaque");
-  formData.append("input_fidelity", "high");
-  formData.append("output_format", "png");
-  formData.append("quality", openAiImageEditQuality);
-  formData.append("size", openAiImageEditSize);
-
-  const response = await fetch(openAiImageEditEndpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.openAiApiKey}`
-    },
-    body: formData
+  const response = await postOpenAiImageEditWithRetry("OpenAI preserve monochrome mask", () => {
+    const formData = new FormData();
+    formData.append(
+      "image",
+      new Blob([new Uint8Array(imageBuffer)], {
+        type: "image/png"
+      }),
+      "product.png"
+    );
+    formData.append("model", openAiImageEditModel);
+    formData.append("prompt", preserveMonochromeMaskPrompt);
+    formData.append("background", "opaque");
+    formData.append("input_fidelity", "high");
+    formData.append("output_format", "png");
+    formData.append("quality", openAiImageEditQuality);
+    formData.append("size", openAiImageEditSize);
+    return formData;
   });
-
-  if (!response.ok) {
-    const responseBody = await response.text().catch(() => "");
-    throw new Error(`OpenAI preserve monochrome mask failed with ${response.status}: ${responseBody}`);
-  }
 
   const body = await response.json() as {
     data?: Array<{

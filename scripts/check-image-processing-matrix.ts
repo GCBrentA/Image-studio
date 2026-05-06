@@ -769,70 +769,75 @@ const run = async (): Promise<void> => {
       </g>
     </svg>
   `);
-  await assert.rejects(
-    () => processImageForProduct({
-      imageJobId: "matrix-dark-preserve-source-locked-rescue",
-      userId: "matrix-user",
-      imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
-      imageBuffer: darkPreserveRescueSource,
-      imageContentType: "image/png",
-      background: "white",
-      settings: {
-        preserveProductExactly: true,
-        processingMode: "seo_product_feed_preserve",
-        promptVersion: "ecommerce_preserve_v2",
-        autoFailIfProductAltered: true,
-        preserveFallbackFromStrictMode: false,
-        output: {
-          size: 1024,
-          aspectRatio: "1:1"
-        },
-        background: {
-          source: "preset",
-          preset: "white",
-          customBackgroundUrl: null,
-          customBackgroundId: null
-        },
-        framing: {
-          mode: "auto",
-          smartScaling: true,
-          padding: 6,
-          targetCoverage: 86,
-          useTargetCoverage: false,
-          preserveTransparentEdges: true
-        },
-        shadow: {
-          mode: "under",
-          strength: "medium",
-          opacity: 24,
-          blur: 24,
-          offsetX: 0,
-          offsetY: 0,
-          spread: 100,
-          softness: 60,
-          color: "#000000"
-        },
-        lighting: {
-          enabled: false,
-          mode: "auto",
-          brightness: 0,
-          contrast: 0,
-          highlightRecovery: true,
-          shadowLift: true,
-          neutralizeTint: true,
-          strength: "light"
-        },
-        debugArtifacts: true
+  const darkPreserveRescueResult = await processImageForProduct({
+    imageJobId: "matrix-dark-preserve-source-locked-rescue",
+    userId: "matrix-user",
+    imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
+    imageBuffer: darkPreserveRescueSource,
+    imageContentType: "image/png",
+    background: "white",
+    settings: {
+      preserveProductExactly: true,
+      processingMode: "seo_product_feed_preserve",
+      promptVersion: "ecommerce_preserve_v2",
+      autoFailIfProductAltered: true,
+      preserveFallbackFromStrictMode: false,
+      output: {
+        size: 1024,
+        aspectRatio: "1:1"
       },
-      jobOverrides: {
-        productId: "dark-preserve-rescue",
-        imageId: "dark-preserve-rescue-main",
-        edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
-      }
-    }),
-    /Exact Product Preservation could not produce an artifact-free source-locked product mask|failed product image validation|programmatic validation failed/i,
-    "Strict preserve must reject untrustworthy provider masks without publishing a damaged output"
+      background: {
+        source: "preset",
+        preset: "white",
+        customBackgroundUrl: null,
+        customBackgroundId: null
+      },
+      framing: {
+        mode: "auto",
+        smartScaling: true,
+        padding: 6,
+        targetCoverage: 86,
+        useTargetCoverage: false,
+        preserveTransparentEdges: true
+      },
+      shadow: {
+        mode: "under",
+        strength: "medium",
+        opacity: 24,
+        blur: 24,
+        offsetX: 0,
+        offsetY: 0,
+        spread: 100,
+        softness: 60,
+        color: "#000000"
+      },
+      lighting: {
+        enabled: false,
+        mode: "auto",
+        brightness: 0,
+        contrast: 0,
+        highlightRecovery: true,
+        shadowLift: true,
+        neutralizeTint: true,
+        strength: "light"
+      },
+      debugArtifacts: true
+    },
+    jobOverrides: {
+      productId: "dark-preserve-rescue",
+      imageId: "dark-preserve-rescue-main",
+      edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
+    }
+  });
+  assert.equal(darkPreserveRescueResult.outputValidation?.status, "Passed", "Contaminated exact preset source should recover to a processed image instead of publishing a damaged matte");
+  assert.match(
+    darkPreserveRescueResult.outputValidation?.cutoutProvider ?? "",
+    /openai:.*flexible-studio-final/,
+    "Contaminated exact preset recovery should use the OpenAI studio renderer after source-locked matte exhaustion"
   );
+  const darkPreserveRescueProcessed = getUploadedObject("processed-images", darkPreserveRescueResult.processedStoragePath);
+  await assertValidProcessedImage(darkPreserveRescueProcessed, "dark preserve contaminated-source recovery");
+  await writeFile(path.join(artifactDir, "dark-preserve-contaminated-source-recovery.webp"), darkPreserveRescueProcessed);
 
   const greyRetainerSource = await toPng(`
     <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">

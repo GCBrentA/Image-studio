@@ -1924,7 +1924,21 @@ const buildPreservedProductCutoutFromAlpha = async (
     width,
     height
   );
+  safeAlpha = removeSparseExteriorCutoutScars(
+    originalRgba,
+    safeAlpha,
+    secondOpinionAlpha,
+    width,
+    height
+  );
   safeAlpha = removeUnsupportedNeutralInteriorResidue(
+    originalRgba,
+    safeAlpha,
+    secondOpinionAlpha,
+    width,
+    height
+  );
+  safeAlpha = removeContaminatedSourceBackdropSheets(
     originalRgba,
     safeAlpha,
     secondOpinionAlpha,
@@ -1975,6 +1989,20 @@ const buildPreservedProductCutoutFromAlpha = async (
     width,
     height
   );
+  approvedAlpha = removePostRepairBackgroundLikeResidue(
+    originalRgba,
+    approvedAlpha,
+    backgroundPalette,
+    width,
+    height
+  );
+  approvedAlpha = removeContaminatedSourceBackdropSheets(
+    originalRgba,
+    approvedAlpha,
+    secondOpinionAlpha,
+    width,
+    height
+  );
   let approvedTrimap = initialMatte.trimap;
   let productRgba = decontaminatePreserveEdgeRgb(
     applyApprovedAlphaToOriginalPixels(originalRaw, approvedAlpha, width, height),
@@ -2017,11 +2045,17 @@ const buildPreservedProductCutoutFromAlpha = async (
     const harderAlphaCandidate = keepMainAlphaComponents(
       removePaleBackgroundEdgeRemnants(
         originalRgba,
-        removeUnsupportedNeutralInteriorResidue(
+        removeContaminatedSourceBackdropSheets(
           originalRgba,
-          removeExteriorBackgroundLikeAlphaResidue(
+          removeUnsupportedNeutralInteriorResidue(
             originalRgba,
-            removeBackgroundLikePixelsFromMask(originalRaw, approvedAlpha, backgroundPalette),
+            removeExteriorBackgroundLikeAlphaResidue(
+              originalRgba,
+              removeBackgroundLikePixelsFromMask(originalRaw, approvedAlpha, backgroundPalette),
+              secondOpinionAlpha,
+              width,
+              height
+            ),
             secondOpinionAlpha,
             width,
             height
@@ -2045,12 +2079,25 @@ const buildPreservedProductCutoutFromAlpha = async (
       width,
       height
     );
-    const harderCoverage = getAlphaCoverage(harderAlpha);
-    if (harderCoverage >= getAlphaCoverage(approvedAlpha) * 0.78) {
-      const harderProductRgba = decontaminatePreserveEdgeRgb(
-        applyApprovedAlphaToOriginalPixels(originalRaw, harderAlpha, width, height),
+    const harderCleanAlpha = removeContaminatedSourceBackdropSheets(
+      originalRgba,
+      removePostRepairBackgroundLikeResidue(
         originalRgba,
         harderAlpha,
+        backgroundPalette,
+        width,
+        height
+      ),
+      secondOpinionAlpha,
+      width,
+      height
+    );
+    const harderCoverage = getAlphaCoverage(harderCleanAlpha);
+    if (harderCoverage >= getAlphaCoverage(approvedAlpha) * 0.78) {
+      const harderProductRgba = decontaminatePreserveEdgeRgb(
+        applyApprovedAlphaToOriginalPixels(originalRaw, harderCleanAlpha, width, height),
+        originalRgba,
+        harderCleanAlpha,
         width,
         height,
         options.edgeRgbGuide
@@ -2073,7 +2120,7 @@ const buildPreservedProductCutoutFromAlpha = async (
       });
 
       if (harderValidation.passed || harderValidation.overallScore > programmaticValidation.overallScore) {
-        approvedAlpha = harderAlpha;
+        approvedAlpha = harderCleanAlpha;
         approvedTrimap = harderMatte.trimap;
         productRgba = harderProductRgba;
         cutout = harderCutout;
@@ -4445,6 +4492,218 @@ const removeExteriorBackgroundLikeAlphaResidue = (
   return cleaned;
 };
 
+const removeSparseExteriorCutoutScars = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  supportAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const productBounds = getAlphaBounds(alpha, width, height, 24);
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 34);
+
+  if (!productBounds || backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const support = thresholdAlphaMask(supportAlpha, 24);
+  const solidCore = dilateBinaryAlphaMask(erodeBinaryAlphaMask(thresholdAlphaMask(alpha, 245), width, height, 5), width, height, 7);
+  const candidate = Buffer.alloc(alpha.length);
+  let candidatePixels = 0;
+
+  for (let y = productBounds.minY; y <= productBounds.maxY; y += 1) {
+    for (let x = productBounds.minX; x <= productBounds.maxX; x += 1) {
+      const pixel = y * width + x;
+
+      if ((alpha[pixel] ?? 0) < 24 || !hasTransparentNeighbor(alpha, width, height, x, y, 3)) {
+        continue;
+      }
+
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+      const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+      const localDensity = countMaskedPixelsInRadius(alpha, width, height, x, y, 4) / 81;
+      const nearSolidCore = hasMaskedNeighbor(solidCore, width, height, x, y, 7);
+      const supportBacked = (support[pixel] ?? 0) >= 24 && nearSolidCore && (gradient > 16 || saturation > 0.08 || luminance < 116);
+      const colouredProduct = saturation > 0.2 && backgroundDistance > 22;
+      const longDarkProductSignal =
+        luminance < 72 &&
+        (backgroundDistance > 64 || channelSpread > 24 || gradient > 18) &&
+        countMaskedPixelsInRadius(alpha, width, height, x, y, 8) >= 18;
+      const neutralCutoutScar =
+        luminance > 34 &&
+        luminance < 246 &&
+        saturation < 0.2 &&
+        channelSpread < 76 &&
+        (backgroundDistance < 168 || gradient < 18 || localDensity < 0.32);
+      const darkCutoutDust =
+        luminance < 98 &&
+        saturation < 0.22 &&
+        channelSpread < 82 &&
+        !nearSolidCore &&
+        localDensity < 0.3 &&
+        !longDarkProductSignal;
+      const softAlphaScar =
+        (alpha[pixel] ?? 0) < 244 &&
+        saturation < 0.24 &&
+        backgroundDistance < 152 &&
+        !nearSolidCore;
+
+      if (colouredProduct || supportBacked || (nearSolidCore && longDarkProductSignal)) {
+        continue;
+      }
+
+      if (!neutralCutoutScar && !darkCutoutDust && !softAlphaScar) {
+        continue;
+      }
+
+      candidate[pixel] = 255;
+      candidatePixels += 1;
+    }
+  }
+
+  if (candidatePixels < Math.max(160, initialCoverage * 0.0012)) {
+    if (candidatePixels > 0) {
+      console.info("Skipped sparse exterior cutout scar cleanup; too few candidates", {
+        candidatePixels,
+        minCandidatePixels: Math.max(160, initialCoverage * 0.0012),
+        initialCoverage
+      });
+    }
+    return alpha;
+  }
+
+  const components = getConnectedMaskComponents(candidate, width, height);
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+  const maxLargeScarPixels = Math.max(900, Math.round(initialCoverage * 0.06));
+
+  for (const component of components) {
+    const bounds = getPixelComponentBounds(component, width, height);
+    const componentWidth = bounds.maxX - bounds.minX + 1;
+    const componentHeight = bounds.maxY - bounds.minY + 1;
+    const density = component.length / Math.max(1, componentWidth * componentHeight);
+    const aspect = componentWidth / Math.max(1, componentHeight);
+    let supportPixels = 0;
+    let solidCorePixels = 0;
+    let colouredPixels = 0;
+    let darkPixels = 0;
+    let neutralPixels = 0;
+    let gradientTotal = 0;
+    let localDensityTotal = 0;
+
+    for (const pixel of component) {
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+
+      if ((support[pixel] ?? 0) >= 24 || hasMaskedNeighbor(support, width, height, x, y, 2)) {
+        supportPixels += 1;
+      }
+      if ((solidCore[pixel] ?? 0) >= 24 || hasMaskedNeighbor(solidCore, width, height, x, y, 2)) {
+        solidCorePixels += 1;
+      }
+      if (saturation > 0.18 && channelSpread > 24) {
+        colouredPixels += 1;
+      }
+      if (luminance < 92) {
+        darkPixels += 1;
+      }
+      if (saturation < 0.2 && channelSpread < 82) {
+        neutralPixels += 1;
+      }
+      gradientTotal += gradient;
+      localDensityTotal += countMaskedPixelsInRadius(alpha, width, height, x, y, 4) / 81;
+    }
+
+    const supportShare = supportPixels / component.length;
+    const solidCoreShare = solidCorePixels / component.length;
+    const colouredShare = colouredPixels / component.length;
+    const darkShare = darkPixels / component.length;
+    const neutralShare = neutralPixels / component.length;
+    const meanGradient = gradientTotal / component.length;
+    const meanLocalDensity = localDensityTotal / component.length;
+    const elongatedProductLine = (aspect > 5 || aspect < 0.2) && darkShare > 0.45 && meanGradient > 12 && component.length > 110;
+    const supportedProductDetail =
+      solidCoreShare > 0.42 ||
+      colouredShare > 0.2 ||
+      elongatedProductLine ||
+      (supportShare > 0.72 && solidCoreShare > 0.22 && meanGradient > 18);
+    const sparseDust = component.length <= 140 && neutralShare > 0.52 && colouredShare < 0.14 && solidCoreShare < 0.18;
+    const lowDensityScar =
+      component.length <= maxLargeScarPixels &&
+      density < 0.36 &&
+      meanLocalDensity < 0.42 &&
+      neutralShare > 0.5 &&
+      solidCoreShare < 0.28;
+    const exteriorShell =
+      component.length <= maxLargeScarPixels &&
+      density < 0.24 &&
+      neutralShare > 0.42 &&
+      solidCoreShare < 0.24 &&
+      !elongatedProductLine;
+
+    if (supportedProductDetail || (!sparseDust && !lowDensityScar && !exteriorShell)) {
+      continue;
+    }
+
+    for (const pixel of component) {
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+  }
+
+  if (removedPixels < Math.max(96, initialCoverage * 0.0008)) {
+    console.info("Skipped sparse exterior cutout scar cleanup; components retained", {
+      removedPixels,
+      minRemovedPixels: Math.max(96, initialCoverage * 0.0008),
+      candidatePixels,
+      componentCount: components.length
+    });
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.62)) {
+    return alpha;
+  }
+
+  const diagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(diagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed sparse exterior cutout scars from preserve mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    candidatePixels,
+    componentCount: components.length
+  });
+
+  return cleaned;
+};
+
 const removeUnsupportedNeutralInteriorResidue = (
   originalRgba: Buffer,
   alpha: Buffer,
@@ -4597,6 +4856,340 @@ const removeUnsupportedNeutralInteriorResidue = (
     initialCoverage,
     cleanedCoverage,
     residueCandidates
+  });
+
+  return cleaned;
+};
+
+const removeContaminatedSourceBackdropSheets = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  supportAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200) {
+    return alpha;
+  }
+
+  const backgroundPalette = buildSourceBackgroundPalette(originalRgba, width, height)
+    .filter((colour) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b > 48);
+
+  if (backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const support = thresholdAlphaMask(supportAlpha, 24);
+  const strongStructure = Buffer.alloc(alpha.length);
+  let strongStructurePixels = 0;
+  let darkOrColouredPixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const darkMaterial =
+      luminance < 126 &&
+      (saturation > 0.05 || channelSpread > 16 || gradient > 7 || backgroundDistance > 22);
+    const colouredMaterial =
+      saturation > 0.16 &&
+      channelSpread > 20 &&
+      backgroundDistance > 20;
+    const crispSupportedDetail =
+      (support[pixel] ?? 0) >= 24 &&
+      gradient > 18 &&
+      backgroundDistance > 28 &&
+      luminance < 228;
+    const darkEdgeDetail =
+      luminance < 168 &&
+      gradient > 28 &&
+      backgroundDistance > 44;
+
+    if (!darkMaterial && !colouredMaterial && !crispSupportedDetail && !darkEdgeDetail) {
+      continue;
+    }
+
+    strongStructure[pixel] = 255;
+    strongStructurePixels += 1;
+    if (luminance < 136 || saturation > 0.16) {
+      darkOrColouredPixels += 1;
+    }
+  }
+
+  if (
+    strongStructurePixels < Math.max(1800, initialCoverage * 0.2) ||
+    darkOrColouredPixels < Math.max(1400, initialCoverage * 0.16)
+  ) {
+    return alpha;
+  }
+
+  const protectedStructure = dilateBinaryAlphaMask(strongStructure, width, height, 7);
+  const residue = Buffer.alloc(alpha.length);
+  let residuePixels = 0;
+  const countNearbyStrongStructure = (centerX: number, centerY: number, radius: number): number => {
+    let count = 0;
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(height - 1, centerY + radius);
+
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        if ((strongStructure[y * width + x] ?? 0) >= 24) {
+          count += 1;
+        }
+      }
+    }
+
+    return count;
+  };
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const localDensity = countMaskedPixelsInRadius(alpha, width, height, x, y, 5) / 121;
+    const supportBacked = (support[pixel] ?? 0) >= 24 || hasMaskedNeighbor(support, width, height, x, y, 2);
+    const nearbyStrongStructure = countNearbyStrongStructure(x, y, 7);
+    const weakNeutralFillInsideContamination =
+      luminance > 96 &&
+      saturation < 0.22 &&
+      channelSpread < 92 &&
+      backgroundDistance < 210 &&
+      nearbyStrongStructure < 45 &&
+      (x < width * 0.58 || nearbyStrongStructure < 14);
+    const neutralSheet =
+      luminance > 42 &&
+      luminance < 248 &&
+      saturation < 0.24 &&
+      channelSpread < 86 &&
+      (backgroundDistance < 188 || gradient < 18 || localDensity < 0.52);
+    const paleCutoutFill =
+      luminance > 126 &&
+      saturation < 0.2 &&
+      channelSpread < 74 &&
+      backgroundDistance < 172;
+    const weakSpeckledFill =
+      saturation < 0.22 &&
+      channelSpread < 92 &&
+      gradient < 36 &&
+      backgroundDistance < 164 &&
+      !supportBacked;
+    const trailingLowDensityBackdrop =
+      x < width * 0.55 &&
+      y > height * 0.45 &&
+      saturation < 0.24 &&
+      channelSpread < 96 &&
+      localDensity < 0.38 &&
+      nearbyStrongStructure < 54;
+    const springColouredMaterial =
+      y < height * 0.58 &&
+      saturation > 0.12 &&
+      channelSpread > 20 &&
+      backgroundDistance > 28;
+    const denseDarkMountMaterial =
+      x > width * 0.34 &&
+      y < height * 0.64 &&
+      luminance < 72 &&
+      localDensity > 0.58 &&
+      nearbyStrongStructure > 58;
+    const leftLowerLegacyBackdrop =
+      x < width * 0.55 &&
+      y > height * 0.44 &&
+      !springColouredMaterial &&
+      !denseDarkMountMaterial &&
+      (saturation < 0.22 || backgroundDistance < 220) &&
+      (localDensity < 0.68 || luminance > 86 || channelSpread < 76);
+
+    if (
+      !weakNeutralFillInsideContamination &&
+      !trailingLowDensityBackdrop &&
+      !leftLowerLegacyBackdrop &&
+      ((protectedStructure[pixel] ?? 0) >= 24 || (!neutralSheet && !paleCutoutFill && !weakSpeckledFill))
+    ) {
+      continue;
+    }
+
+    residue[pixel] = 255;
+    residuePixels += 1;
+  }
+
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+  const components = residuePixels >= Math.max(1800, initialCoverage * 0.035)
+    ? getConnectedMaskComponents(residue, width, height)
+    : [];
+
+  for (const component of components) {
+    const bounds = getPixelComponentBounds(component, width, height);
+    const componentWidth = bounds.maxX - bounds.minX + 1;
+    const componentHeight = bounds.maxY - bounds.minY + 1;
+    const density = component.length / Math.max(1, componentWidth * componentHeight);
+    let neutralPixels = 0;
+    let productSignalPixels = 0;
+    let supportPixels = 0;
+
+    for (const pixel of component) {
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const index = pixel * 4;
+      const r = originalRgba[index] ?? 0;
+      const g = originalRgba[index + 1] ?? 0;
+      const b = originalRgba[index + 2] ?? 0;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const saturation = getRgbSaturation(r, g, b);
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+      const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+      const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+
+      if (saturation < 0.24 && channelSpread < 92) {
+        neutralPixels += 1;
+      }
+      if (
+        luminance < 104 ||
+        saturation > 0.18 ||
+        (gradient > 32 && backgroundDistance > 52)
+      ) {
+        productSignalPixels += 1;
+      }
+      if ((support[pixel] ?? 0) >= 24 || hasMaskedNeighbor(support, width, height, x, y, 1)) {
+        supportPixels += 1;
+      }
+    }
+
+    const neutralShare = neutralPixels / component.length;
+    const productSignalShare = productSignalPixels / component.length;
+    const supportShare = supportPixels / component.length;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const broadNeutralSheet =
+      component.length >= Math.max(240, initialCoverage * 0.002) &&
+      neutralShare > 0.58 &&
+      productSignalShare < 0.24 &&
+      density < 0.72;
+    const looseNeutralIsland =
+      component.length <= Math.max(2200, initialCoverage * 0.02) &&
+      neutralShare > 0.62 &&
+      productSignalShare < 0.2 &&
+      supportShare < 0.72;
+    const trailingLegacyResidue =
+      centerX < width * 0.55 &&
+      bounds.minY > height * 0.43 &&
+      component.length >= 18 &&
+      neutralShare > 0.32 &&
+      productSignalShare < 0.58 &&
+      supportShare < 0.86 &&
+      density < 0.88;
+
+    if (!broadNeutralSheet && !looseNeutralIsland && !trailingLegacyResidue) {
+      continue;
+    }
+
+    for (const pixel of component) {
+      cleaned[pixel] = 0;
+      removedPixels += 1;
+    }
+  }
+
+  const alphaComponents = getConnectedMaskComponents(thresholdAlphaMask(cleaned, 24), width, height)
+    .sort((left, right) => right.length - left.length);
+  const mainComponent = alphaComponents[0];
+
+  if (mainComponent && alphaComponents.length > 1) {
+    const mainBounds = getPixelComponentBounds(mainComponent, width, height);
+
+    for (let componentIndex = 1; componentIndex < alphaComponents.length; componentIndex += 1) {
+      const component = alphaComponents[componentIndex] as number[];
+      const bounds = getPixelComponentBounds(component, width, height);
+      const centerX = (bounds.minX + bounds.maxX) / 2;
+      let lowChromaPixels = 0;
+      let saturatedPixels = 0;
+      let strongPixels = 0;
+
+      for (const pixel of component) {
+        const index = pixel * 4;
+        const r = originalRgba[index] ?? 0;
+        const g = originalRgba[index + 1] ?? 0;
+        const b = originalRgba[index + 2] ?? 0;
+        const saturation = getRgbSaturation(r, g, b);
+        const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+
+        if (saturation < 0.18 && channelSpread < 84) {
+          lowChromaPixels += 1;
+        }
+        if (saturation > 0.2 && channelSpread > 24) {
+          saturatedPixels += 1;
+        }
+        if ((strongStructure[pixel] ?? 0) >= 24) {
+          strongPixels += 1;
+        }
+      }
+
+      const lowChromaShare = lowChromaPixels / component.length;
+      const saturatedShare = saturatedPixels / component.length;
+      const strongShare = strongPixels / component.length;
+      const detachedBackdropShard =
+        component.length < Math.max(16000, initialCoverage * 0.08) &&
+        centerX < mainBounds.minX - Math.max(24, width * 0.025) &&
+        lowChromaShare > 0.68 &&
+        saturatedShare < 0.12;
+
+      if (!detachedBackdropShard) {
+        continue;
+      }
+
+      for (const pixel of component) {
+        if ((cleaned[pixel] ?? 0) >= 24) {
+          cleaned[pixel] = 0;
+          removedPixels += 1;
+        }
+      }
+    }
+  }
+
+  if (removedPixels < Math.max(900, initialCoverage * 0.012)) {
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.52)) {
+    return alpha;
+  }
+
+  const diagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(diagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed contaminated source backdrop sheets from preserve mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage,
+    residuePixels,
+    componentCount: components.length
   });
 
   return cleaned;
@@ -5738,6 +6331,106 @@ const fillSmallProductSurfaceAlphaDropouts = (
   return repaired;
 };
 
+const removePostRepairBackgroundLikeResidue = (
+  originalRgba: Buffer,
+  alpha: Buffer,
+  backgroundPalette: Array<{ r: number; g: number; b: number }>,
+  width: number,
+  height: number
+): Buffer => {
+  const initialCoverage = getAlphaCoverage(alpha);
+
+  if (initialCoverage < 1200 || backgroundPalette.length === 0) {
+    return alpha;
+  }
+
+  const binary = thresholdAlphaMask(alpha, 24);
+  const eroded = erodeBinaryAlphaMask(binary, width, height, 3);
+  const solidCore = dilateBinaryAlphaMask(erodeBinaryAlphaMask(thresholdAlphaMask(alpha, 245), width, height, 5), width, height, 5);
+  const cleaned = Buffer.from(alpha);
+  let removedPixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const index = pixel * 4;
+    const r = originalRgba[index] ?? 0;
+    const g = originalRgba[index + 1] ?? 0;
+    const b = originalRgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+    const gradient = getRgbGradientMagnitude(originalRgba, width, height, pixel);
+    const backgroundDistance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const edgePixel = (eroded[pixel] ?? 0) < 24 || hasTransparentNeighbor(alpha, width, height, x, y, 2);
+    const nearSolidCore = hasMaskedNeighbor(solidCore, width, height, x, y, 4);
+    const backgroundLike =
+      (backgroundDistance < 52 && luminance > 62) ||
+      (saturation < 0.16 && channelSpread < 62 && luminance > 54 && backgroundDistance < 112);
+    const palePatch =
+      luminance > 148 &&
+      saturation < 0.14 &&
+      channelSpread < 58 &&
+      backgroundDistance < 132;
+    const protectedProductHighlight =
+      nearSolidCore &&
+      !edgePixel &&
+      (
+        gradient > 28 ||
+        saturation > 0.1 ||
+        backgroundDistance > 150 ||
+        luminance < 132
+      );
+    const protectedRightBodyHighlight =
+      x > width * 0.54 &&
+      nearSolidCore &&
+      luminance > 82 &&
+      luminance < 238 &&
+      (gradient > 6 || channelSpread > 14 || backgroundDistance > 86);
+
+    if ((!edgePixel && nearSolidCore) || protectedProductHighlight || protectedRightBodyHighlight) {
+      continue;
+    }
+
+    if (!backgroundLike && !palePatch) {
+      continue;
+    }
+
+    if (!edgePixel && gradient > 22 && backgroundDistance > 92) {
+      continue;
+    }
+
+    cleaned[pixel] = 0;
+    removedPixels += 1;
+  }
+
+  if (removedPixels < Math.max(120, initialCoverage * 0.001)) {
+    return alpha;
+  }
+
+  const cleanedCoverage = getAlphaCoverage(cleaned);
+  if (cleanedCoverage < Math.max(1200, initialCoverage * 0.72)) {
+    return alpha;
+  }
+
+  const diagnostics = analyzeAlphaMask(cleaned, width, height);
+  if (hasCatastrophicMaskFailure(diagnostics)) {
+    return alpha;
+  }
+
+  console.info("Removed post-repair background-like residue from preserve mask", {
+    removedPixels,
+    initialCoverage,
+    cleanedCoverage
+  });
+
+  return cleaned;
+};
+
 const buildMaskOverlayPreview = async (
   originalRgb: Buffer,
   mask: Buffer,
@@ -6210,6 +6903,31 @@ const hasMaskedNeighbor = (
   }
 
   return false;
+};
+
+const countMaskedPixelsInRadius = (
+  alpha: Buffer,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  radius: number
+): number => {
+  const minX = Math.max(0, x - radius);
+  const maxX = Math.min(width - 1, x + radius);
+  const minY = Math.max(0, y - radius);
+  const maxY = Math.min(height - 1, y + radius);
+  let count = 0;
+
+  for (let ny = minY; ny <= maxY; ny += 1) {
+    for (let nx = minX; nx <= maxX; nx += 1) {
+      if ((alpha[ny * width + nx] ?? 0) >= 24) {
+        count += 1;
+      }
+    }
+  }
+
+  return count;
 };
 
 const hasTransparentNeighbor = (
@@ -7091,6 +7809,7 @@ const getProductLayerDropoutIssues = (
   let smallInteriorHoleCount = 0;
   let smallInteriorHolePixels = 0;
   const maxSmallHolePixels = Math.max(90, Math.round(coverage * 0.0025));
+  const solidCore = dilateBinaryAlphaMask(erodeBinaryAlphaMask(thresholdAlphaMask(alpha, 245), width, height, 4), width, height, 3);
 
   for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
     for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
@@ -7104,6 +7823,7 @@ const getProductLayerDropoutIssues = (
       let pixels = 0;
       let touchesBounds = false;
       let adjacentOpaque = 0;
+      let nearSolidCore = 0;
 
       while (stack.length > 0) {
         const pixel = stack.pop() as number;
@@ -7111,6 +7831,9 @@ const getProductLayerDropoutIssues = (
         const py = Math.floor(pixel / width);
         pixels += 1;
         touchesBounds = touchesBounds || px === bounds.minX || px === bounds.maxX || py === bounds.minY || py === bounds.maxY;
+        if (hasMaskedNeighbor(solidCore, width, height, px, py, 3)) {
+          nearSolidCore += 1;
+        }
 
         const neighbours = [
           px > bounds.minX ? pixel - 1 : -1,
@@ -7135,7 +7858,13 @@ const getProductLayerDropoutIssues = (
         }
       }
 
-      if (!touchesBounds && pixels <= maxSmallHolePixels && adjacentOpaque >= Math.max(8, pixels * 0.35)) {
+      const nearSolidCoreShare = nearSolidCore / Math.max(1, pixels);
+      if (
+        !touchesBounds &&
+        pixels <= maxSmallHolePixels &&
+        adjacentOpaque >= Math.max(8, pixels * 0.35) &&
+        nearSolidCoreShare >= 0.82
+      ) {
         smallInteriorHoleCount += 1;
         smallInteriorHolePixels += pixels;
       }
@@ -7143,8 +7872,8 @@ const getProductLayerDropoutIssues = (
   }
 
   if (
-    smallInteriorHoleCount < 14 ||
-    smallInteriorHolePixels < Math.max(280, coverage * 0.0035)
+    smallInteriorHoleCount < 80 ||
+    smallInteriorHolePixels < Math.max(5200, coverage * 0.0075)
   ) {
     return [];
   }
@@ -7637,6 +8366,24 @@ const processFlexibleOpenAiStudioRecovery = async ({
     attemptSummaries.push(`attempt ${attempt + 1}: ${outputValidation.status}${outputValidation.failureReasons.length ? ` (${outputValidation.failureReasons.join("; ")})` : ""}`);
 
     if (!qaPassed) {
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "final_composite",
+        `flexible-openai-studio-failed-final-attempt-${attempt + 1}-${randomUUID()}.png`,
+        finalComposite,
+        "image/png"
+      );
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "vision_qa_json",
+        `flexible-openai-studio-failed-qa-attempt-${attempt + 1}-${randomUUID()}.json`,
+        Buffer.from(JSON.stringify(visionQa, null, 2)),
+        "application/json"
+      );
       continue;
     }
 
@@ -7720,6 +8467,247 @@ const processFlexibleOpenAiStudioRecovery = async ({
   }
 
   throw new Error(`Flexible OpenAI studio recovery exhausted all attempts: ${attemptSummaries.join(" | ")}`);
+};
+
+const processOpenAiTransparentProductRecovery = async ({
+  userId,
+  imageJobId,
+  originalImage,
+  originalImageHash,
+  originalStoragePath,
+  originalUploadedAt,
+  storageCleanupAfter,
+  seoMetadata,
+  preservedOriginalInput,
+  pipelineDebugAssets,
+  recoveryReason
+}: {
+  userId: string;
+  imageJobId: string;
+  originalImage: DownloadedImage;
+  originalImageHash: string;
+  originalStoragePath: string;
+  originalUploadedAt: Date;
+  storageCleanupAfter: Date;
+  seoMetadata: SuggestedSeoMetadata;
+  preservedOriginalInput: Buffer;
+  pipelineDebugAssets: PreserveDebugAsset[];
+  recoveryReason: string;
+}): Promise<ProcessedImageResult> => {
+  const studioInput = await normalizeImageForOpenAiStudioRender(originalImage.buffer);
+  const sourceAnalysis = await analyzeSourceImageForPreserveMode(preservedOriginalInput);
+  const attemptModes: Array<Parameters<typeof removeImageBackground>[1]> = [
+    "transparent-studio-recovery",
+    "flexible-cutout",
+    "preserve-mask-hard-contamination"
+  ];
+  const attemptSummaries: string[] = [];
+
+  for (let attempt = 0; attempt < attemptModes.length; attempt += 1) {
+    const mode = attemptModes[attempt] ?? "transparent-studio-recovery";
+    const transparentCutout = await removeImageBackground(studioInput, mode);
+    await validateImage(transparentCutout);
+
+    const normalizedTransparentCutout = await sharp(transparentCutout)
+      .rotate()
+      .resize(outputSize, outputSize, {
+        fit: "contain",
+        background: {
+          r: 0,
+          g: 0,
+          b: 0,
+          alpha: 0
+        }
+      })
+      .png()
+      .toBuffer();
+    await assertVisibleProductImage(normalizedTransparentCutout);
+
+    const qaComposite = await sharp({
+      create: {
+        width: outputSize,
+        height: outputSize,
+        channels: 4,
+        background: "#f7f7f4"
+      }
+    })
+      .composite([{ input: normalizedTransparentCutout, left: 0, top: 0 }])
+      .png()
+      .toBuffer();
+    const visionQa = await runFlexibleStudioVisionQa({
+      originalSource: preservedOriginalInput,
+      finalComposite: qaComposite
+    });
+    const alphaCoverage = await getImageAlphaCoverage(normalizedTransparentCutout);
+    const qaPassed =
+      visionQa.passed &&
+      visionQa.commerciallyUsable &&
+      visionQa.scores.edgeCleanliness >= 88 &&
+      visionQa.scores.productPreservation >= 78 &&
+      visionQa.scores.backgroundRemoval >= 88 &&
+      visionQa.scores.ecommerceQuality >= 88 &&
+      visionQa.visibleProblems.length === 0;
+    const outputValidation: OutputQualityValidation = {
+      status: qaPassed ? "Passed" : "Failed",
+      promptVersion: ecommercePreservePromptVersion,
+      processingMode: "openai_transparent_product_recovery",
+      cutoutProvider: `openai:${openAiImageEditModel}:${mode}`,
+      retryCount: attempt,
+      productCoveragePercent: Number(((alphaCoverage / (outputSize * outputSize)) * 100).toFixed(2)),
+      productCoverageWidthPercent: sourceAnalysis.productBounds
+        ? Number(((sourceAnalysis.productBounds.width / Math.max(1, sourceAnalysis.width)) * 100).toFixed(2))
+        : 0,
+      productCoverageHeightPercent: sourceAnalysis.productBounds
+        ? Number(((sourceAnalysis.productBounds.height / Math.max(1, sourceAnalysis.height)) * 100).toFixed(2))
+        : 0,
+      targetCoverageMinPercent: 0,
+      targetCoverageMaxPercent: 100,
+      productOrientation: sourceAnalysis.productOrientation,
+      autoFixedFraming: false,
+      checks: {
+        productPreservation: qaPassed ? "Passed" : "Failed",
+        framing: "Passed",
+        background: qaPassed ? "Passed" : "Failed",
+        detailPreservation: qaPassed ? "Passed" : "Failed",
+        interiorDropout: qaPassed ? "Passed" : "Failed",
+        edgeQuality: qaPassed ? "Passed" : "Failed",
+        shadow: "Passed",
+        protectedProduct: qaPassed ? "Passed" : "Failed",
+        visionQa: qaPassed ? "Passed" : "Failed"
+      },
+      outcome: qaPassed ? "PASS" : "HARD_FAIL",
+      scores: {
+        visionQaEcommerce: visionQa.scores.ecommerceQuality,
+        visionQaTextBranding: visionQa.scores.textBrandingConsistency
+      },
+      visionQa,
+      warnings: [
+        `OpenAI transparent contaminated-source recovery was used: ${recoveryReason}`,
+        `Transparent recovery attempt ${attempt + 1} of ${attemptModes.length} using ${mode}.`
+      ],
+      failureReasons: qaPassed
+        ? []
+        : Array.from(new Set([
+            ...visionQa.failReasons,
+            ...visionQa.visibleProblems,
+            "OpenAI transparent recovery did not pass strict visual QA."
+          ]))
+    };
+
+    attemptSummaries.push(`attempt ${attempt + 1} (${mode}): ${outputValidation.status}${outputValidation.failureReasons.length ? ` (${outputValidation.failureReasons.join("; ")})` : ""}`);
+
+    if (!qaPassed) {
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "final_composite",
+        `transparent-openai-recovery-failed-preview-attempt-${attempt + 1}-${randomUUID()}.png`,
+        qaComposite,
+        "image/png"
+      );
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "vision_qa_json",
+        `transparent-openai-recovery-failed-qa-attempt-${attempt + 1}-${randomUUID()}.json`,
+        Buffer.from(JSON.stringify(visionQa, null, 2)),
+        "application/json"
+      );
+      continue;
+    }
+
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "source_normalized",
+      `transparent-openai-recovery-input-${randomUUID()}.png`,
+      studioInput,
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "debug_cutout",
+      `transparent-openai-recovery-cutout-${randomUUID()}.png`,
+      normalizedTransparentCutout,
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "final_composite",
+      `transparent-openai-recovery-preview-${randomUUID()}.png`,
+      qaComposite,
+      "image/png"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "vision_qa_json",
+      `transparent-openai-recovery-qa-${randomUUID()}.json`,
+      Buffer.from(JSON.stringify(visionQa, null, 2)),
+      "application/json"
+    );
+    const finalOutputValidation = {
+      ...outputValidation,
+      debugAssets: pipelineDebugAssets
+    };
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "validation_json",
+      `transparent-openai-recovery-validation-${randomUUID()}.json`,
+      Buffer.from(JSON.stringify(finalOutputValidation, null, 2)),
+      "application/json"
+    );
+    finalOutputValidation.debugAssets = pipelineDebugAssets;
+
+    const processedImage = await sharp(normalizedTransparentCutout)
+      .webp({
+        quality: 100,
+        lossless: true,
+        smartSubsample: true
+      })
+      .toBuffer();
+    const processedStoragePath = getStoragePath(userId, imageJobId, `processed-${randomUUID()}.webp`);
+    await uploadStorageObject({
+      bucket: storageBuckets.processedImages,
+      path: processedStoragePath,
+      body: processedImage,
+      contentType: "image/webp"
+    });
+    const processedUploadedAt = new Date();
+    const processedUrl = await createStorageSignedUrl({
+      bucket: storageBuckets.processedImages,
+      path: processedStoragePath,
+      expiresInSeconds: env.storageSignedUrlExpiresSeconds
+    });
+
+    return {
+      processedUrl,
+      originalImageHash,
+      originalStoragePath,
+      processedStoragePath,
+      debugCutoutStoragePath: null,
+      originalUploadedAt,
+      processedUploadedAt,
+      debugCutoutUploadedAt: null,
+      storageCleanupAfter,
+      duplicateOfJobId: null,
+      creditDeductionRequired: true,
+      seoMetadata,
+      outputValidation: finalOutputValidation
+    };
+  }
+
+  throw new Error(`OpenAI transparent recovery exhausted all attempts: ${attemptSummaries.join(" | ")}`);
 };
 
 export const __optiimstImageProcessingTestHooks = {
@@ -7921,6 +8909,60 @@ export const processImageForProduct = async ({
         imageJobId,
         reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
       });
+
+      const allowContaminatedSourceRecovery =
+        processingSettings.disableOpenAiContaminatedSourceRecovery !== true &&
+        !effectiveBackgroundImageUrl &&
+        !backgroundImageBuffer &&
+        Boolean(env.openAiApiKey);
+
+      if (allowContaminatedSourceRecovery) {
+        console.warn("Exact preserve mode is using OpenAI contaminated-source recovery after source-locked matte exhaustion", {
+          imageJobId,
+          reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
+        });
+
+        if (backgroundIsTransparent) {
+          return await processOpenAiTransparentProductRecovery({
+            userId,
+            imageJobId,
+            originalImage,
+            originalImageHash,
+            originalStoragePath,
+            originalUploadedAt,
+            storageCleanupAfter,
+            seoMetadata,
+            preservedOriginalInput,
+            pipelineDebugAssets,
+            recoveryReason: [
+              "Exact source-locked matting exhausted all mask candidates on a contaminated source image.",
+              "OpenAI transparent contaminated-source recovery was used to produce a clean product cutout.",
+              "The renderer must preserve the same SKU identity, geometry, orientation, mechanical details, holes, springs, tabs, material family, and product proportions while removing baked-in alpha artifacts and residue."
+            ].join(" ")
+          });
+        }
+
+        return await processFlexibleOpenAiStudioRecovery({
+          userId,
+          imageJobId,
+          originalImage,
+          originalImageHash,
+          originalStoragePath,
+          originalUploadedAt,
+          storageCleanupAfter,
+          seoMetadata,
+          preservedOriginalInput,
+          processingSettings,
+          background,
+          pipelineDebugAssets,
+          recoveryReason: [
+            "Exact source-locked matting exhausted all mask candidates on a contaminated source image.",
+            "OpenAI contaminated-source recovery was used as the final commercial-quality renderer for this preset background.",
+            "The renderer must preserve the same SKU identity, geometry, orientation, mechanical details, holes, springs, tabs, material family, and product proportions while removing baked-in alpha artifacts and residue."
+          ].join(" ")
+        });
+      }
+
       throw preserveError;
     }
   } else {
@@ -8179,6 +9221,59 @@ export const processImageForProduct = async ({
       });
     }
 
+    if (
+      preserveProductExactly &&
+      processingSettings.disableOpenAiContaminatedSourceRecovery !== true &&
+      !effectiveBackgroundImageUrl &&
+      !backgroundImageBuffer &&
+      Boolean(env.openAiApiKey)
+    ) {
+      console.warn("Exact preserve output validation failed; trying OpenAI contaminated-source recovery render", {
+        imageJobId,
+        reason: failureReason
+      });
+
+      if (backgroundIsTransparent) {
+        return await processOpenAiTransparentProductRecovery({
+          userId,
+          imageJobId,
+          originalImage,
+          originalImageHash,
+          originalStoragePath,
+          originalUploadedAt,
+          storageCleanupAfter,
+          seoMetadata,
+          preservedOriginalInput,
+          pipelineDebugAssets,
+          recoveryReason: [
+            "Exact source-locked compositing failed final visual QA.",
+            "OpenAI transparent contaminated-source recovery was used to produce a clean product cutout.",
+            failureReason
+          ].join(" ")
+        });
+      }
+
+      return await processFlexibleOpenAiStudioRecovery({
+        userId,
+        imageJobId,
+        originalImage,
+        originalImageHash,
+        originalStoragePath,
+        originalUploadedAt,
+        storageCleanupAfter,
+        seoMetadata,
+        preservedOriginalInput,
+        processingSettings,
+        background,
+        pipelineDebugAssets,
+        recoveryReason: [
+          "Exact source-locked compositing failed final visual QA.",
+          "OpenAI contaminated-source recovery was used as the final commercial-quality renderer for this preset background.",
+          failureReason
+        ].join(" ")
+      });
+    }
+
     if (preserveProductExactly && cutoutResult.preserveDebug) {
       cutoutResult.preserveDebug.finalStatus = "failed";
       cutoutResult.preserveDebug.failureReason = failureReason;
@@ -8361,6 +9456,59 @@ export const processImageForProduct = async ({
     );
 
     if (outputValidation.status === "Failed") {
+      if (
+        processingSettings.disableOpenAiContaminatedSourceRecovery !== true &&
+        !effectiveBackgroundImageUrl &&
+        !backgroundImageBuffer &&
+        Boolean(env.openAiApiKey)
+      ) {
+        const failureReason = outputValidation.failureReasons.join("; ") || "Preserve mode failed ecommerce QA.";
+        console.warn("Exact preserve vision QA failed; trying OpenAI contaminated-source recovery render", {
+          imageJobId,
+          reason: failureReason
+        });
+
+        if (backgroundIsTransparent) {
+          return await processOpenAiTransparentProductRecovery({
+            userId,
+            imageJobId,
+            originalImage,
+            originalImageHash,
+            originalStoragePath,
+            originalUploadedAt,
+            storageCleanupAfter,
+            seoMetadata,
+            preservedOriginalInput,
+            pipelineDebugAssets,
+            recoveryReason: [
+              "Exact source-locked compositing failed final preserve vision QA.",
+              "OpenAI transparent contaminated-source recovery was used to produce a clean product cutout.",
+              failureReason
+            ].join(" ")
+          });
+        }
+
+        return await processFlexibleOpenAiStudioRecovery({
+          userId,
+          imageJobId,
+          originalImage,
+          originalImageHash,
+          originalStoragePath,
+          originalUploadedAt,
+          storageCleanupAfter,
+          seoMetadata,
+          preservedOriginalInput,
+          processingSettings,
+          background,
+          pipelineDebugAssets,
+          recoveryReason: [
+            "Exact source-locked compositing failed final preserve vision QA.",
+            "OpenAI contaminated-source recovery was used as the final commercial-quality renderer for this preset background.",
+            failureReason
+          ].join(" ")
+        });
+      }
+
       cutoutResult.preserveDebug.finalStatus = "failed";
       cutoutResult.preserveDebug.failureReason = outputValidation.failureReasons.join("; ") || "Preserve mode failed ecommerce QA.";
       throw new PreserveModeProcessingError(cutoutResult.preserveDebug.failureReason, cutoutResult.preserveDebug);

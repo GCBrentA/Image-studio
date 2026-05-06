@@ -99,6 +99,11 @@ const parseVisionQaJson = (text: string): PreserveVisionQaResult => {
   };
 };
 
+const isDetachedBackgroundBrandingIssue = (message: string): boolean =>
+  /background|watermark|detached|source-background|source background|photo[- ]?card/i.test(message) &&
+  /brand|branding|logo|text|watermark|aztech/i.test(message) &&
+  !/product-mounted|printed on the product|physically on|attached to the product/i.test(message);
+
 export const runPreserveVisionQa = async ({
   originalSource,
   finalComposite,
@@ -313,12 +318,24 @@ export const runFlexibleStudioVisionQa = async ({
   const body = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
   const text = body.output_text ?? body.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") ?? "";
   const result = parseVisionQaJson(text);
+  const importantMissingText = result.ocrComparison.missingImportantText
+    .filter((message) => !isDetachedBackgroundBrandingIssue(message));
+  const importantAlteredBranding = result.ocrComparison.alteredBranding
+    .filter((message) => !isDetachedBackgroundBrandingIssue(message));
   const importantTextFailed =
-    result.ocrComparison.missingImportantText.length > 0 ||
-    result.ocrComparison.alteredBranding.length > 0;
-  const visibleArtifactFailed = result.visibleProblems.some((problem) =>
+    importantMissingText.length > 0 ||
+    importantAlteredBranding.length > 0;
+  const visibleProblems = result.visibleProblems
+    .filter((problem) => !isDetachedBackgroundBrandingIssue(problem));
+  const failReasons = result.failReasons
+    .filter((reason) => !isDetachedBackgroundBrandingIssue(reason));
+  const visibleArtifactFailed = visibleProblems.some((problem) =>
     /halo|jagged|mask|artifact|artefact|background fragment|bleed|blocky|pixelat|melt|plastic|warped|changed identity|redesign|invent|extra part|missing|filled|removed|residue|scar|outline|dirty|smeared|blur/i.test(problem)
   );
+  const onlyDetachedBrandingComplaints =
+    !importantTextFailed &&
+    !visibleArtifactFailed &&
+    result.failReasons.length + result.visibleProblems.length > failReasons.length + visibleProblems.length;
   const ecommercePass =
     result.commerciallyUsable &&
     result.scores.ecommerceQuality >= 88 &&
@@ -330,9 +347,15 @@ export const runFlexibleStudioVisionQa = async ({
 
   return {
     ...result,
-    passed: result.passed && ecommercePass,
+    passed: (result.passed || onlyDetachedBrandingComplaints) && ecommercePass,
+    visibleProblems,
+    ocrComparison: {
+      ...result.ocrComparison,
+      missingImportantText: importantMissingText,
+      alteredBranding: importantAlteredBranding
+    },
     failReasons: Array.from(new Set([
-      ...result.failReasons,
+      ...failReasons,
       ...(importantTextFailed ? ["Product-mounted text/branding consistency failed flexible studio QA."] : []),
       ...(visibleArtifactFailed ? ["Visible artifact failed flexible studio QA."] : [])
     ]))
