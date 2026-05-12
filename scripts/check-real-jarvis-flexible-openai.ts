@@ -232,7 +232,7 @@ const run = async (): Promise<void> => {
 
     assert.ok(result.outputValidation, `${file}: output validation missing`);
     assert.equal(result.outputValidation.status, "Passed", `${file}: expected Passed, got ${result.outputValidation.status}: ${result.outputValidation.failureReasons.join("; ")}`);
-    assert.match(result.outputValidation.cutoutProvider, /flexible-studio-final|source-alpha|flexible-preserve-source-mask|imgly/, `${file}: unexpected provider`);
+    assert.match(result.outputValidation.cutoutProvider, /flexible-studio-final/, `${file}: flexible preset mode must use the OpenAI final studio renderer`);
     const processed = getStoredObject("processed-images", result.processedStoragePath);
     await sharp(processed).metadata();
     const artifactPath = path.join(artifactDir, `${file.replace(/\.[a-z0-9]+$/i, "")}--processed.webp`);

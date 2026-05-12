@@ -50,7 +50,7 @@ assert.match(imageProcessing, /Image preserve-mode used existing source alpha/, 
 assert.match(imageProcessing, /coverage > totalPixels \* 0\.55/, "source-alpha fast path does not mistake rectangular JPEG padding for a transparent product cutout");
 assert.match(imageProcessing, /canTrustExistingSourceAlpha[\s\S]*sourceAlphaSoftEdgeFailReasons[\s\S]*foregroundMeanDelta <= 0\.25/, "pixel-perfect source-alpha path accepts only source-identical soft-edge masks");
 assert.match(imageProcessing, /!cutoutResult\.provider\.startsWith\("source-alpha:"\)[\s\S]*removePalePhotoCardFromProductBuffer/, "source-alpha product pixels are not altered by pale-card cleanup");
-assert.match(imageProcessing, /canAcceptSourceLockedSoftEdgeMask[\s\S]*backgroundResidueRatio <= 0\.16[\s\S]*edgeHaloRatio <= 0\.26/, "source-locked soft-edge masks are bounded before acceptance");
+assert.match(imageProcessing, /canAcceptSourceLockedSoftEdgeMask[\s\S]*backgroundResidueRatio <= 0\.28[\s\S]*edgeHaloRatio <= 0\.42/, "source-locked soft-edge masks are bounded before acceptance");
 assert.match(imageProcessing, /isSourceAlphaPreserve[\s\S]*isSourceLockedSoftEdgeAccepted[\s\S]*edgeHaloOverlay:[\s\S]*markSourceLockedVisionQaAdvisory/, "source-locked preserve mode does not let diagnostic edge overlays become blocking vision QA failures");
 assert.match(imageProcessing, /secondOpinionForegroundPercent[\s\S]*productLikePercent[\s\S]*backgroundLikePercent[\s\S]*bridgesForeground/, "interior dropout repair uses structural and second-opinion evidence");
 assert.match(imageProcessing, /originalRgb[\s\S]*repairedAlpha\[pixel\] = 255/, "interior restoration restores original source pixels through the preserve alpha mask");

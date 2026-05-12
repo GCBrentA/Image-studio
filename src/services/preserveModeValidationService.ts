@@ -86,6 +86,7 @@ export const validatePreserveModeProgrammatic = async ({
   const components = getConnectedComponents(alpha, width, height);
   const largestComponentPixels = components[0]?.length ?? 0;
   const largestShare = foregroundPixels > 0 ? largestComponentPixels / foregroundPixels : 0;
+  const detachedArtifacts = getDetachedComponentSummary(components, foregroundPixels, totalPixels);
   const sourceIntegrity = getSourcePixelIntegrity(sourceRgba, cutoutRgba, alpha, width, height);
   const referenceAlpha = sourceReferenceAlpha && referenceWidth === width && referenceHeight === height
     ? sourceReferenceAlpha
@@ -99,19 +100,22 @@ export const validatePreserveModeProgrammatic = async ({
     failReasons.add("Low Confidence Preserve Result");
   }
 
-  if (semiTransparentPixels > Math.max(2400, foregroundPixels * 0.08)) {
+  if (semiTransparentPixels > Math.max(1800, foregroundPixels * 0.055)) {
     failReasons.add("Dirty Alpha Edge");
   }
 
-  if (components.length > 18 && largestShare < 0.94) {
+  if (
+    (components.length > 45 && largestShare < 0.82) ||
+    (detachedArtifacts.suspectCount > 1 && detachedArtifacts.suspectPixels > Math.max(1000, foregroundPixels * 0.04) && largestShare < 0.92)
+  ) {
     failReasons.add("Disconnected Background Artifact");
   }
 
-  if (edge.haloPixels > Math.max(180, edge.insideEdgePixels * 0.035)) {
+  if (edge.haloPixels > Math.max(120, edge.insideEdgePixels * 0.02)) {
     failReasons.add("Edge Halo / Background Residue");
   }
 
-  if (edge.backgroundLikeForegroundPixels > Math.max(500, foregroundPixels * 0.045)) {
+  if (edge.backgroundLikeForegroundPixels > Math.max(320, foregroundPixels * 0.025)) {
     failReasons.add("Mask Includes Background");
   }
 
@@ -126,7 +130,7 @@ export const validatePreserveModeProgrammatic = async ({
 
   const edgeCleanliness = scoreFromRatio(edge.haloPixels, Math.max(1, edge.insideEdgePixels), 0.08);
   const backgroundResidue = scoreFromRatio(edge.backgroundLikeForegroundPixels, Math.max(1, foregroundPixels), 0.08);
-  const alphaConfidence = Math.round(Math.max(0, Math.min(100, largestShare * 100 - Math.min(25, components.length))));
+  const alphaConfidence = Math.round(Math.max(0, Math.min(100, largestShare * 100 - Math.min(28, components.length + detachedArtifacts.suspectCount * 2))));
   const sourcePixelIntegrity = Math.round(sourceIntegrity.score);
   const productPreservation = Math.min(sourcePixelIntegrity, geometry.passed ? 100 : Math.round(Math.max(0, geometry.areaRatio * 100)));
   const dropoutScore = geometry.passed ? 100 : Math.round(Math.max(0, geometry.areaRatio * 100));
@@ -150,7 +154,7 @@ export const validatePreserveModeProgrammatic = async ({
   };
 
   return {
-    passed: failReasons.size === 0 && commercialReadiness >= 82,
+    passed: failReasons.size === 0 && commercialReadiness >= 88,
     overallScore,
     failReasons: Array.from(failReasons),
     scores,
@@ -161,6 +165,8 @@ export const validatePreserveModeProgrammatic = async ({
       foregroundCoveragePercent: Number(((foregroundPixels / totalPixels) * 100).toFixed(3)),
       semiTransparentPixels,
       connectedComponentCount: components.length,
+      detachedArtifactComponentCount: detachedArtifacts.suspectCount,
+      detachedArtifactPixels: detachedArtifacts.suspectPixels,
       largestComponentSharePercent: Number((largestShare * 100).toFixed(2)),
       edgeHaloPixels: edge.haloPixels,
       insideEdgePixels: edge.insideEdgePixels,
@@ -258,6 +264,26 @@ const getConnectedComponents = (alpha: Buffer, width: number, height: number): n
   }
 
   return components.sort((a, b) => b.length - a.length);
+};
+
+const getDetachedComponentSummary = (
+  components: number[][],
+  foregroundPixels: number,
+  totalPixels: number
+): { suspectCount: number; suspectPixels: number } => {
+  const minimumSuspectPixels = Math.max(80, Math.round(totalPixels * 0.00008), Math.round(foregroundPixels * 0.0012));
+  let suspectCount = 0;
+  let suspectPixels = 0;
+
+  for (const component of components.slice(1)) {
+    if (component.length < minimumSuspectPixels) {
+      continue;
+    }
+    suspectCount += 1;
+    suspectPixels += component.length;
+  }
+
+  return { suspectCount, suspectPixels };
 };
 
 const getSourcePixelIntegrity = (

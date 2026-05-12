@@ -30,6 +30,16 @@ export const openAiImageEditEndpoint = "https://api.openai.com/v1/images/edits";
 export const openAiImageEditQuality = "high";
 export const openAiImageEditSize = "1024x1024";
 
+export class OpenAiImageServiceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OpenAiImageServiceError";
+  }
+}
+
+export const isOpenAiImageServiceError = (error: unknown): error is OpenAiImageServiceError =>
+  error instanceof OpenAiImageServiceError;
+
 const negativeProductInstructionBlock =
   "Do not change the product. Do not modify the object. Do not alter the silhouette. Do not redraw the item. Do not invent details. Do not remove details. Do not crop the product. Do not change, rewrite, blur, distort, remove, add, or reinterpret any product logos, labels, visible text, markings, branding, graphics, packaging design, texture, reflections, materials, proportions, or sellable features that are physically printed on or attached to the product. Remove all source background text, background logos, background watermarks, background graphics, floor/wall marks, and detached brand marks that are behind, around, under, or separate from the actual product. Do not preserve large background brand graphics as part of the product. Do not leave excessive whitespace. Do not make the background dark, textured, wooden, lifestyle, dramatic, cluttered, or busy. Do not add logos, text, labels, watermarks, reflections, props, hands, people, packaging, smoke, glow, or extra objects.";
 
@@ -37,7 +47,7 @@ const strictProductPreservationBlock =
   "Do not alter the product. Preserve the exact product pixels, shape, silhouette, design, logos, visible text, labels, colours, proportions, geometry, branding, packaging, texture, reflections, materials, markings, surface details, holes, screws, seams, highlights, and all visible sellable details that are physically part of the product. Only the background/environment may change according to the selected background settings. Remove background-only watermarks, text, logos, graphics, floor/wall marks, and detached brand marks even if they resemble product branding. Do not redraw, redesign, simplify, enhance, repaint, retouch, smooth, sharpen, stylise, modify, or reinterpret the product. Do not add or remove any product parts. Do not change the product geometry. Do not change the product colour. Do not make the product look like a different item.";
 
 const flexibleProductPreservationBlock =
-  "This is Product Preservation OFF / Flexible OpenAI Studio Mode. OpenAI may fully rebuild the studio presentation, background, lighting integration, and cleanup, but the product itself must stay as close to the source product as possible. Treat the supplied product as the only SKU reference. Preserve the product identity and design. Preserve the same product identity, shape, silhouette, proportions, orientation, number of parts, attachment points, branding, logos, visible product text, labels, packaging design, colours, texture, materials, markings, holes, cutouts, screws, ridges, edges, fine geometry, reflective finish, and sellable appearance that are physically part of the product. Remove all background-only text, background logos, background watermarks, background graphics, old photo-card residue, floor/wall marks, alpha scars, halos, jagged edge outlines, shadow bleed, and detached brand marks. It is acceptable to clean contaminated edges, recover natural studio lighting, remove mask artifacts, and harmonise the product into a premium ecommerce scene. Only minor adjustments needed for realistic background integration are allowed: subtle lighting harmonisation, soft shadow generation, slight edge blending, minor reflection adaptation, and removal of visible mask/background contamination. Do not redraw, reshape, simplify, blur, replace, recolour, redesign, invent features, remove details, change product-mounted text/logos, alter geometry, fill holes, add holes, add parts, remove parts, or make the product look like a different item. The final result must look like expert retouching of the same photographed product, not a generated approximation.";
+  "This is Product Preservation OFF / Flexible OpenAI Studio Mode. This is a conservative product image editing task, not a product redesign task. Use OpenAI as the primary final studio renderer for background removal, studio cleanup, edge cleanup, and background replacement, but keep the exact same product as the supplied SKU reference. Preserve the same product identity, overall shape, silhouette, proportions, structure, orientation, number of parts, attachment points, branding, logos, visible product text, labels, packaging design, colours, texture, materials, markings, holes, openings, cutouts, screws, ridges, edges, fine geometry, reflective finish, and sellable appearance that are physically part of the product. Make only the smallest possible product changes, limited to cleanup-level fixes required to remove edge contamination, fringe, halo, dirty residue, mask scars, old background bleed, or unnatural lighting integration. Remove the background completely. Remove all background-only text, background logos, background watermarks, background graphics, old photo-card residue, floor/wall marks, alpha scars, jagged edge outlines, shadow bleed, and detached brand marks. Produce a premium clean studio ecommerce result matching the selected background settings. Keep edges crisp, natural, and commercially usable. Keep true openings, holes, gaps, cutouts, and negative spaces believable and unchanged. Keep the product centred, fully visible, uncropped, and suitable for a WooCommerce catalogue image. Do not generate floating fragments, detached shapes, residue islands, fake parts, or extra objects. Do not redraw, reshape, simplify, blur, replace, recolour, redesign, invent features, remove details, change product-mounted text/logos, alter geometry, distort proportions, fill holes, add holes, add parts, remove parts, change colour/material identity significantly, simplify shape, invent different cutouts/openings, crop the product, or make the product look like a different item. The final result must look like expert retouching of the same photographed product, not a generated approximation.";
 
 const preserveBackgroundReplacementPrompt =
   `Edit this image as a professional ecommerce product photo. ${strictProductPreservationBlock} Only remove the original background and replace it with a clean premium studio background. Create a clean light ecommerce background suitable for WooCommerce product pages and shopping feeds. Use an off-white or very light neutral grey background, not pure harsh white. Add a subtle realistic soft contact shadow beneath the product so it feels grounded, but do not obscure or alter the product. Keep the product horizontally aligned and centred. Crop and scale the final image so the product fills approximately 82-90% of the image width while maintaining comfortable margins. Do not crop any part of the product. Keep the entire product visible. Maintain natural contrast and detail, especially in black/dark parts. Do not crush shadows. Do not over-brighten. Do not over-sharpen. Do not blur edges. Preserve fine details around thin parts. Final output should look like a premium catalogue product image: clean, sharp, realistic, accurately preserved, well centred, correctly scaled, and ready for ecommerce use. ${negativeProductInstructionBlock}`;
@@ -145,13 +155,30 @@ const postOpenAiImageEditWithRetry = async (
   let lastError = "";
 
   for (let attempt = 0; attempt <= openAiRetryDelaysMs.length; attempt += 1) {
-    const response = await fetch(openAiImageEditEndpoint, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${env.openAiApiKey}`
-      },
-      body: buildFormData()
-    });
+    let response: Response;
+    try {
+      response = await fetch(openAiImageEditEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.openAiApiKey}`
+        },
+        body: buildFormData()
+      });
+    } catch (error) {
+      lastError = `${operation} request failed: ${error instanceof Error ? error.message : String(error)}`;
+      if (attempt >= openAiRetryDelaysMs.length) {
+        throw new OpenAiImageServiceError(lastError);
+      }
+
+      const retryDelayMs = openAiRetryDelaysMs[attempt] ?? 5000;
+      console.warn("Retrying OpenAI image edit after request failure", {
+        operation,
+        attempt: attempt + 1,
+        retryDelayMs
+      });
+      await sleep(retryDelayMs);
+      continue;
+    }
 
     if (response.ok) {
       return response;
@@ -160,7 +187,7 @@ const postOpenAiImageEditWithRetry = async (
     const responseBody = await response.text().catch(() => "");
     lastError = `${operation} failed with ${response.status}: ${responseBody}`;
     if (!isRetryableOpenAiStatus(response.status) || attempt >= openAiRetryDelaysMs.length) {
-      throw new Error(lastError);
+      throw new OpenAiImageServiceError(lastError);
     }
 
     const retryDelayMs = openAiRetryDelaysMs[attempt] ?? 5000;
@@ -173,7 +200,7 @@ const postOpenAiImageEditWithRetry = async (
     await sleep(retryDelayMs);
   }
 
-  throw new Error(lastError || `${operation} failed before receiving a response.`);
+  throw new OpenAiImageServiceError(lastError || `${operation} failed before receiving a response.`);
 };
 
 export const removeImageBackground = async (
@@ -181,7 +208,7 @@ export const removeImageBackground = async (
   mode: BackgroundRemovalMode = "flexible-cutout"
 ): Promise<Buffer> => {
   if (!env.openAiApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw new OpenAiImageServiceError("OPENAI_API_KEY is not configured");
   }
 
   const prompt = getPromptForMode(mode);
@@ -212,7 +239,7 @@ export const removeImageBackground = async (
   const imageBase64 = body.data?.[0]?.b64_json;
 
   if (!imageBase64) {
-    throw new Error("OpenAI background removal did not return image data");
+    throw new OpenAiImageServiceError("OpenAI background removal did not return image data");
   }
 
   return Buffer.from(imageBase64, "base64");
@@ -230,7 +257,7 @@ export const renderFlexibleStudioProductImage = async ({
   }
 
   if (!env.openAiApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw new OpenAiImageServiceError("OPENAI_API_KEY is not configured");
   }
 
   const prompt = `${buildProductImageProcessingPrompt({
@@ -266,7 +293,7 @@ export const renderFlexibleStudioProductImage = async ({
   const imageBase64 = body.data?.[0]?.b64_json;
 
   if (!imageBase64) {
-    throw new Error("OpenAI flexible studio render did not return image data");
+    throw new OpenAiImageServiceError("OpenAI flexible studio render did not return image data");
   }
 
   return Buffer.from(imageBase64, "base64");
@@ -274,7 +301,7 @@ export const renderFlexibleStudioProductImage = async ({
 
 export const renderPreserveMonochromeMask = async (imageBuffer: Buffer): Promise<Buffer> => {
   if (!env.openAiApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw new OpenAiImageServiceError("OPENAI_API_KEY is not configured");
   }
 
   const response = await postOpenAiImageEditWithRetry("OpenAI preserve monochrome mask", () => {
@@ -304,7 +331,7 @@ export const renderPreserveMonochromeMask = async (imageBuffer: Buffer): Promise
   const imageBase64 = body.data?.[0]?.b64_json;
 
   if (!imageBase64) {
-    throw new Error("OpenAI preserve monochrome mask did not return image data");
+    throw new OpenAiImageServiceError("OpenAI preserve monochrome mask did not return image data");
   }
 
   return Buffer.from(imageBase64, "base64");

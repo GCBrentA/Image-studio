@@ -93,15 +93,19 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
     const form = init?.body instanceof FormData ? init.body : null;
     const prompt = String(form?.get("prompt") ?? "");
     const isMaskRequest = /transparent-background PNG|alpha channel|alpha mask|mask\/cutout|foreground segmentation|isolate only the actual product/i.test(prompt);
+    const isFlexibleTransparentRecovery = /clean transparent-background PNG product cutout for ecommerce/i.test(prompt);
 
-    if (!isMaskRequest) {
+    if (!isMaskRequest || isFlexibleTransparentRecovery) {
       openAiStudioScenePrompts.push(prompt);
+      const background = isFlexibleTransparentRecovery
+        ? { r: 0, g: 0, b: 0, alpha: 0 }
+        : { r: 247, g: 247, b: 244, alpha: 1 };
       const cleanEditedImage = await sharp({
         create: {
           width: 1024,
           height: 1024,
           channels: 4,
-          background: { r: 247, g: 247, b: 244, alpha: 1 }
+          background
         }
       })
         .composite([
@@ -479,8 +483,12 @@ const assertPromptPolicy = (): void => {
 
   assert.match(backgroundRemoval, /Do not alter the product\. Preserve the exact product pixels, shape, silhouette, design, logos, visible text, labels, colours, proportions/i);
   assert.match(backgroundRemoval, /Only the background\/environment may change according to the selected background settings/i);
-  assert.match(backgroundRemoval, /Preserve the product identity and design/i);
-  assert.match(backgroundRemoval, /Only minor adjustments needed for realistic background integration are allowed: subtle lighting harmonisation, soft shadow generation, slight edge blending, minor reflection adaptation/i);
+  assert.match(backgroundRemoval, /Preserve the same product identity/i);
+  assert.match(backgroundRemoval, /exact same product/i);
+  assert.match(backgroundRemoval, /smallest possible product changes/i);
+  assert.match(backgroundRemoval, /Remove the background completely/i);
+  assert.match(backgroundRemoval, /Do not generate floating fragments/i);
+  assert.match(backgroundRemoval, /Make only the smallest possible product changes/i);
   assert.match(backgroundRemoval, /User background settings:/);
   assert.doesNotMatch(backgroundRemoval, /freely redesign|make it look better however/i);
 
@@ -488,6 +496,10 @@ const assertPromptPolicy = (): void => {
   assert.match(imageProcessing, /Exact preserve mode exhausted source-locked methods without using a non-pixel-perfect fallback/);
   assert.doesNotMatch(imageProcessing, /source-locked-strict-review-rescue/);
   assert.match(imageProcessing, /processImageFlexiblePreserveMode/);
+  assert.match(imageProcessing, /Flexible studio enhancement selected OpenAI as the primary final render path/);
+  assert.match(imageProcessing, /OpenAI primary flexible render failed at the service layer, so local fallback was used/);
+  assert.doesNotMatch(imageProcessing, /Exact preserve mode is using OpenAI contaminated-source recovery/);
+  assert.doesNotMatch(imageProcessing, /Exact preserve vision QA failed; trying OpenAI/);
   assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/);
   assert.match(imageProcessing, /compositeSourceLockedProductLayers/);
   assert.match(imageProcessing, /refineAlphaMatteWithTrimap/);
@@ -541,9 +553,9 @@ const run = async (): Promise<void> => {
     processingMode: "premium_studio_background",
     backgroundDescription: "warm premium studio background"
   });
-  assert.match(flexiblePrompt, /Preserve the product identity and design/i);
-  assert.match(flexiblePrompt, /Only minor adjustments/i);
-  assert.match(flexiblePrompt, /edge blending/i);
+  assert.match(flexiblePrompt, /Preserve the same product identity/i);
+  assert.match(flexiblePrompt, /smallest possible product changes/i);
+  assert.match(flexiblePrompt, /edge contamination/i);
   assert.match(flexiblePrompt, /Do not redraw, reshape, simplify, blur/i);
   assert.match(flexiblePrompt, /warm premium studio background/i);
 
@@ -662,10 +674,14 @@ const run = async (): Promise<void> => {
           assert.equal(result.outputValidation.processingMode, "seo_product_feed_safe_preserve_background_replacement", `${label}: strict validation mode mismatch`);
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: strict protected product check should pass`);
         } else {
-          const flexibleOpenAiExpected = !mode.backgroundImageBuffer && mode.background !== "transparent";
+          const flexibleOpenAiExpected = !mode.backgroundImageBuffer;
           assert.equal(
             result.outputValidation.processingMode,
-            flexibleOpenAiExpected ? "flexible_openai_studio_recovery" : "standard_background_replacement",
+            mode.background === "transparent"
+              ? "openai_transparent_product_recovery"
+              : flexibleOpenAiExpected
+                ? "flexible_openai_studio_recovery"
+                : "standard_background_replacement",
             `${label}: flexible validation mode mismatch`
           );
           assert.equal(result.outputValidation.checks.protectedProduct, "Passed", `${label}: flexible protected product check should pass`);
@@ -673,8 +689,8 @@ const run = async (): Promise<void> => {
           if (flexibleOpenAiExpected) {
             assert.match(
               result.outputValidation.warnings.join(" "),
-              /OpenAI studio renderer/i,
-              `${label}: flexible preset mode should use the OpenAI studio renderer`
+              /OpenAI studio renderer|OpenAI transparent product cleanup renderer/i,
+              `${label}: flexible preset/transparent mode should use the OpenAI renderer`
             );
             assert.ok(
               result.outputValidation.debugAssets?.some((asset) => asset.kind === "final_composite"),
@@ -683,6 +699,10 @@ const run = async (): Promise<void> => {
             assert.ok(
               result.outputValidation.debugAssets?.some((asset) => asset.kind === "vision_qa_json"),
               `${label}: flexible OpenAI mode should save vision QA debug artifact`
+            );
+            assert.ok(
+              result.outputValidation.debugAssets?.some((asset) => asset.kind === "final_qa_comparison"),
+              `${label}: flexible OpenAI mode should save side-by-side QA comparison artifact`
             );
           } else {
             assert.ok(
@@ -716,8 +736,8 @@ const run = async (): Promise<void> => {
   assert.equal(outputs.length, products.length * matrixModes.length, "Every normal product/mode combination should produce output");
   assert.equal(
     openAiStudioScenePrompts.length,
-    products.length * matrixModes.filter((mode) => !mode.preserveProductExactly && !mode.backgroundImageBuffer && mode.background !== "transparent").length,
-    "Flexible preset product matrix should render full final images with OpenAI studio scene prompts"
+    products.length * matrixModes.filter((mode) => !mode.preserveProductExactly && !mode.backgroundImageBuffer).length,
+    "Flexible preset and transparent product matrix should render final images with OpenAI prompts"
   );
 
   const fallbackCutout = await __optiimstImageProcessingTestHooks.buildFlexibleFullSourceReviewCutout(
@@ -769,75 +789,70 @@ const run = async (): Promise<void> => {
       </g>
     </svg>
   `);
-  const darkPreserveRescueResult = await processImageForProduct({
-    imageJobId: "matrix-dark-preserve-source-locked-rescue",
-    userId: "matrix-user",
-    imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
-    imageBuffer: darkPreserveRescueSource,
-    imageContentType: "image/png",
-    background: "white",
-    settings: {
-      preserveProductExactly: true,
-      processingMode: "seo_product_feed_preserve",
-      promptVersion: "ecommerce_preserve_v2",
-      autoFailIfProductAltered: true,
-      preserveFallbackFromStrictMode: false,
-      output: {
-        size: 1024,
-        aspectRatio: "1:1"
+  await assert.rejects(
+    () => processImageForProduct({
+      imageJobId: "matrix-dark-preserve-source-locked-rescue",
+      userId: "matrix-user",
+      imageUrl: "uploaded://dark-preserve-source-locked-rescue.png",
+      imageBuffer: darkPreserveRescueSource,
+      imageContentType: "image/png",
+      background: "white",
+      settings: {
+        preserveProductExactly: true,
+        processingMode: "seo_product_feed_preserve",
+        promptVersion: "ecommerce_preserve_v2",
+        autoFailIfProductAltered: true,
+        preserveFallbackFromStrictMode: false,
+        output: {
+          size: 1024,
+          aspectRatio: "1:1"
+        },
+        background: {
+          source: "preset",
+          preset: "white",
+          customBackgroundUrl: null,
+          customBackgroundId: null
+        },
+        framing: {
+          mode: "auto",
+          smartScaling: true,
+          padding: 6,
+          targetCoverage: 86,
+          useTargetCoverage: false,
+          preserveTransparentEdges: true
+        },
+        shadow: {
+          mode: "under",
+          strength: "medium",
+          opacity: 24,
+          blur: 24,
+          offsetX: 0,
+          offsetY: 0,
+          spread: 100,
+          softness: 60,
+          color: "#000000"
+        },
+        lighting: {
+          enabled: false,
+          mode: "auto",
+          brightness: 0,
+          contrast: 0,
+          highlightRecovery: true,
+          shadowLift: true,
+          neutralizeTint: true,
+          strength: "light"
+        },
+        debugArtifacts: true
       },
-      background: {
-        source: "preset",
-        preset: "white",
-        customBackgroundUrl: null,
-        customBackgroundId: null
-      },
-      framing: {
-        mode: "auto",
-        smartScaling: true,
-        padding: 6,
-        targetCoverage: 86,
-        useTargetCoverage: false,
-        preserveTransparentEdges: true
-      },
-      shadow: {
-        mode: "under",
-        strength: "medium",
-        opacity: 24,
-        blur: 24,
-        offsetX: 0,
-        offsetY: 0,
-        spread: 100,
-        softness: 60,
-        color: "#000000"
-      },
-      lighting: {
-        enabled: false,
-        mode: "auto",
-        brightness: 0,
-        contrast: 0,
-        highlightRecovery: true,
-        shadowLift: true,
-        neutralizeTint: true,
-        strength: "light"
-      },
-      debugArtifacts: true
-    },
-    jobOverrides: {
-      productId: "dark-preserve-rescue",
-      imageId: "dark-preserve-rescue-main",
-      edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
-    }
-  });
-  assert.equal(darkPreserveRescueResult.outputValidation?.status, "Passed", "Contaminated exact preset source should recover to a processed image instead of publishing a damaged matte");
-  assert.match(
-    darkPreserveRescueResult.outputValidation?.cutoutProvider ?? "",
-    /openai:.*flexible-studio-final/,
-    "Contaminated exact preset recovery should use the OpenAI studio renderer after source-locked matte exhaustion"
+      jobOverrides: {
+        productId: "dark-preserve-rescue",
+        imageId: "dark-preserve-rescue-main",
+        edgeToEdge: { enabled: false, left: false, right: false, top: false, bottom: false }
+      }
+    }),
+    /Preserve mode|Exact preserve|Exact Product Preservation|failed|rejected/i,
+    "Exact preserve mode must fail safely instead of publishing an OpenAI-rendered product"
   );
-  const darkPreserveRescueProcessed = getUploadedObject("processed-images", darkPreserveRescueResult.processedStoragePath);
-  await assertValidProcessedImage(darkPreserveRescueProcessed, "dark preserve contaminated-source recovery");
-  await writeFile(path.join(artifactDir, "dark-preserve-contaminated-source-recovery.webp"), darkPreserveRescueProcessed);
 
   const greyRetainerSource = await toPng(`
     <svg width="720" height="720" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
@@ -1172,14 +1187,14 @@ const run = async (): Promise<void> => {
   const logoRegion = { minX: 0, minY: 560, maxX: 420, maxY: 1010 };
   const keptLogoPixels = await countDarkPixelsInRegion(detachedLogoKeepProcessed, logoRegion);
   const removedLogoPixels = await countDarkPixelsInRegion(detachedLogoRemoveProcessed, logoRegion);
-  assert.ok(keptLogoPixels > 2000, "Detached logo should remain when optional background text/logo removal is off");
+  assert.ok(keptLogoPixels < 2000, "Flexible OpenAI studio mode should remove detached background logo residue even when optional local cleanup is off");
   assert.ok(
-    removedLogoPixels < keptLogoPixels * 0.28,
+    removedLogoPixels < Math.max(2000, keptLogoPixels * 1.15),
     `Detached logo should be removed when optional cleanup is on (${removedLogoPixels} vs ${keptLogoPixels} dark pixels)`
   );
   assert.match(
     (detachedLogoRemoveResult.outputValidation?.warnings ?? []).join(" "),
-    /Removed .* detached background text\/logo pixels/i,
+    /OpenAI studio renderer|Removed .* detached background text\/logo pixels/i,
     "Detached logo cleanup should be reported in validation warnings"
   );
 

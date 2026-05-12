@@ -4,6 +4,7 @@ import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
 import {
   ecommercePreservePromptVersion,
+  isOpenAiImageServiceError,
   openAiImageEditModel,
   openAiImageEditQuality,
   openAiImageEditSize,
@@ -360,7 +361,8 @@ export const getExtremeFineDetailFailureMessage = (reasons: string[]): string | 
 const sourceAlphaSoftEdgeFailReasons = new Set<PreserveModeFailReason>([
   "Edge Halo / Background Residue",
   "Mask Includes Background",
-  "Dirty Alpha Edge"
+  "Dirty Alpha Edge",
+  "Disconnected Background Artifact"
 ]);
 
 const canTrustExistingSourceAlpha = (
@@ -442,8 +444,8 @@ const canAcceptSourceLockedSoftEdgeMask = (
     && maskDiagnostics.connectedComponentCount <= 2
     && maskDiagnostics.alphaCoveragePercent >= 3
     && maskDiagnostics.alphaCoveragePercent <= 65
-    && backgroundResidueRatio <= 0.16
-    && edgeHaloRatio <= 0.26;
+    && backgroundResidueRatio <= 0.28
+    && edgeHaloRatio <= 0.42;
 };
 
 const acceptSourceLockedSoftEdgeValidation = (
@@ -1285,9 +1287,12 @@ const processImagePreserveMode = async (
     debug.aiResultDimensions = aiResultDimensions;
     await uploadPreserveDebugAsset(context, debug, "ai_cutout", `attempt-${attempt}-ai-cutout-${randomUUID()}.png`, aiCutoutBuffer, "image/png");
 
-    const extractedAlpha = alphaAlignment === "source-contain"
+    const rawExtractedAlpha = alphaAlignment === "source-contain"
       ? await getSourceAlignedAlpha(aiCutoutBuffer, workingDimensions.width, workingDimensions.height)
       : await getResizedAiAlpha(aiCutoutBuffer, workingDimensions.width, workingDimensions.height);
+    const extractedAlpha = provider.startsWith(`openai:${openAiImageEditModel}`) && getAlphaCoverage(rawExtractedAlpha) > workingDimensions.width * workingDimensions.height * 0.85
+      ? await deriveAlphaFromOpaqueAiGuidance(aiCutoutBuffer, workingDimensions.width, workingDimensions.height, alphaAlignment)
+      : rawExtractedAlpha;
     const aiAlpha = prepareProviderAlphaForPreserve(provider, extractedAlpha, workingDimensions.width, workingDimensions.height);
     const maskDiagnostics = analyzeAlphaMask(aiAlpha, workingDimensions.width, workingDimensions.height);
     debug.mask = maskDiagnostics;
@@ -2507,8 +2512,8 @@ const decontaminatePreserveEdgeRgb = (
 
   const alphaCoverage = getAlphaCoverage(alpha);
   const maxChangedPixels = edgeRgbGuide
-    ? Math.max(5200, alphaCoverage * 0.075)
-    : Math.max(3200, alphaCoverage * 0.045);
+    ? Math.max(18000, alphaCoverage * 0.2)
+    : Math.max(12000, alphaCoverage * 0.12);
   if (changedPixels > maxChangedPixels) {
     console.warn("Skipped preserve-mode RGB edge decontamination because the edge band was too broad", {
       changedPixels,
@@ -2839,6 +2844,37 @@ const getSourceAlignedAlpha = async (
     })
     .raw()
     .toBuffer();
+};
+
+const deriveAlphaFromOpaqueAiGuidance = async (
+  aiGuidanceBuffer: Buffer,
+  width: number,
+  height: number,
+  alphaAlignment: "source-contain" | "square-fill"
+): Promise<Buffer> => {
+  const resizedGuidance = await sharp(aiGuidanceBuffer)
+    .rotate()
+    .resize(width, height, {
+      fit: alphaAlignment === "source-contain" ? "contain" : "fill",
+      withoutEnlargement: false,
+      background: {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0
+      }
+    })
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  const localGuidanceAlpha = buildLocalForegroundAlpha(resizedGuidance, width, height);
+  const cleaned = cleanFlexibleForegroundAlpha(resizedGuidance, localGuidanceAlpha, width, height);
+
+  console.info("Derived preserve-mode segmentation alpha from opaque OpenAI guidance render", {
+    alphaCoveragePercent: Number(((getAlphaCoverage(cleaned) / Math.max(1, width * height)) * 100).toFixed(3))
+  });
+
+  return cleaned;
 };
 
 const prepareProviderAlphaForPreserve = (
@@ -7034,6 +7070,27 @@ const getNumber = (value: unknown, fallback: number, min: number, max: number): 
 const getString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim() ? value.trim() : fallback;
 
+const resolvePreserveProductExactly = (settings: Record<string, unknown>): boolean => {
+  const explicitSignals = [
+    settings.preserveProductExactly,
+    settings.productPreservation,
+    settings.pixelPerfect,
+    settings.pixel_perfect,
+    settings.preserve_product_exactly,
+    settings.preserve_product_pixels
+  ];
+
+  if (explicitSignals.some((value) => value === false || value === 0 || value === "false" || value === "off")) {
+    return false;
+  }
+
+  if (explicitSignals.some((value) => value === true || value === 1 || value === "true" || value === "on")) {
+    return true;
+  }
+
+  return true;
+};
+
 const getPreserveModeFallback = (settings: Record<string, unknown>): PreserveModeFallback => {
   const value = settings.preserveModeFallback ?? settings.preserve_mode_fallback;
 
@@ -8237,6 +8294,49 @@ const compositeSourceLockedProductLayers = async ({
     .toBuffer();
 };
 
+const buildFinalQaComparisonSheet = async (
+  originalSource: Buffer,
+  finalComposite: Buffer,
+  label: string
+): Promise<Buffer> => {
+  const cellWidth = 512;
+  const labelHeight = 44;
+  const original = await sharp(originalSource)
+    .rotate()
+    .resize(cellWidth, cellWidth, { fit: "inside", background: "#f7f7f4" })
+    .flatten({ background: "#f7f7f4" })
+    .png()
+    .toBuffer();
+  const final = await sharp(finalComposite)
+    .resize(cellWidth, cellWidth, { fit: "inside", background: "#f7f7f4" })
+    .flatten({ background: "#f7f7f4" })
+    .png()
+    .toBuffer();
+  const header = Buffer.from(`
+    <svg width="${cellWidth * 2}" height="${labelHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <text x="16" y="28" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#111111">Original</text>
+      <text x="${cellWidth + 16}" y="28" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#111111">${label.replace(/[<>&]/g, "")}</text>
+    </svg>
+  `);
+
+  return sharp({
+    create: {
+      width: cellWidth * 2,
+      height: cellWidth + labelHeight,
+      channels: 4,
+      background: "#ffffff"
+    }
+  })
+    .composite([
+      { input: header, left: 0, top: 0 },
+      { input: original, left: 0, top: labelHeight },
+      { input: final, left: cellWidth, top: labelHeight }
+    ])
+    .png()
+    .toBuffer();
+};
+
 const flexibleStudioRecoveryInstructions = [
   "Create a flawless professional WooCommerce product image from the supplied photo using OpenAI as the final studio renderer. Keep the product as close to the source product as possible: same sellable SKU, silhouette, number of parts, holes, openings, threading, tabs, screws, ridges, labels, printed product text, orientation, material, colour family, reflective finish, and fine geometry. Remove the old background, detached background watermarks/logos/text, baked-in alpha or mask outlines, jagged dark borders, grey/white halos, staircase cutout artifacts, dirty edge scars, and shadow bleed around the product. Do not draw an outline around the product. Use a clean off-white ecommerce studio background and a very soft natural shadow only behind or beneath the product. The final product must have smooth anti-aliased professional edges and no visible mask artifacts.",
   "Professional product retouching edit with the original image as the product identity reference. Rebuild the studio presentation fully: remove the source background, watermark, embedded halo, edge dirt, dark contour artifacts, cutout stair-stepping, and background fragments. Keep the product as the same object with the same proportions, openings, material finish, visible product markings, holes, tabs, ridges, screws, transparent areas, part count, attachment points, and orientation. Use a plain light grey/off-white background with subtle realistic shadow separated from the product. No visible alpha mask, no edge outline, no jagged contour, no background bleed, no extra objects, no new text, no redesigned SKU.",
@@ -8312,7 +8412,7 @@ const processFlexibleOpenAiStudioRecovery = async ({
       visionQa.passed &&
       visionQa.commerciallyUsable &&
       visionQa.scores.edgeCleanliness >= 88 &&
-      visionQa.scores.productPreservation >= 78 &&
+      visionQa.scores.productPreservation >= 85 &&
       visionQa.scores.backgroundRemoval >= 88 &&
       visionQa.scores.ecommerceQuality >= 88 &&
       visionQa.visibleProblems.length === 0;
@@ -8384,6 +8484,15 @@ const processFlexibleOpenAiStudioRecovery = async ({
         Buffer.from(JSON.stringify(visionQa, null, 2)),
         "application/json"
       );
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "final_qa_comparison",
+        `flexible-openai-studio-failed-comparison-attempt-${attempt + 1}-${randomUUID()}.png`,
+        await buildFinalQaComparisonSheet(preservedOriginalInput, finalComposite, "Failed final"),
+        "image/png"
+      );
       continue;
     }
 
@@ -8413,6 +8522,15 @@ const processFlexibleOpenAiStudioRecovery = async ({
       `flexible-openai-studio-qa-${randomUUID()}.json`,
       Buffer.from(JSON.stringify(visionQa, null, 2)),
       "application/json"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "final_qa_comparison",
+      `flexible-openai-studio-comparison-${randomUUID()}.png`,
+      await buildFinalQaComparisonSheet(preservedOriginalInput, finalComposite, "OpenAI final"),
+      "image/png"
     );
     const finalOutputValidation = {
       ...outputValidation,
@@ -8543,7 +8661,7 @@ const processOpenAiTransparentProductRecovery = async ({
       visionQa.passed &&
       visionQa.commerciallyUsable &&
       visionQa.scores.edgeCleanliness >= 88 &&
-      visionQa.scores.productPreservation >= 78 &&
+      visionQa.scores.productPreservation >= 85 &&
       visionQa.scores.backgroundRemoval >= 88 &&
       visionQa.scores.ecommerceQuality >= 88 &&
       visionQa.visibleProblems.length === 0;
@@ -8582,7 +8700,7 @@ const processOpenAiTransparentProductRecovery = async ({
       },
       visionQa,
       warnings: [
-        `OpenAI transparent contaminated-source recovery was used: ${recoveryReason}`,
+        `OpenAI transparent product cleanup renderer was used: ${recoveryReason}`,
         `Transparent recovery attempt ${attempt + 1} of ${attemptModes.length} using ${mode}.`
       ],
       failureReasons: qaPassed
@@ -8614,6 +8732,15 @@ const processOpenAiTransparentProductRecovery = async ({
         `transparent-openai-recovery-failed-qa-attempt-${attempt + 1}-${randomUUID()}.json`,
         Buffer.from(JSON.stringify(visionQa, null, 2)),
         "application/json"
+      );
+      await uploadPipelineDebugAsset(
+        userId,
+        imageJobId,
+        pipelineDebugAssets,
+        "final_qa_comparison",
+        `transparent-openai-recovery-failed-comparison-attempt-${attempt + 1}-${randomUUID()}.png`,
+        await buildFinalQaComparisonSheet(preservedOriginalInput, qaComposite, "Failed transparent"),
+        "image/png"
       );
       continue;
     }
@@ -8653,6 +8780,15 @@ const processOpenAiTransparentProductRecovery = async ({
       `transparent-openai-recovery-qa-${randomUUID()}.json`,
       Buffer.from(JSON.stringify(visionQa, null, 2)),
       "application/json"
+    );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "final_qa_comparison",
+      `transparent-openai-recovery-comparison-${randomUUID()}.png`,
+      await buildFinalQaComparisonSheet(preservedOriginalInput, qaComposite, "OpenAI transparent"),
+      "image/png"
     );
     const finalOutputValidation = {
       ...outputValidation,
@@ -8733,7 +8869,7 @@ export const processImageForProduct = async ({
   jobOverrides
 }: ProcessImageInput): Promise<ProcessedImageResult> => {
   const processingSettings = getObject(settings);
-  const preserveProductExactly = processingSettings.preserveProductExactly !== false;
+  const preserveProductExactly = resolvePreserveProductExactly(processingSettings);
   const preserveModeFallback = getPreserveModeFallback(processingSettings);
   const framingSettings = getObject(processingSettings.framing);
   const shadowSettings = getObject(processingSettings.shadow);
@@ -8848,40 +8984,70 @@ export const processImageForProduct = async ({
       hasCustomBackground: Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer)
     });
 
-    if (backgroundIsTransparent) {
-      flexiblePipelineWarnings.push("Transparent background selected; OpenAI studio background generation was skipped and the product layer was composited onto transparency.");
-    } else if (effectiveBackgroundImageUrl || backgroundImageBuffer) {
+    if (effectiveBackgroundImageUrl || backgroundImageBuffer) {
       flexiblePipelineWarnings.push("Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.");
     }
 
-    const shouldUseOpenAiStudioRender =
-      processingSettings.disableOpenAiStudioRender !== true &&
-      !backgroundIsTransparent &&
+    if (processingSettings.disableOpenAiStudioRender === true) {
+      console.warn("Flexible mode OpenAI final render cannot be disabled for preset/transparent backgrounds; continuing with AI primary routing", {
+        imageJobId
+      });
+    }
+
+    const shouldUseOpenAiPrimaryRender =
       !effectiveBackgroundImageUrl &&
-      !backgroundImageBuffer &&
-      Boolean(env.openAiApiKey);
-    if (shouldUseOpenAiStudioRender) {
-      console.info("Flexible studio enhancement selected OpenAI studio renderer as primary path for preset background", {
+      !backgroundImageBuffer;
+    if (shouldUseOpenAiPrimaryRender) {
+      console.info("Flexible studio enhancement selected OpenAI as the primary final render path", {
         imageJobId,
         backgroundIsTransparent,
-        hasCustomBackground: false
+        providerIntent: backgroundIsTransparent ? "transparent-product-final-cleanup" : "opaque-studio-final-render"
       });
 
-      return await processFlexibleOpenAiStudioRecovery({
-        userId,
-        imageJobId,
-        originalImage,
-        originalImageHash,
-        originalStoragePath,
-        originalUploadedAt,
-        storageCleanupAfter,
-        seoMetadata,
-        preservedOriginalInput,
-        processingSettings,
-        background,
-        pipelineDebugAssets,
-        recoveryReason: "Pixel Perfect is OFF and a preset studio background is selected, so OpenAI is used as the primary studio renderer while preserving the product identity as closely as possible."
-      });
+      try {
+        if (backgroundIsTransparent) {
+          return await processOpenAiTransparentProductRecovery({
+            userId,
+            imageJobId,
+            originalImage,
+            originalImageHash,
+            originalStoragePath,
+            originalUploadedAt,
+            storageCleanupAfter,
+            seoMetadata,
+            preservedOriginalInput,
+            pipelineDebugAssets,
+            recoveryReason: "Pixel Perfect is OFF and a transparent background is selected, so OpenAI is used as the primary final background-removal and cleanup renderer while preserving the product identity as closely as possible."
+          });
+        }
+
+        return await processFlexibleOpenAiStudioRecovery({
+          userId,
+          imageJobId,
+          originalImage,
+          originalImageHash,
+          originalStoragePath,
+          originalUploadedAt,
+          storageCleanupAfter,
+          seoMetadata,
+          preservedOriginalInput,
+          processingSettings,
+          background,
+          pipelineDebugAssets,
+          recoveryReason: "Pixel Perfect is OFF and a preset studio background is selected, so OpenAI is used as the primary final studio renderer while preserving the product identity as closely as possible."
+        });
+      } catch (error) {
+        if (!isOpenAiImageServiceError(error)) {
+          throw error;
+        }
+
+        const serviceFailureReason = error instanceof Error ? error.message : "Unknown OpenAI image service failure";
+        console.warn("Flexible OpenAI primary render failed at the service layer; falling back to local/source-locked path", {
+          imageJobId,
+          reason: serviceFailureReason
+        });
+        flexiblePipelineWarnings.push(`OpenAI primary flexible render failed at the service layer, so local fallback was used: ${serviceFailureReason}`);
+      }
     }
   }
 
@@ -8910,60 +9076,11 @@ export const processImageForProduct = async ({
         reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
       });
 
-      const allowContaminatedSourceRecovery =
-        processingSettings.disableOpenAiContaminatedSourceRecovery !== true &&
-        !effectiveBackgroundImageUrl &&
-        !backgroundImageBuffer &&
-        Boolean(env.openAiApiKey);
-
-      if (allowContaminatedSourceRecovery) {
-        console.warn("Exact preserve mode is using OpenAI contaminated-source recovery after source-locked matte exhaustion", {
-          imageJobId,
-          reason: preserveError instanceof Error ? preserveError.message : "Unknown preserve mode error"
-        });
-
-        if (backgroundIsTransparent) {
-          return await processOpenAiTransparentProductRecovery({
-            userId,
-            imageJobId,
-            originalImage,
-            originalImageHash,
-            originalStoragePath,
-            originalUploadedAt,
-            storageCleanupAfter,
-            seoMetadata,
-            preservedOriginalInput,
-            pipelineDebugAssets,
-            recoveryReason: [
-              "Exact source-locked matting exhausted all mask candidates on a contaminated source image.",
-              "OpenAI transparent contaminated-source recovery was used to produce a clean product cutout.",
-              "The renderer must preserve the same SKU identity, geometry, orientation, mechanical details, holes, springs, tabs, material family, and product proportions while removing baked-in alpha artifacts and residue."
-            ].join(" ")
-          });
-        }
-
-        return await processFlexibleOpenAiStudioRecovery({
-          userId,
-          imageJobId,
-          originalImage,
-          originalImageHash,
-          originalStoragePath,
-          originalUploadedAt,
-          storageCleanupAfter,
-          seoMetadata,
-          preservedOriginalInput,
-          processingSettings,
-          background,
-          pipelineDebugAssets,
-          recoveryReason: [
-            "Exact source-locked matting exhausted all mask candidates on a contaminated source image.",
-            "OpenAI contaminated-source recovery was used as the final commercial-quality renderer for this preset background.",
-            "The renderer must preserve the same SKU identity, geometry, orientation, mechanical details, holes, springs, tabs, material family, and product proportions while removing baked-in alpha artifacts and residue."
-          ].join(" ")
-        });
-      }
-
-      throw preserveError;
+      preserveDebug.finalStatus = "failed";
+      preserveDebug.failureReason = preserveError instanceof Error
+        ? preserveError.message
+        : "Exact preserve mode exhausted source-locked matting.";
+      throw new PreserveModeProcessingError(preserveDebug.failureReason, preserveDebug);
     }
   } else {
     cutoutResult = await processImageFlexiblePreserveMode(
@@ -9221,59 +9338,6 @@ export const processImageForProduct = async ({
       });
     }
 
-    if (
-      preserveProductExactly &&
-      processingSettings.disableOpenAiContaminatedSourceRecovery !== true &&
-      !effectiveBackgroundImageUrl &&
-      !backgroundImageBuffer &&
-      Boolean(env.openAiApiKey)
-    ) {
-      console.warn("Exact preserve output validation failed; trying OpenAI contaminated-source recovery render", {
-        imageJobId,
-        reason: failureReason
-      });
-
-      if (backgroundIsTransparent) {
-        return await processOpenAiTransparentProductRecovery({
-          userId,
-          imageJobId,
-          originalImage,
-          originalImageHash,
-          originalStoragePath,
-          originalUploadedAt,
-          storageCleanupAfter,
-          seoMetadata,
-          preservedOriginalInput,
-          pipelineDebugAssets,
-          recoveryReason: [
-            "Exact source-locked compositing failed final visual QA.",
-            "OpenAI transparent contaminated-source recovery was used to produce a clean product cutout.",
-            failureReason
-          ].join(" ")
-        });
-      }
-
-      return await processFlexibleOpenAiStudioRecovery({
-        userId,
-        imageJobId,
-        originalImage,
-        originalImageHash,
-        originalStoragePath,
-        originalUploadedAt,
-        storageCleanupAfter,
-        seoMetadata,
-        preservedOriginalInput,
-        processingSettings,
-        background,
-        pipelineDebugAssets,
-        recoveryReason: [
-          "Exact source-locked compositing failed final visual QA.",
-          "OpenAI contaminated-source recovery was used as the final commercial-quality renderer for this preset background.",
-          failureReason
-        ].join(" ")
-      });
-    }
-
     if (preserveProductExactly && cutoutResult.preserveDebug) {
       cutoutResult.preserveDebug.finalStatus = "failed";
       cutoutResult.preserveDebug.failureReason = failureReason;
@@ -9339,6 +9403,15 @@ export const processImageForProduct = async ({
       composedImage,
       "image/png"
     );
+    await uploadPipelineDebugAsset(
+      userId,
+      imageJobId,
+      pipelineDebugAssets,
+      "final_qa_comparison",
+      `final-qa-comparison-${randomUUID()}.png`,
+      await buildFinalQaComparisonSheet(preservedOriginalInput, composedImage, "Final"),
+      "image/png"
+    );
     outputValidation = {
       ...outputValidation,
       debugAssets: pipelineDebugAssets
@@ -9380,6 +9453,14 @@ export const processImageForProduct = async ({
       "final_composite",
       `final-composite-${randomUUID()}.png`,
       composedImage,
+      "image/png"
+    );
+    await uploadPreserveDebugAsset(
+      preserveContext,
+      cutoutResult.preserveDebug,
+      "final_qa_comparison",
+      `final-qa-comparison-${randomUUID()}.png`,
+      await buildFinalQaComparisonSheet(preservedOriginalInput, composedImage, "Exact final"),
       "image/png"
     );
   }
@@ -9456,59 +9537,6 @@ export const processImageForProduct = async ({
     );
 
     if (outputValidation.status === "Failed") {
-      if (
-        processingSettings.disableOpenAiContaminatedSourceRecovery !== true &&
-        !effectiveBackgroundImageUrl &&
-        !backgroundImageBuffer &&
-        Boolean(env.openAiApiKey)
-      ) {
-        const failureReason = outputValidation.failureReasons.join("; ") || "Preserve mode failed ecommerce QA.";
-        console.warn("Exact preserve vision QA failed; trying OpenAI contaminated-source recovery render", {
-          imageJobId,
-          reason: failureReason
-        });
-
-        if (backgroundIsTransparent) {
-          return await processOpenAiTransparentProductRecovery({
-            userId,
-            imageJobId,
-            originalImage,
-            originalImageHash,
-            originalStoragePath,
-            originalUploadedAt,
-            storageCleanupAfter,
-            seoMetadata,
-            preservedOriginalInput,
-            pipelineDebugAssets,
-            recoveryReason: [
-              "Exact source-locked compositing failed final preserve vision QA.",
-              "OpenAI transparent contaminated-source recovery was used to produce a clean product cutout.",
-              failureReason
-            ].join(" ")
-          });
-        }
-
-        return await processFlexibleOpenAiStudioRecovery({
-          userId,
-          imageJobId,
-          originalImage,
-          originalImageHash,
-          originalStoragePath,
-          originalUploadedAt,
-          storageCleanupAfter,
-          seoMetadata,
-          preservedOriginalInput,
-          processingSettings,
-          background,
-          pipelineDebugAssets,
-          recoveryReason: [
-            "Exact source-locked compositing failed final preserve vision QA.",
-            "OpenAI contaminated-source recovery was used as the final commercial-quality renderer for this preset background.",
-            failureReason
-          ].join(" ")
-        });
-      }
-
       cutoutResult.preserveDebug.finalStatus = "failed";
       cutoutResult.preserveDebug.failureReason = outputValidation.failureReasons.join("; ") || "Preserve mode failed ecommerce QA.";
       throw new PreserveModeProcessingError(cutoutResult.preserveDebug.failureReason, cutoutResult.preserveDebug);

@@ -237,7 +237,7 @@ export const runFlexibleStudioVisionQa = async ({
     {
       type: "input_text",
       text:
-        "Return strict JSON only. This is Product Preservation OFF / Flexible OpenAI Studio Mode QA for WooCommerce product imagery. The final image may be an OpenAI-rendered professional studio recovery, so do not require pixel-identical product RGB and do not fail merely because old background watermark, baked-in mask scars, halo, jagged cutout outline, source shadow bleed, or dirty edges were removed. Be visually strict about ecommerce quality and product identity. Pass only if the final looks like a clean professional product photo with no visible alpha mask, no jagged edge, no grey/black/white halo, no background fragments, no blocky edge artifacts, no mask scar, no dirty residue, no shadow bleed attached to the product, and no clutter. The product must remain the same sellable SKU as closely as possible: same product identity, main shape, proportions, orientation, holes/openings, tabs, screws, ridges, printed product text/logos when physically on the item, material family, colour family, part count, attachment points, and mechanical details. Fail if the final changes product identity, redesigns the item, removes important product detail, changes product-mounted text/logos, adds extra parts, fills real holes, removes tabs/holes, invents openings, changes proportions, makes surfaces melted/plastic/fake, or leaves any visible artifact. Ignore detached background logos, watermarks, and source-background branding if they are removed in the final. If the original has no important product-mounted text, do not invent a text/branding failure. Do not mention or infer private data."
+        "Return strict JSON only. This is Product Preservation OFF / Flexible OpenAI Studio Mode QA for WooCommerce product imagery. The final image may be an OpenAI-rendered professional studio recovery, so do not require pixel-identical product RGB and do not fail merely because old background watermark, baked-in mask scars, halo, jagged cutout outline, source shadow bleed, or dirty edges were removed. Be visually strict about ecommerce quality and product identity. Pass only if the final looks like a clean professional product photo with no visible alpha mask, no jagged edge, no grey/black/white halo, no background fragments, no blocky edge artifacts, no mask scar, no dirty residue, no shadow bleed attached to the product, no floating fragments, no detached residue islands, and no clutter. The product must remain the same sellable SKU as closely as possible: same product identity, main shape, proportions, structure, orientation, holes/openings/cutouts, tabs, screws, ridges, printed product text/logos when physically on the item, material family, colour family, part count, attachment points, and mechanical details. Fail if the final changes product identity, redesigns the item, removes important product detail, changes product-mounted text/logos, adds extra parts, fills real holes, removes tabs/holes, invents openings, changes proportions, changes material or colour identity significantly, makes surfaces melted/plastic/fake, or leaves any visible artifact. Ignore detached background logos, watermarks, and source-background branding if they are removed in the final. If the original has no important product-mounted text, do not invent a text/branding failure. Do not mention or infer private data."
     },
     imagePart("original_source", originalSource),
     imagePart("final_composite", finalComposite),
@@ -330,7 +330,7 @@ export const runFlexibleStudioVisionQa = async ({
   const failReasons = result.failReasons
     .filter((reason) => !isDetachedBackgroundBrandingIssue(reason));
   const visibleArtifactFailed = visibleProblems.some((problem) =>
-    /halo|jagged|mask|artifact|artefact|background fragment|bleed|blocky|pixelat|melt|plastic|warped|changed identity|redesign|invent|extra part|missing|filled|removed|residue|scar|outline|dirty|smeared|blur/i.test(problem)
+    /halo|jagged|mask|artifact|artefact|background fragment|floating|detached|fragment|debris|island|bleed|blocky|pixelat|melt|plastic|warped|changed identity|redesign|invent|extra part|missing|filled|removed|residue|scar|outline|dirty|smeared|blur/i.test(problem)
   );
   const onlyDetachedBrandingComplaints =
     !importantTextFailed &&
@@ -341,7 +341,7 @@ export const runFlexibleStudioVisionQa = async ({
     result.scores.ecommerceQuality >= 88 &&
     result.scores.edgeCleanliness >= 88 &&
     result.scores.backgroundRemoval >= 88 &&
-    result.scores.productPreservation >= 80 &&
+    result.scores.productPreservation >= 85 &&
     !importantTextFailed &&
     !visibleArtifactFailed;
 
