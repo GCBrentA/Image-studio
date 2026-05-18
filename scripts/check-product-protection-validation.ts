@@ -2,7 +2,30 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { validateProtectedProductRegion } from "../src/services/productProtectionValidationService";
+
+const envDefaults: Record<string, string> = {
+  SUPABASE_PROJECT_URL: "https://example.supabase.co",
+  JWT_SECRET: "test-jwt-secret-1234567890",
+  API_TOKEN_SALT: "test-api-token-salt-1234567890",
+  STRIPE_SECRET_KEY: "sk_test_dummy",
+  STRIPE_PUBLISHABLE_KEY: "pk_test_dummy",
+  STRIPE_WEBHOOK_SECRET: "whsec_dummy",
+  STRIPE_PRICE_STARTER: "price_dummy_starter",
+  STRIPE_PRICE_GROWTH: "price_dummy_growth",
+  STRIPE_PRICE_PRO: "price_dummy_pro",
+  STRIPE_PRICE_AGENCY: "price_dummy_agency",
+  STRIPE_CREDIT_PRICE_SMALL: "price_dummy_small",
+  STRIPE_CREDIT_PRICE_MEDIUM: "price_dummy_medium",
+  STRIPE_CREDIT_PRICE_LARGE: "price_dummy_large",
+  STRIPE_CREDIT_PRICE_AGENCY: "price_dummy_credit_agency",
+  STRIPE_SUCCESS_URL: "https://example.com/success",
+  STRIPE_CANCEL_URL: "https://example.com/cancel",
+  APP_BASE_URL: "https://example.com"
+};
+
+for (const [key, value] of Object.entries(envDefaults)) {
+  process.env[key] = process.env[key] || value;
+}
 
 const width = 420;
 const height = 420;
@@ -65,6 +88,9 @@ const saveFixture = async (name: string, buffer: Buffer) => {
 };
 
 async function main() {
+  const { validateProtectedProductRegion } = await import("../src/services/productProtectionValidationService");
+  const { __optiimstImageProcessingTestHooks } = await import("../src/services/imageProcessingService");
+  const { assertVisibleProductImage } = __optiimstImageProcessingTestHooks;
   const source = await makeProduct();
   await saveFixture("source-product.png", source);
 
@@ -169,6 +195,56 @@ async function main() {
     preserveMode: false
   });
   assert.notEqual(flexibleResult.outcome, "PASS", "flexible mode must flag major product identity drift");
+
+  const neutralMultiPart = await makeProduct((rgba, alpha) => {
+    for (let y = 118; y <= 150; y += 1) {
+      for (let x = 54; x <= 112; x += 1) {
+        const pixel = y * width + x;
+        const index = pixel * 4;
+        const cx = x - 83;
+        const cy = y - 134;
+        const ring = Math.abs(Math.hypot(cx, cy) - 20) <= 4;
+        if (!ring) continue;
+        alpha[pixel] = 255;
+        rgba[index] = 48;
+        rgba[index + 1] = 52;
+        rgba[index + 2] = 58;
+        rgba[index + 3] = 255;
+      }
+    }
+  });
+  await saveFixture("neutral-multi-part.png", neutralMultiPart);
+  await assert.doesNotReject(
+    () => assertVisibleProductImage(neutralMultiPart),
+    "neutral detached spare-part components should remain acceptable"
+  );
+
+  const colouredDetachedArtifact = await makeProduct((rgba, alpha) => {
+    for (let y = 258; y <= 338; y += 1) {
+      for (let x = 304; x <= 408; x += 1) {
+        const pixel = y * width + x;
+        const index = pixel * 4;
+        const localX = x - 352;
+        const localY = y - 298;
+        const wave = Math.sin(localX / 10) * 14;
+        const inside =
+          (localX * localX) / (52 * 52) + (localY * localY) / (24 * 24) <= 1.15 ||
+          (localY > wave && localY < wave + 9 && localX > -6 && localX < 52);
+        if (!inside) continue;
+        alpha[pixel] = 255;
+        rgba[index] = 214;
+        rgba[index + 1] = 94;
+        rgba[index + 2] = 12;
+        rgba[index + 3] = 255;
+      }
+    }
+  });
+  await saveFixture("coloured-detached-artifact.png", colouredDetachedArtifact);
+  await assert.rejects(
+    () => assertVisibleProductImage(colouredDetachedArtifact),
+    /detached coloured artifact/i,
+    "a large saturated detached blob on a neutral product must be rejected"
+  );
 
   const report = {
     artifactDir,

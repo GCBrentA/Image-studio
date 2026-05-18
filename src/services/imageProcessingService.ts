@@ -7569,13 +7569,14 @@ const assertVisibleProductImage = async (productBuffer: Buffer): Promise<void> =
     throw new Error("Product cutout is too faint after background removal. No image was replaced; review the source image or reprocess with pixel-perfect preservation enabled.");
   }
 
-  const integrityIssues = getProductCutoutIntegrityIssues(alpha, metadata.width, metadata.height, diagnostics.bbox);
+  const integrityIssues = getProductCutoutIntegrityIssues(rgba, alpha, metadata.width, metadata.height, diagnostics.bbox);
   if (integrityIssues.length > 0) {
     throw new Error(`Product cutout failed integrity checks: ${integrityIssues.join("; ")}. No image was replaced.`);
   }
 };
 
 const getProductCutoutIntegrityIssues = (
+  rgba: Buffer,
   alpha: Buffer,
   width: number,
   height: number,
@@ -7610,6 +7611,11 @@ const getProductCutoutIntegrityIssues = (
         break;
       }
     }
+  }
+
+  const detachedColourArtifactIssue = getDetachedColourArtifactIssue(rgba, width, height, significantComponents);
+  if (detachedColourArtifactIssue) {
+    issues.push(detachedColourArtifactIssue);
   }
 
   const gapScanBounds = significantComponents.length > 1
@@ -7680,6 +7686,81 @@ const getProductCutoutIntegrityIssues = (
   }
 
   return issues;
+};
+
+const getDetachedColourArtifactIssue = (
+  rgba: Buffer,
+  width: number,
+  height: number,
+  significantComponents: number[][]
+): string => {
+  if (significantComponents.length < 2) {
+    return "";
+  }
+
+  const sortedComponents = [...significantComponents].sort((a, b) => b.length - a.length);
+  const largest = sortedComponents[0];
+  if (!largest) {
+    return "";
+  }
+
+  const getComponentStats = (component: number[]) => {
+    const bounds = getPixelComponentBounds(component, width, height);
+    const boundsArea = Math.max(1, (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1));
+    let colouredPixels = 0;
+    let saturatedPixels = 0;
+    let totalSaturation = 0;
+    let totalLuminance = 0;
+
+    for (const pixel of component) {
+      const index = pixel * 4;
+      const r = rgba[index] ?? 0;
+      const g = rgba[index + 1] ?? 0;
+      const b = rgba[index + 2] ?? 0;
+      const saturation = getRgbSaturation(r, g, b);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+
+      totalSaturation += saturation;
+      totalLuminance += luminance;
+      if (saturation > 0.18 && channelSpread > 24) {
+        colouredPixels += 1;
+      }
+      if (saturation > 0.3) {
+        saturatedPixels += 1;
+      }
+    }
+
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+    return {
+      pixels: component.length,
+      density: component.length / boundsArea,
+      colouredShare: colouredPixels / Math.max(1, component.length),
+      saturatedShare: saturatedPixels / Math.max(1, component.length),
+      meanSaturation: totalSaturation / Math.max(1, component.length),
+      meanLuminance: totalLuminance / Math.max(1, component.length),
+      cx,
+      cy
+    };
+  };
+
+  const largestStats = getComponentStats(largest);
+  for (const component of sortedComponents.slice(1)) {
+    const stats = getComponentStats(component);
+    const distanceFromPrimary = Math.hypot(stats.cx - largestStats.cx, stats.cy - largestStats.cy);
+    const substantialDetachedPiece = stats.pixels >= Math.max(600, largest.length * 0.025);
+    const highlyColoured = stats.colouredShare > 0.15 && stats.saturatedShare > 0.08 && stats.meanSaturation > 0.12;
+    const splatteryShape = stats.density < 0.9;
+    const clearlyDetached = distanceFromPrimary > Math.max(width, height) * 0.08;
+    const primaryClearlyDominant = largest.length >= Math.max(stats.pixels * 1.35, 1800);
+
+    if (substantialDetachedPiece && highlyColoured && splatteryShape && clearlyDetached && primaryClearlyDominant) {
+      return "mask includes a detached coloured artifact that does not match the main product";
+    }
+  }
+
+  return "";
 };
 
 const removePalePhotoCardFromProductBuffer = async (productBuffer: Buffer): Promise<Buffer> => {
@@ -9064,7 +9145,8 @@ export const __optiimstImageProcessingTestHooks = {
   buildFlexibleLocalForegroundCutout,
   buildPreservedProductCutoutFromRawLocalMask,
   processImageFlexiblePreserveMode,
-  removeThinEdgeNoiseFromProductBuffer
+  removeThinEdgeNoiseFromProductBuffer,
+  assertVisibleProductImage
 };
 
 export const processImageForProduct = async ({
