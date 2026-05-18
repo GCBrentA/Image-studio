@@ -8313,6 +8313,12 @@ const buildOutputQualityValidation = async (
   shadowEnabled: boolean,
   autoFixedFraming: boolean,
   protectedProductValidation: ProductProtectionValidation,
+  edgeAllowances: {
+    left: boolean;
+    right: boolean;
+    top: boolean;
+    bottom: boolean;
+  },
   productFallbackWarnings: string[] = []
 ): Promise<OutputQualityValidation> => {
   const metadata = await sharp(productBuffer).metadata();
@@ -8374,10 +8380,10 @@ const buildOutputQualityValidation = async (
   }
 
   if (
-    finalBounds.minX <= boundaryMargin ||
-    finalBounds.minY <= boundaryMargin ||
-    finalBounds.maxX >= outputSize - boundaryMargin ||
-    finalBounds.maxY >= outputSize - boundaryMargin
+    (!edgeAllowances.left && finalBounds.minX <= boundaryMargin) ||
+    (!edgeAllowances.top && finalBounds.minY <= boundaryMargin) ||
+    (!edgeAllowances.right && finalBounds.maxX >= outputSize - boundaryMargin) ||
+    (!edgeAllowances.bottom && finalBounds.maxY >= outputSize - boundaryMargin)
   ) {
     failureReasons.push("Product foreground touches the canvas safe boundary and may be cropped.");
     framing = "Failed";
@@ -9544,6 +9550,12 @@ export const processImageForProduct = async ({
     Boolean(shadow),
     reframedProduct.autoFixedFraming,
     protectedProductValidation,
+    {
+      left: edgeLeft,
+      right: edgeRight,
+      top: edgeTop,
+      bottom: edgeBottom
+    },
     [...strictSourceLockedRescueWarnings, ...flexiblePipelineWarnings, ...productFallbackWarnings]
   );
   if (

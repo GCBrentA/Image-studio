@@ -94,6 +94,8 @@ assert.match(imageProcessing, /compositeSourceLockedProductLayers/, "final image
 assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/, "final product image must not be rendered by an image edit model");
 assert.doesNotMatch(imageProcessing, /custom-background-polish-candidate|OpenAI custom-background final polish|OpenAI polished the final custom-background composite/, "custom backgrounds must not run a final OpenAI polish stage that can drift the product");
 assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/, "flexible mode validates product detail preservation before accepting output");
+assert.match(imageProcessing, /edgeAllowances:[\s\S]*left:[\s\S]*boolean[\s\S]*right:[\s\S]*boolean[\s\S]*top:[\s\S]*boolean[\s\S]*bottom:[\s\S]*boolean/, "output validation accepts explicit edge allowances");
+assert.match(imageProcessing, /!\s*edgeAllowances\.left[\s\S]*finalBounds\.minX <= boundaryMargin[\s\S]*!\s*edgeAllowances\.top[\s\S]*finalBounds\.minY <= boundaryMargin[\s\S]*!\s*edgeAllowances\.right[\s\S]*finalBounds\.maxX >= outputSize - boundaryMargin[\s\S]*!\s*edgeAllowances\.bottom[\s\S]*finalBounds\.maxY >= outputSize - boundaryMargin/s, "safe-boundary validation respects requested framing edges");
 assert.match(imageProcessing, /preserveMode: preserveProductExactly\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation uses strict thresholds only in pixel-perfect mode");
 assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");
 assert.doesNotMatch(imageProcessing, /linearGradient id="bg"|fill="url\(#bg\)"/, "generated default backgrounds must not introduce horizontal gradient bands");
