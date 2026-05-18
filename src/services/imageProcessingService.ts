@@ -891,7 +891,8 @@ const processImageFlexiblePreserveMode = async (
   openAiInput: Buffer,
   sourceContentType: string,
   preferLocalForegroundFallback = false,
-  preferTransparentAiRecovery = false
+  preferTransparentAiRecovery = false,
+  processingMode: string = "standard_background_replacement"
 ): Promise<CutoutResult> => {
   const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(sourceInput);
 
@@ -912,12 +913,20 @@ const processImageFlexiblePreserveMode = async (
 
   if (preferTransparentAiRecovery) {
     try {
-      const aiTransparentRecovery = await removeImageBackground(openAiInput, "transparent-studio-recovery");
+      const cleanedStudioRender = await renderFlexibleStudioProductImage({
+        imageBuffer: openAiInput,
+        preserveProductExactly: false,
+        processingMode,
+        backgroundDescription:
+          "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
+      });
+      await validateImage(cleanedStudioRender);
+      const aiTransparentRecovery = await removeImageBackground(cleanedStudioRender, "transparent-studio-recovery");
       await validateImage(aiTransparentRecovery);
       const result = {
         cutout: aiTransparentRecovery,
         debugCutout: aiTransparentRecovery,
-        provider: `openai:${openAiImageEditModel}:transparent-studio-direct-cutout`,
+        provider: `openai:${openAiImageEditModel}:custom-background-studio-cutout`,
         attempts: 1,
         validation: {
           alphaCoverage: await getImageAlphaCoverage(aiTransparentRecovery),
@@ -8206,7 +8215,10 @@ const buildOutputQualityValidation = async (
 
   const detailPreservation: ValidationStatus = productPreservation;
   if (!preserveProductExactly) {
-    if (cutoutResult.provider.includes(":transparent-studio-direct-cutout")) {
+    if (
+      cutoutResult.provider.includes(":transparent-studio-direct-cutout") ||
+      cutoutResult.provider.includes(":custom-background-studio-cutout")
+    ) {
       warnings.push("Flexible mode used an OpenAI transparent product cutout before compositing onto the selected background.");
     } else {
       warnings.push("Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.");
@@ -9180,7 +9192,8 @@ export const processImageForProduct = async ({
         openAiInput,
         originalImage.contentType,
         processingSettings.preserveFallbackFromStrictMode === true,
-        Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer)
+        Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer),
+        getString(processingSettings.processingMode, "standard_background_replacement")
       );
   }
   const cutout = cutoutResult.cutout;

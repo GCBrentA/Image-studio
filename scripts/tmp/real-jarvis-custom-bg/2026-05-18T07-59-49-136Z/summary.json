@@ -1,0 +1,30 @@
+[
+  {
+    "file": "aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087.jpg",
+    "provider": "openai:gpt-image-1:custom-background-studio-cutout",
+    "mode": "standard_background_replacement",
+    "status": "Needs Review",
+    "warnings": [
+      "Product preservation could not be fully verified.",
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.",
+      "Removed 282 conservative background-residue pixels from the product layer."
+    ],
+    "failureReasons": [],
+    "artifact": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\scripts\\tmp\\real-jarvis-custom-bg\\2026-05-18T07-59-49-136Z\\aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087--processed.webp"
+  },
+  {
+    "file": "aps-gbb-nozzle-spring-for-co2-pistol-spare-parts-aps-271842.jpg",
+    "provider": "openai:gpt-image-1:custom-background-studio-cutout",
+    "mode": "standard_background_replacement",
+    "status": "Needs Review",
+    "warnings": [
+      "Product preservation could not be fully verified.",
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.",
+      "Removed 90 conservative background-residue pixels from the product layer."
+    ],
+    "failureReasons": [],
+    "artifact": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\scripts\\tmp\\real-jarvis-custom-bg\\2026-05-18T07-59-49-136Z\\aps-gbb-nozzle-spring-for-co2-pistol-spare-parts-aps-271842--processed.webp"
+  }
+]
