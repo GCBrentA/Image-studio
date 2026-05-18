@@ -99,3 +99,4 @@ tmp/reconstructed-rgb.png
 tmp/reconstructed-rgba.png
 *.png
 /tmp
+/scripts/tmp

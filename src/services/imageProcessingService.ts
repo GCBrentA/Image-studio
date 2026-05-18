@@ -921,24 +921,45 @@ const processImageFlexiblePreserveMode = async (
           "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
       });
       await validateImage(cleanedStudioRender);
-      const aiTransparentRecovery = await removeImageBackground(cleanedStudioRender, "transparent-studio-recovery");
-      await validateImage(aiTransparentRecovery);
-      const result = {
-        cutout: aiTransparentRecovery,
-        debugCutout: aiTransparentRecovery,
-        provider: `openai:${openAiImageEditModel}:custom-background-studio-cutout`,
-        attempts: 1,
-        validation: {
-          alphaCoverage: await getImageAlphaCoverage(aiTransparentRecovery),
-          foregroundMeanDelta: Number.NaN
-        }
-      };
+      const result = await buildFlexibleAiRenderedCutout(
+        cleanedStudioRender,
+        `openai:${openAiImageEditModel}:custom-background-ai-rendered-cutout`
+      );
       await assertVisibleProductImage(result.cutout);
       return result;
     } catch (transparentRecoveryError) {
-      console.warn("Flexible OpenAI transparent-recovery mask guidance failed; trying standard flexible AI cutout guidance", {
+      console.warn("Flexible OpenAI custom-background AI-rendered cutout guidance failed; trying transparent recovery cutout guidance", {
         reason: transparentRecoveryError instanceof Error ? transparentRecoveryError.message : "Unknown transparent recovery cutout error"
       });
+
+      try {
+        const cleanedStudioRender = await renderFlexibleStudioProductImage({
+          imageBuffer: openAiInput,
+          preserveProductExactly: false,
+          processingMode,
+          backgroundDescription:
+            "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
+        });
+        await validateImage(cleanedStudioRender);
+        const aiTransparentRecovery = await removeImageBackground(cleanedStudioRender, "transparent-studio-recovery");
+        await validateImage(aiTransparentRecovery);
+        const result = {
+          cutout: aiTransparentRecovery,
+          debugCutout: aiTransparentRecovery,
+          provider: `openai:${openAiImageEditModel}:custom-background-studio-cutout`,
+          attempts: 1,
+          validation: {
+            alphaCoverage: await getImageAlphaCoverage(aiTransparentRecovery),
+            foregroundMeanDelta: Number.NaN
+          }
+        };
+        await assertVisibleProductImage(result.cutout);
+        return result;
+      } catch (transparentMaskFallbackError) {
+        console.warn("Flexible OpenAI transparent-recovery mask guidance failed; trying standard flexible AI cutout guidance", {
+          reason: transparentMaskFallbackError instanceof Error ? transparentMaskFallbackError.message : "Unknown transparent recovery cutout error"
+        });
+      }
     }
   }
 
@@ -2972,6 +2993,112 @@ const deriveAlphaFromOpaqueAiGuidance = async (
   });
 
   return cleaned;
+};
+
+const buildSoftAiGuidanceAlpha = (
+  guidanceRgba: Buffer,
+  binaryAlpha: Buffer,
+  width: number,
+  height: number
+): Buffer => {
+  const backgroundPalette = buildSourceBackgroundPalette(guidanceRgba, width, height);
+
+  if (backgroundPalette.length === 0) {
+    return binaryAlpha;
+  }
+
+  const support = dilateBinaryAlphaMask(binaryAlpha, width, height, 1);
+  const softAlpha = Buffer.alloc(binaryAlpha.length);
+
+  for (let pixel = 0; pixel < support.length; pixel += 1) {
+    if ((support[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const index = pixel * 4;
+    const r = guidanceRgba[index] ?? 0;
+    const g = guidanceRgba[index + 1] ?? 0;
+    const b = guidanceRgba[index + 2] ?? 0;
+    const distance = closestPaletteDistance(r, g, b, backgroundPalette);
+    const gradient = getRgbGradientMagnitude(guidanceRgba, width, height, pixel);
+    const saturation = getRgbSaturation(r, g, b);
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const edgePixel = (binaryAlpha[pixel] ?? 0) < 24 || hasTransparentNeighbor(binaryAlpha, width, height, x, y, 1);
+    const baseSoftAlpha = Math.round(Math.max(0, Math.min(255, ((distance - 6) / 34) * 255)));
+    const structureBoost =
+      gradient > 18 || saturation > 0.14 || luminance < 170
+        ? 28
+        : gradient > 10 || luminance < 210
+          ? 12
+          : 0;
+
+    if (!edgePixel) {
+      softAlpha[pixel] = 255;
+      continue;
+    }
+
+    if ((binaryAlpha[pixel] ?? 0) >= 24) {
+      softAlpha[pixel] = Math.max(112, Math.min(255, baseSoftAlpha + structureBoost));
+      continue;
+    }
+
+    if (baseSoftAlpha < 46 || (gradient < 5 && distance < 16 && luminance > 215)) {
+      continue;
+    }
+
+    softAlpha[pixel] = Math.max(38, Math.min(172, baseSoftAlpha + Math.round(structureBoost * 0.45)));
+  }
+
+  return softAlpha;
+};
+
+const buildFlexibleAiRenderedCutout = async (
+  aiGuidanceBuffer: Buffer,
+  provider: string
+): Promise<CutoutResult> => {
+  const normalizedGuidance = await normalizeImageForPreservedProduct(aiGuidanceBuffer);
+  const metadata = await sharp(normalizedGuidance).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error("AI guidance render could not be read for custom background recovery.");
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const guidanceRgba = await sharp(normalizedGuidance)
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  const binaryAlpha = await deriveAlphaFromOpaqueAiGuidance(normalizedGuidance, width, height, "square-fill");
+  const softAlpha = buildSoftAiGuidanceAlpha(guidanceRgba, binaryAlpha, width, height);
+  const rgba = Buffer.from(guidanceRgba);
+
+  for (let pixel = 0; pixel < softAlpha.length; pixel += 1) {
+    rgba[pixel * 4 + 3] = softAlpha[pixel] ?? 0;
+  }
+
+  const cutout = await sharp(rgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+
+  return {
+    cutout,
+    debugCutout: cutout,
+    provider,
+    attempts: 1,
+    validation: {
+      alphaCoverage: await getImageAlphaCoverage(cutout),
+      foregroundMeanDelta: Number.NaN
+    }
+  };
 };
 
 const prepareProviderAlphaForPreserve = (
@@ -7292,7 +7419,12 @@ const buildShadow = async (
       Math.max(0, width - shadowWidth)
     );
     const shadowTop = clampPosition(
-      Math.round(productTop + offsetY - (shadowHeight - productHeight) / 2),
+      Math.round(
+        productTop +
+        offsetY * 0.18 -
+        (shadowHeight - productHeight) / 2 -
+        Math.max(6, Math.round(productHeight * 0.035))
+      ),
       0,
       Math.max(0, height - shadowHeight)
     );
@@ -8216,10 +8348,11 @@ const buildOutputQualityValidation = async (
   const detailPreservation: ValidationStatus = productPreservation;
   if (!preserveProductExactly) {
     if (
+      cutoutResult.provider.includes(":custom-background-ai-rendered-cutout") ||
       cutoutResult.provider.includes(":transparent-studio-direct-cutout") ||
       cutoutResult.provider.includes(":custom-background-studio-cutout")
     ) {
-      warnings.push("Flexible mode used an OpenAI transparent product cutout before compositing onto the selected background.");
+      warnings.push("Flexible mode used an OpenAI-generated product cleanup/cutout before compositing onto the selected background.");
     } else {
       warnings.push("Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.");
     }
@@ -8338,38 +8471,14 @@ const buildBackgroundFromImage = async (
     : await downloadImage(backgroundImageUrl ?? "");
   await validateImage(backgroundImage.buffer);
 
-  const studioBase = await sharp(backgroundImage.buffer)
+  // Keep the user-provided custom background authoritative instead of converting it
+  // into a generic washed studio plate.
+  return sharp(backgroundImage.buffer)
     .rotate()
     .resize(outputSize, outputSize, {
       fit: "cover",
       position: "centre"
     })
-    .blur(18)
-    .modulate({
-      saturation: 0.22,
-      brightness: 1.04
-    })
-    .png()
-    .toBuffer();
-
-  const wash = await sharp({
-    create: {
-      width: outputSize,
-      height: outputSize,
-      channels: 4,
-      background: {
-        r: 248,
-        g: 248,
-        b: 244,
-        alpha: 0.72
-      }
-    }
-  })
-    .png()
-    .toBuffer();
-
-  return sharp(studioBase)
-    .composite([{ input: wash, blend: "over" }])
     .png()
     .toBuffer();
 };
@@ -8446,6 +8555,9 @@ const flexibleStudioRecoveryInstructions = [
   "Professional product retouching edit with the original image as the locked product identity reference. Rebuild the studio presentation fully: remove the source background, watermark, embedded halo, edge dirt, dark contour artifacts, cutout stair-stepping, and background fragments. Keep the product as the same object with the same camera view, proportions, openings, material finish, visible product markings, holes, tabs, ridges, screws, transparent areas, part count, attachment points, and orientation. Use a plain light grey/off-white background with subtle realistic shadow separated from the product. No visible alpha mask, no edge outline, no jagged contour, no background bleed, no extra objects, no new text, no redesigned SKU, and no regenerated product surfaces.",
   "Make a clean ecommerce catalogue photo of this exact product. Remove all background branding and every visible cutout/mask artifact. Preserve the real product identity, including the same camera view, silhouette, negative spaces, transparent or dark openings, threads, tabs, labels, logos physically on the product, surface texture, reflective finish, part count, and mechanical details. The product edges must be naturally anti-aliased with absolutely no dark fringe or grey halo. Place on a soft off-white studio background with a gentle shadow beneath only. Do not stylize, warp, crop, recolour, add text, add extra objects, fill holes, remove tabs, invent product detail, or re-render the item as a different-looking version."
 ];
+
+const buildCustomBackgroundPolishInstruction = (shadowMode: string): string =>
+  `The supplied image already contains the approved final custom background artwork, and that background must stay exactly as provided. Treat every existing background element as locked and intentional, including any watermark, logo graphic, faded branding mark, paper texture, gradient, tint, noise, and layout placement already visible in the background image. Do not replace the background with a plain studio beige/white background. Do not redesign, simplify, blur away, wash out, erase, move, resize, or restyle any approved background graphics. Only polish the product integration so it looks like a premium ecommerce retouch on this exact background. Clean any remaining white/grey halo, dark contour scar, jagged alpha edge, leftover mask fragment, pasted-card residue, or harsh composite seam around the product. Keep the same product identity, camera angle, silhouette, holes, openings, labels, material, and fine detail. Use only a very soft realistic shadow ${shadowMode === "behind" ? "behind the product" : "beneath the product"} and do not let the shadow become a heavy fog, dark box, or thick glow. The result must look naturally composited, with smooth professional edges and the approved custom background preserved exactly.`;
 
 const buildFlexibleStudioBackgroundDescription = (
   background: string,
@@ -9478,13 +9590,82 @@ export const processImageForProduct = async ({
     : await buildBrandedBackground(background);
   const backgroundBuffer = baseBackgroundBuffer;
 
-  const composedImage = await compositeSourceLockedProductLayers({
+  let composedImage = await compositeSourceLockedProductLayers({
     backgroundBuffer,
     shadowBuffer: shadow,
     productBuffer,
     productTop: top,
     productLeft: left
   });
+
+  if (!preserveProductExactly && (effectiveBackgroundImageUrl || backgroundImageBuffer)) {
+    try {
+      const customBackgroundGuideComposite = await compositeSourceLockedProductLayers({
+        backgroundBuffer,
+        shadowBuffer: null,
+        productBuffer,
+        productTop: top,
+        productLeft: left
+      });
+      const polishedComposite = await renderFlexibleStudioProductImage({
+        imageBuffer: customBackgroundGuideComposite,
+        preserveProductExactly: false,
+        processingMode: getString(processingSettings.processingMode, "standard_background_replacement"),
+        backgroundDescription:
+          "The approved custom background is already supplied in the image and must remain exactly as provided, including any intentional watermark/logo artwork, texture, and layout. Keep that exact background while polishing only the product integration.",
+        recoveryInstruction: buildCustomBackgroundPolishInstruction(getString(shadowSettings.mode, "under"))
+      });
+      await validateImage(polishedComposite);
+      if (savePipelineDebugAssets) {
+        await uploadPipelineDebugAsset(
+          userId,
+          imageJobId,
+          pipelineDebugAssets,
+          "final_composite",
+          `custom-background-polish-candidate-${randomUUID()}.png`,
+          polishedComposite,
+          "image/png"
+        );
+      }
+      const polishQa = await runFlexibleStudioVisionQa({
+        originalSource: preservedOriginalInput,
+        finalComposite: polishedComposite
+      });
+
+      if (
+        polishQa.passed &&
+        polishQa.commerciallyUsable &&
+        polishQa.scores.edgeCleanliness >= 82 &&
+        polishQa.scores.ecommerceQuality >= 82 &&
+        polishQa.scores.productPreservation >= 78
+      ) {
+        composedImage = polishedComposite;
+        outputValidation = {
+          ...outputValidation,
+          warnings: Array.from(new Set([
+            ...outputValidation.warnings,
+            "OpenAI polished the final custom-background composite to improve edge integration and shadow realism."
+          ]))
+        };
+      } else {
+        outputValidation = {
+          ...outputValidation,
+          warnings: Array.from(new Set([
+            ...outputValidation.warnings,
+            "OpenAI custom-background final polish was attempted but the result was not strong enough, so the safer local composite was kept."
+          ]))
+        };
+      }
+    } catch (customBackgroundPolishError) {
+      outputValidation = {
+        ...outputValidation,
+        warnings: Array.from(new Set([
+          ...outputValidation.warnings,
+          `OpenAI custom-background final polish failed, so the safer local composite was kept: ${customBackgroundPolishError instanceof Error ? customBackgroundPolishError.message : "unknown polish failure"}.`
+        ]))
+      };
+    }
+  }
 
   if (savePipelineDebugAssets) {
     await uploadPipelineDebugAsset(
