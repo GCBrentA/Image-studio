@@ -92,6 +92,7 @@ assert.match(imageProcessing, /protectedProductValidation/, "output validation s
 assert.match(imageProcessing, /Flexible mode fell back to source-locked product pixels/, "flexible mode falls back when product fidelity drifts");
 assert.match(imageProcessing, /compositeSourceLockedProductLayers/, "final image is composed from source-locked layers");
 assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/, "final product image must not be rendered by an image edit model");
+assert.doesNotMatch(imageProcessing, /custom-background-polish-candidate|OpenAI custom-background final polish|OpenAI polished the final custom-background composite/, "custom backgrounds must not run a final OpenAI polish stage that can drift the product");
 assert.match(imageProcessing, /validateFlexibleProductDetailPreservation/, "flexible mode validates product detail preservation before accepting output");
 assert.match(imageProcessing, /preserveMode: preserveProductExactly\s*\}\);[\s\S]*const productDiffHeatmap/, "final product validation uses strict thresholds only in pixel-perfect mode");
 assert.doesNotMatch(imageProcessing, /defaultBackgroundImagePath|optivra-default-background\.png/, "processed default backgrounds must not include Optivra watermark artwork");

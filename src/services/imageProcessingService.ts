@@ -8556,9 +8556,6 @@ const flexibleStudioRecoveryInstructions = [
   "Make a clean ecommerce catalogue photo of this exact product. Remove all background branding and every visible cutout/mask artifact. Preserve the real product identity, including the same camera view, silhouette, negative spaces, transparent or dark openings, threads, tabs, labels, logos physically on the product, surface texture, reflective finish, part count, and mechanical details. The product edges must be naturally anti-aliased with absolutely no dark fringe or grey halo. Place on a soft off-white studio background with a gentle shadow beneath only. Do not stylize, warp, crop, recolour, add text, add extra objects, fill holes, remove tabs, invent product detail, or re-render the item as a different-looking version."
 ];
 
-const buildCustomBackgroundPolishInstruction = (shadowMode: string): string =>
-  `The supplied image already contains the approved final custom background artwork, and that background must stay exactly as provided. Treat every existing background element as locked and intentional, including any watermark, logo graphic, faded branding mark, paper texture, gradient, tint, noise, and layout placement already visible in the background image. Do not replace the background with a plain studio beige/white background. Do not redesign, simplify, blur away, wash out, erase, move, resize, or restyle any approved background graphics. Only polish the product integration so it looks like a premium ecommerce retouch on this exact background. Clean any remaining white/grey halo, dark contour scar, jagged alpha edge, leftover mask fragment, pasted-card residue, or harsh composite seam around the product. Keep the same product identity, camera angle, silhouette, holes, openings, labels, material, and fine detail. Use only a very soft realistic shadow ${shadowMode === "behind" ? "behind the product" : "beneath the product"} and do not let the shadow become a heavy fog, dark box, or thick glow. The result must look naturally composited, with smooth professional edges and the approved custom background preserved exactly.`;
-
 const buildFlexibleStudioBackgroundDescription = (
   background: string,
   processingSettings: Record<string, unknown>
@@ -9599,72 +9596,13 @@ export const processImageForProduct = async ({
   });
 
   if (!preserveProductExactly && (effectiveBackgroundImageUrl || backgroundImageBuffer)) {
-    try {
-      const customBackgroundGuideComposite = await compositeSourceLockedProductLayers({
-        backgroundBuffer,
-        shadowBuffer: null,
-        productBuffer,
-        productTop: top,
-        productLeft: left
-      });
-      const polishedComposite = await renderFlexibleStudioProductImage({
-        imageBuffer: customBackgroundGuideComposite,
-        preserveProductExactly: false,
-        processingMode: getString(processingSettings.processingMode, "standard_background_replacement"),
-        backgroundDescription:
-          "The approved custom background is already supplied in the image and must remain exactly as provided, including any intentional watermark/logo artwork, texture, and layout. Keep that exact background while polishing only the product integration.",
-        recoveryInstruction: buildCustomBackgroundPolishInstruction(getString(shadowSettings.mode, "under"))
-      });
-      await validateImage(polishedComposite);
-      if (savePipelineDebugAssets) {
-        await uploadPipelineDebugAsset(
-          userId,
-          imageJobId,
-          pipelineDebugAssets,
-          "final_composite",
-          `custom-background-polish-candidate-${randomUUID()}.png`,
-          polishedComposite,
-          "image/png"
-        );
-      }
-      const polishQa = await runFlexibleStudioVisionQa({
-        originalSource: preservedOriginalInput,
-        finalComposite: polishedComposite
-      });
-
-      if (
-        polishQa.passed &&
-        polishQa.commerciallyUsable &&
-        polishQa.scores.edgeCleanliness >= 82 &&
-        polishQa.scores.ecommerceQuality >= 82 &&
-        polishQa.scores.productPreservation >= 78
-      ) {
-        composedImage = polishedComposite;
-        outputValidation = {
-          ...outputValidation,
-          warnings: Array.from(new Set([
-            ...outputValidation.warnings,
-            "OpenAI polished the final custom-background composite to improve edge integration and shadow realism."
-          ]))
-        };
-      } else {
-        outputValidation = {
-          ...outputValidation,
-          warnings: Array.from(new Set([
-            ...outputValidation.warnings,
-            "OpenAI custom-background final polish was attempted but the result was not strong enough, so the safer local composite was kept."
-          ]))
-        };
-      }
-    } catch (customBackgroundPolishError) {
-      outputValidation = {
-        ...outputValidation,
-        warnings: Array.from(new Set([
-          ...outputValidation.warnings,
-          `OpenAI custom-background final polish failed, so the safer local composite was kept: ${customBackgroundPolishError instanceof Error ? customBackgroundPolishError.message : "unknown polish failure"}.`
-        ]))
-      };
-    }
+    outputValidation = {
+      ...outputValidation,
+      warnings: Array.from(new Set([
+        ...outputValidation.warnings,
+        "Custom-background outputs stay on the source-locked compositor to avoid OpenAI product drift on approved backgrounds."
+      ]))
+    };
   }
 
   if (savePipelineDebugAssets) {
