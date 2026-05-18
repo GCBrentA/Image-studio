@@ -1120,14 +1120,20 @@ const buildCutoutFromExistingSourceAlpha = async (
   for (let pixel = 0; pixel < sourceAlpha.length; pixel += 1) {
     safeAlpha[pixel] = (componentMask[pixel] ?? 0) >= 24 ? (sourceAlpha[pixel] ?? 0) : 0;
   }
-  const coverage = getAlphaCoverage(safeAlpha);
+  const cleanedSafeAlpha = removeConnectedBackgroundPaletteRemnants(
+    sourceRgba,
+    removePaleBackgroundEdgeRemnants(sourceRgba, safeAlpha, width, height),
+    width,
+    height
+  );
+  const coverage = getAlphaCoverage(cleanedSafeAlpha);
   const totalPixels = width * height;
 
   if (coverage < Math.max(2500, totalPixels * 0.002) || coverage > totalPixels * 0.55) {
     return null;
   }
 
-  const productRgba = applyApprovedAlphaToOriginalPixels(sourceRgb, safeAlpha, width, height);
+  const productRgba = applyApprovedAlphaToOriginalPixels(sourceRgb, cleanedSafeAlpha, width, height);
 
   return sharp(productRgba, {
     raw: {
@@ -1138,6 +1144,64 @@ const buildCutoutFromExistingSourceAlpha = async (
   })
     .png()
     .toBuffer();
+};
+
+const removeBackgroundResidueIslandsFromProductBuffer = async (
+  productBuffer: Buffer,
+  conservative = false
+): Promise<{ buffer: Buffer; removedPixels: number }> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = rgba[pixel * 4 + 3] ?? 0;
+  }
+
+  const initialCoverage = getAlphaCoverage(alpha);
+  const cleanedAlpha = conservative
+    ? removeConnectedBackgroundPaletteRemnants(
+        rgba,
+        removePaleBackgroundEdgeRemnants(rgba, alpha, width, height),
+        width,
+        height
+      )
+    : cleanFlexibleForegroundAlpha(rgba, alpha, width, height);
+  const removedPixels = Math.max(0, initialCoverage - getAlphaCoverage(cleanedAlpha));
+
+  if (removedPixels <= 0) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const cleanedDiagnostics = analyzeAlphaMask(cleanedAlpha, width, height);
+  if (hasCatastrophicMaskFailure(cleanedDiagnostics) || getAlphaCoverage(cleanedAlpha) < Math.max(1200, initialCoverage * 0.2)) {
+    return { buffer: productBuffer, removedPixels: 0 };
+  }
+
+  const cleanedRgba = applyApprovedAlphaToOriginalPixels(rgbaToRgb(rgba), cleanedAlpha, width, height);
+  const buffer = await sharp(cleanedRgba, {
+    raw: {
+      width,
+      height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+
+  console.info("Removed background-residue islands from product layer", {
+    removedPixels,
+    conservative
+  });
+
+  return { buffer, removedPixels };
 };
 
 const processImagePreserveMode = async (
@@ -9139,6 +9203,10 @@ export const processImageForProduct = async ({
       .toBuffer();
     productMetadata = await sharp(productBuffer).metadata();
   }
+  const conservativeResidueCleanup = await removeBackgroundResidueIslandsFromProductBuffer(productBuffer, true);
+  if (conservativeResidueCleanup.removedPixels > 0) {
+    productBuffer = conservativeResidueCleanup.buffer;
+  }
   if (!preserveProductExactly && !cutoutResult.provider.startsWith("source-alpha:")) {
     productBuffer = await removeDetachedBackgroundMarksFromProductBuffer(productBuffer);
     productBuffer = await removePalePhotoCardFromProductBuffer(productBuffer);
@@ -9147,7 +9215,19 @@ export const processImageForProduct = async ({
     processingSettings.removeBackgroundTextLogos === true ||
     processingSettings.removeDetachedBackgroundTextLogos === true;
   const productFallbackWarnings: string[] = [];
+  if (conservativeResidueCleanup.removedPixels > 0) {
+    productFallbackWarnings.push(
+      `Removed ${conservativeResidueCleanup.removedPixels} conservative background-residue pixels from the product layer.`
+    );
+  }
   if (!preserveProductExactly && !cutoutResult.provider.startsWith("source-alpha:")) {
+    const flexibleResidueCleanup = await removeBackgroundResidueIslandsFromProductBuffer(productBuffer);
+    if (flexibleResidueCleanup.removedPixels > 0) {
+      productBuffer = flexibleResidueCleanup.buffer;
+      productFallbackWarnings.push(
+        `Removed ${flexibleResidueCleanup.removedPixels} flexible background-residue pixels from the product layer.`
+      );
+    }
     const edgeNoiseCleanup = await removeThinEdgeNoiseFromProductBuffer(productBuffer);
     if (edgeNoiseCleanup.removedPixels > 0) {
       productBuffer = edgeNoiseCleanup.buffer;
