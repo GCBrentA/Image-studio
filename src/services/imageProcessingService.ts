@@ -890,7 +890,8 @@ const processImageFlexiblePreserveMode = async (
   sourceInput: Buffer,
   openAiInput: Buffer,
   sourceContentType: string,
-  preferLocalForegroundFallback = false
+  preferLocalForegroundFallback = false,
+  preferTransparentAiRecovery = false
 ): Promise<CutoutResult> => {
   const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(sourceInput);
 
@@ -907,6 +908,29 @@ const processImageFlexiblePreserveMode = async (
     };
     await assertVisibleProductImage(result.cutout);
     return result;
+  }
+
+  if (preferTransparentAiRecovery) {
+    try {
+      const aiTransparentRecovery = await removeImageBackground(openAiInput, "transparent-studio-recovery");
+      await validateImage(aiTransparentRecovery);
+      const result = {
+        cutout: aiTransparentRecovery,
+        debugCutout: aiTransparentRecovery,
+        provider: `openai:${openAiImageEditModel}:transparent-studio-direct-cutout`,
+        attempts: 1,
+        validation: {
+          alphaCoverage: await getImageAlphaCoverage(aiTransparentRecovery),
+          foregroundMeanDelta: Number.NaN
+        }
+      };
+      await assertVisibleProductImage(result.cutout);
+      return result;
+    } catch (transparentRecoveryError) {
+      console.warn("Flexible OpenAI transparent-recovery mask guidance failed; trying standard flexible AI cutout guidance", {
+        reason: transparentRecoveryError instanceof Error ? transparentRecoveryError.message : "Unknown transparent recovery cutout error"
+      });
+    }
   }
 
   try {
@@ -8182,7 +8206,11 @@ const buildOutputQualityValidation = async (
 
   const detailPreservation: ValidationStatus = productPreservation;
   if (!preserveProductExactly) {
-    warnings.push("Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.");
+    if (cutoutResult.provider.includes(":transparent-studio-direct-cutout")) {
+      warnings.push("Flexible mode used an OpenAI transparent product cutout before compositing onto the selected background.");
+    } else {
+      warnings.push("Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.");
+    }
   }
   if (cutoutResult.provider.includes("flexible-full-source-review-fallback")) {
     warnings.push("Flexible mode could not isolate the product safely, so the original image was processed as a full-source review fallback.");
@@ -9151,7 +9179,8 @@ export const processImageForProduct = async ({
         originalImage.buffer,
         openAiInput,
         originalImage.contentType,
-        processingSettings.preserveFallbackFromStrictMode === true
+        processingSettings.preserveFallbackFromStrictMode === true,
+        Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer)
       );
   }
   const cutout = cutoutResult.cutout;

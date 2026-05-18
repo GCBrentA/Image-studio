@@ -1,0 +1,32 @@
+[
+  {
+    "file": "aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087.jpg",
+    "provider": "local-color-segmentation:flexible-source-pixel-first",
+    "mode": "standard_background_replacement",
+    "status": "Passed",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.",
+      "Removed 4514 conservative background-residue pixels from the product layer.",
+      "Removed 835 flexible background-residue pixels from the product layer.",
+      "Removed 1214 thin edge-noise pixels from the flexible product mask."
+    ],
+    "failureReasons": [],
+    "artifact": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\scripts\\tmp\\real-jarvis-custom-bg\\2026-05-18T07-17-29-598Z\\aztech-magazine-terminal-block-for-scythe-box-spare-parts-gearbox-parts-aztech-374087--processed.webp"
+  },
+  {
+    "file": "aps-gbb-nozzle-spring-for-co2-pistol-spare-parts-aps-271842.jpg",
+    "provider": "local-color-segmentation:flexible-source-pixel-first",
+    "mode": "standard_background_replacement",
+    "status": "Passed",
+    "warnings": [
+      "Flexible mode used source-locked product pixels; AI changes are limited to background, framing, and non-destructive presentation.",
+      "Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.",
+      "Removed 8580 conservative background-residue pixels from the product layer.",
+      "Removed 235 flexible background-residue pixels from the product layer.",
+      "Removed 2821 thin edge-noise pixels from the flexible product mask."
+    ],
+    "failureReasons": [],
+    "artifact": "D:\\Dropbox\\Dropbox\\Chainsaw\\Image\\Image-studio\\scripts\\tmp\\real-jarvis-custom-bg\\2026-05-18T07-17-29-598Z\\aps-gbb-nozzle-spring-for-co2-pistol-spare-parts-aps-271842--processed.webp"
+  }
+]
