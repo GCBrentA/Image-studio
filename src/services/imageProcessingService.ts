@@ -911,58 +911,6 @@ const processImageFlexiblePreserveMode = async (
     return result;
   }
 
-  if (preferTransparentAiRecovery) {
-    try {
-      const cleanedStudioRender = await renderFlexibleStudioProductImage({
-        imageBuffer: openAiInput,
-        preserveProductExactly: false,
-        processingMode,
-        backgroundDescription:
-          "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
-      });
-      await validateImage(cleanedStudioRender);
-      const result = await buildFlexibleAiRenderedCutout(
-        cleanedStudioRender,
-        `openai:${openAiImageEditModel}:custom-background-ai-rendered-cutout`
-      );
-      await assertVisibleProductImage(result.cutout);
-      return result;
-    } catch (transparentRecoveryError) {
-      console.warn("Flexible OpenAI custom-background AI-rendered cutout guidance failed; trying transparent recovery cutout guidance", {
-        reason: transparentRecoveryError instanceof Error ? transparentRecoveryError.message : "Unknown transparent recovery cutout error"
-      });
-
-      try {
-        const cleanedStudioRender = await renderFlexibleStudioProductImage({
-          imageBuffer: openAiInput,
-          preserveProductExactly: false,
-          processingMode,
-          backgroundDescription:
-            "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
-        });
-        await validateImage(cleanedStudioRender);
-        const aiTransparentRecovery = await removeImageBackground(cleanedStudioRender, "transparent-studio-recovery");
-        await validateImage(aiTransparentRecovery);
-        const result = {
-          cutout: aiTransparentRecovery,
-          debugCutout: aiTransparentRecovery,
-          provider: `openai:${openAiImageEditModel}:custom-background-studio-cutout`,
-          attempts: 1,
-          validation: {
-            alphaCoverage: await getImageAlphaCoverage(aiTransparentRecovery),
-            foregroundMeanDelta: Number.NaN
-          }
-        };
-        await assertVisibleProductImage(result.cutout);
-        return result;
-      } catch (transparentMaskFallbackError) {
-        console.warn("Flexible OpenAI transparent-recovery mask guidance failed; trying standard flexible AI cutout guidance", {
-          reason: transparentMaskFallbackError instanceof Error ? transparentMaskFallbackError.message : "Unknown transparent recovery cutout error"
-        });
-      }
-    }
-  }
-
   try {
     const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
     await validateImage(aiCutout);
@@ -1031,6 +979,58 @@ const processImageFlexiblePreserveMode = async (
     console.warn("Flexible source-pixel local foreground extraction failed; using full-source review fallback", {
       reason: localFirstError instanceof Error ? localFirstError.message : "Unknown local foreground fallback error"
     });
+
+    if (preferTransparentAiRecovery) {
+      try {
+        const cleanedStudioRender = await renderFlexibleStudioProductImage({
+          imageBuffer: openAiInput,
+          preserveProductExactly: false,
+          processingMode,
+          backgroundDescription:
+            "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
+        });
+        await validateImage(cleanedStudioRender);
+        const result = await buildFlexibleAiRenderedCutout(
+          cleanedStudioRender,
+          `openai:${openAiImageEditModel}:custom-background-ai-rendered-cutout`
+        );
+        await assertVisibleProductImage(result.cutout);
+        return result;
+      } catch (transparentRecoveryError) {
+        console.warn("Flexible OpenAI custom-background AI-rendered cutout guidance failed after source-based mask routes; trying transparent recovery cutout guidance", {
+          reason: transparentRecoveryError instanceof Error ? transparentRecoveryError.message : "Unknown transparent recovery cutout error"
+        });
+
+        try {
+          const cleanedStudioRender = await renderFlexibleStudioProductImage({
+            imageBuffer: openAiInput,
+            preserveProductExactly: false,
+            processingMode,
+            backgroundDescription:
+              "Use a plain clean off-white ecommerce studio background only. Do not include any branded or custom scene elements because this intermediate render will be cut out and composited onto a separate approved custom background later."
+          });
+          await validateImage(cleanedStudioRender);
+          const aiTransparentRecovery = await removeImageBackground(cleanedStudioRender, "transparent-studio-recovery");
+          await validateImage(aiTransparentRecovery);
+          const result = {
+            cutout: aiTransparentRecovery,
+            debugCutout: aiTransparentRecovery,
+            provider: `openai:${openAiImageEditModel}:custom-background-studio-cutout`,
+            attempts: 1,
+            validation: {
+              alphaCoverage: await getImageAlphaCoverage(aiTransparentRecovery),
+              foregroundMeanDelta: Number.NaN
+            }
+          };
+          await assertVisibleProductImage(result.cutout);
+          return result;
+        } catch (transparentMaskFallbackError) {
+          console.warn("Flexible OpenAI transparent-recovery mask guidance failed after source-based mask routes; using full-source review fallback", {
+            reason: transparentMaskFallbackError instanceof Error ? transparentMaskFallbackError.message : "Unknown transparent recovery cutout error"
+          });
+        }
+      }
+    }
 
     try {
       const result = await buildFlexibleFullSourceReviewCutout(

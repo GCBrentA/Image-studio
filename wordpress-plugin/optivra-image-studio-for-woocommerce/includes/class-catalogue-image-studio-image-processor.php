@@ -63,8 +63,9 @@ class Optiimst_ImageProcessor {
 			return new WP_Error('optiimst_missing_job', __('Image job not found.', 'optivra-image-studio-for-woocommerce'));
 		}
 
-		$image_url = wp_get_attachment_url((int) ($job['attachment_id'] ?? 0));
-		$source_payload = $this->get_attachment_upload_payload((int) ($job['attachment_id'] ?? 0));
+		$source_attachment_id = $this->resolve_source_attachment_id($job);
+		$image_url = wp_get_attachment_url($source_attachment_id);
+		$source_payload = $this->get_attachment_upload_payload($source_attachment_id);
 
 		if (! $image_url) {
 			$error = new WP_Error('optiimst_missing_source_url', __('The source image URL could not be resolved.', 'optivra-image-studio-for-woocommerce'));
@@ -179,6 +180,31 @@ class Optiimst_ImageProcessor {
 		$this->logger->info('Image job processed successfully.', ['job_id' => $job_id]);
 
 		return $result;
+	}
+
+	/**
+	 * Prefer the pristine original attachment when a job has already replaced the live product image.
+	 *
+	 * @param array<string,mixed> $job Job row.
+	 */
+	private function resolve_source_attachment_id(array $job): int {
+		$attachment_id = (int) ($job['attachment_id'] ?? 0);
+		$original_attachment_id = (int) ($job['original_attachment_id'] ?? 0);
+
+		if ($original_attachment_id > 0 && get_post($original_attachment_id)) {
+			return $original_attachment_id;
+		}
+
+		if ($attachment_id <= 0) {
+			return 0;
+		}
+
+		$managed_original_id = (int) get_post_meta($attachment_id, '_optiimst_original_attachment_id', true);
+		if ($managed_original_id > 0 && get_post($managed_original_id)) {
+			return $managed_original_id;
+		}
+
+		return $attachment_id;
 	}
 
 	private function mark_failed(int $job_id, WP_Error $error): void {

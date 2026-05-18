@@ -133,5 +133,8 @@ assert.match(pluginSaasClient, /normalize_api_token[\s\S]*cis_\[A-Za-z0-9_-\]\{2
 assert.match(pluginSaasClient, /is_local_api_base_url[\s\S]*127\./, "plugin can detect localhost API overrides");
 assert.match(pluginProcessor, /output_validation/, "plugin stores output validation diagnostics");
 assert.match(pluginProcessor, /'safety_status'\s*=>\s*'failed'[\s\S]*'processing_mode'\s*=>\s*''/, "plugin clears stale safety state when a processing job fails");
+assert.match(pluginProcessor, /resolve_source_attachment_id/, "plugin processor resolves the true source attachment before uploading to the backend");
+assert.match(pluginProcessor, /\$source_attachment_id = \$this->resolve_source_attachment_id\(\$job\)/, "plugin processing uses the resolved source attachment instead of blindly reprocessing the current attachment");
+assert.match(pluginProcessor, /_optiimst_original_attachment_id/, "plugin processor can recover the pristine original attachment from managed processed media");
 
 console.log("Image pipeline rule checks passed.");
