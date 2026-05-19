@@ -892,6 +892,7 @@ const processImageFlexiblePreserveMode = async (
   sourceContentType: string,
   preferLocalForegroundFallback = false,
   preferTransparentAiRecovery = false,
+  preferDeterministicLocalMatte = false,
   processingMode: string = "standard_background_replacement"
 ): Promise<CutoutResult> => {
   const sourceAlphaCutout = await buildCutoutFromExistingSourceAlpha(sourceInput);
@@ -912,57 +913,80 @@ const processImageFlexiblePreserveMode = async (
   }
 
   try {
-    const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
-    await validateImage(aiCutout);
-    const sourceDimensions = await getImageDimensions(sourceInput);
-    const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
-
-    const result = await buildPreservedProductCutoutFromAlpha(
-      sourceInput,
-      aiAlpha,
-      `openai:${openAiImageEditModel}:flexible-preserve-source-mask`,
-      1,
-      {
-        allowLocalAssist: true,
-        maskSource: "ai_mask",
-        removeBackgroundRemnants: true
-      }
-    );
+    const rawLocalConsensus = await buildPreservedProductCutoutFromRawLocalMask(sourceInput);
+    const result = {
+      ...rawLocalConsensus,
+      provider: preferLocalForegroundFallback
+        ? "local-source-analysis-consensus:strict-preserve-fallback"
+        : "local-source-analysis-consensus:flexible-source-pixel-first",
+      attempts: 1
+    };
     await assertVisibleProductImage(result.cutout);
     return result;
-  } catch (error) {
-    console.warn("Flexible OpenAI alpha guidance failed; raw AI product pixels rejected and source pixels will remain authoritative", {
-      reason: error instanceof Error ? error.message : "Unknown flexible cutout error"
+  } catch (rawLocalError) {
+    console.warn("Flexible source-locked local consensus failed; trying AI/source-assisted matte routes", {
+      reason: rawLocalError instanceof Error ? rawLocalError.message : "Unknown local consensus error"
     });
   }
 
-  try {
-    const specialistCutout = await removeImageBackgroundWithSpecialistModel(sourceInput, sourceContentType);
-    await validateImage(specialistCutout);
-    const sourceDimensions = await getImageDimensions(sourceInput);
-    const specialistAlpha = prepareProviderAlphaForPreserve(
-      "imgly:background-removal-node:flexible-source-pixel",
-      await getSourceAlignedAlpha(specialistCutout, sourceDimensions.width, sourceDimensions.height),
-      sourceDimensions.width,
-      sourceDimensions.height
-    );
+  if (!preferDeterministicLocalMatte) {
+    try {
+      const aiCutout = await removeImageBackground(openAiInput, "flexible-cutout");
+      await validateImage(aiCutout);
+      const sourceDimensions = await getImageDimensions(sourceInput);
+      const aiAlpha = await getSourceAlignedAlpha(aiCutout, sourceDimensions.width, sourceDimensions.height);
 
-    const result = await buildPreservedProductCutoutFromAlpha(
-      sourceInput,
-      specialistAlpha,
-      "imgly:background-removal-node:flexible-source-pixel",
-      1,
-      {
-        allowLocalAssist: true,
-        maskSource: "ai_mask",
-        removeBackgroundRemnants: true
-      }
-    );
-    await assertVisibleProductImage(result.cutout);
-    return result;
-  } catch (specialistError) {
-    console.warn("Flexible specialist source-pixel segmentation failed; trying local foreground extraction", {
-      reason: specialistError instanceof Error ? specialistError.message : "Unknown specialist segmentation error"
+      const result = await buildPreservedProductCutoutFromAlpha(
+        sourceInput,
+        aiAlpha,
+        `openai:${openAiImageEditModel}:flexible-preserve-source-mask`,
+        1,
+        {
+          allowLocalAssist: true,
+          maskSource: "ai_mask",
+          removeBackgroundRemnants: true
+        }
+      );
+      await assertVisibleProductImage(result.cutout);
+      return result;
+    } catch (error) {
+      console.warn("Flexible OpenAI alpha guidance failed; raw AI product pixels rejected and source pixels will remain authoritative", {
+        reason: error instanceof Error ? error.message : "Unknown flexible cutout error"
+      });
+    }
+
+    try {
+      const specialistCutout = await removeImageBackgroundWithSpecialistModel(sourceInput, sourceContentType);
+      await validateImage(specialistCutout);
+      const sourceDimensions = await getImageDimensions(sourceInput);
+      const specialistAlpha = prepareProviderAlphaForPreserve(
+        "imgly:background-removal-node:flexible-source-pixel",
+        await getSourceAlignedAlpha(specialistCutout, sourceDimensions.width, sourceDimensions.height),
+        sourceDimensions.width,
+        sourceDimensions.height
+      );
+
+      const result = await buildPreservedProductCutoutFromAlpha(
+        sourceInput,
+        specialistAlpha,
+        "imgly:background-removal-node:flexible-source-pixel",
+        1,
+        {
+          allowLocalAssist: true,
+          maskSource: "ai_mask",
+          removeBackgroundRemnants: true
+        }
+      );
+      await assertVisibleProductImage(result.cutout);
+      return result;
+    } catch (specialistError) {
+      console.warn("Flexible specialist source-pixel segmentation failed; trying local foreground extraction", {
+        reason: specialistError instanceof Error ? specialistError.message : "Unknown specialist segmentation error"
+      });
+    }
+  } else {
+    console.info("Flexible matte routing skipped AI/source-assisted mask attempts and stayed on deterministic local matting", {
+      providerIntent: "opaque-preset-local-only"
     });
   }
 
@@ -1089,6 +1113,105 @@ const buildFlexibleFullSourceReviewCutout = async (
       alphaCoverage: await getImageAlphaCoverage(cutout),
       foregroundMeanDelta: Number.NaN
     }
+  };
+};
+
+const cropFlexibleSourceToPrimaryProductFocus = async (
+  sourceBuffer: Buffer
+): Promise<{ buffer: Buffer; contentType: string; cropped: boolean }> => {
+  const metadata = await sharp(sourceBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return { buffer: sourceBuffer, contentType: "image/png", cropped: false };
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+
+  if (Math.max(width, height) < 1400) {
+    return { buffer: sourceBuffer, contentType: "image/png", cropped: false };
+  }
+
+  const rgba = await sharp(sourceBuffer).ensureAlpha().raw().toBuffer();
+  const roughAlpha = thresholdAlphaMask(buildLocalForegroundAlpha(rgba, width, height), 24);
+  const denseCore = Buffer.alloc(roughAlpha.length);
+
+  for (let pixel = 0; pixel < roughAlpha.length; pixel += 1) {
+    if ((roughAlpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const localDensity = countMaskedPixelsInRadius(roughAlpha, width, height, x, y, 6) / 169;
+
+    if (localDensity >= 0.48) {
+      denseCore[pixel] = 255;
+    }
+  }
+
+  const components = getConnectedMaskComponents(denseCore, width, height);
+
+  if (components.length === 0) {
+    return { buffer: sourceBuffer, contentType: "image/png", cropped: false };
+  }
+
+  let bestComponent: number[] | null = null;
+  let bestScore = 0;
+
+  for (const component of components) {
+    const bounds = getPixelComponentBounds(component, width, height);
+    const componentWidth = bounds.maxX - bounds.minX + 1;
+    const componentHeight = bounds.maxY - bounds.minY + 1;
+    const area = component.length;
+    const density = area / Math.max(1, componentWidth * componentHeight);
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    const horizontalCenterScore = 1 - Math.min(1, Math.abs(centerX - width / 2) / (width / 2));
+    const verticalFocusScore = 1 - Math.min(1, Math.abs(centerY - height * 0.62) / (height * 0.62));
+    const score = area * (0.45 + horizontalCenterScore * 0.35 + verticalFocusScore * 0.2) * (0.4 + density);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestComponent = component;
+    }
+  }
+
+  if (!bestComponent) {
+    return { buffer: sourceBuffer, contentType: "image/png", cropped: false };
+  }
+
+  const bounds = getPixelComponentBounds(bestComponent, width, height);
+  const marginX = Math.max(60, Math.round((bounds.maxX - bounds.minX + 1) * 0.22));
+  const marginY = Math.max(60, Math.round((bounds.maxY - bounds.minY + 1) * 0.22));
+  const extractLeft = Math.max(0, bounds.minX - marginX);
+  const extractTop = Math.max(0, bounds.minY - marginY);
+  const extractWidth = Math.min(width - extractLeft, bounds.maxX - bounds.minX + 1 + marginX * 2);
+  const extractHeight = Math.min(height - extractTop, bounds.maxY - bounds.minY + 1 + marginY * 2);
+  const cropAreaShare = (extractWidth * extractHeight) / Math.max(1, width * height);
+
+  if (
+    cropAreaShare > 0.9 ||
+    extractWidth < Math.round(width * 0.22) ||
+    extractHeight < Math.round(height * 0.22)
+  ) {
+    return { buffer: sourceBuffer, contentType: "image/png", cropped: false };
+  }
+
+  const cropped = await sharp(sourceBuffer)
+    .extract({
+      left: extractLeft,
+      top: extractTop,
+      width: extractWidth,
+      height: extractHeight
+    })
+    .png()
+    .toBuffer();
+
+  return {
+    buffer: cropped,
+    contentType: "image/png",
+    cropped: true
   };
 };
 
@@ -7763,6 +7886,101 @@ const getDetachedColourArtifactIssue = (
   return "";
 };
 
+const getSparseBackdropScaffoldIssue = async (productBuffer: Buffer): Promise<string> => {
+  const metadata = await sharp(productBuffer).metadata();
+
+  if (!metadata.width || !metadata.height) {
+    return "";
+  }
+
+  const width = metadata.width;
+  const height = metadata.height;
+  const rgba = await sharp(productBuffer).ensureAlpha().raw().toBuffer();
+  const alpha = Buffer.alloc(width * height);
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    alpha[pixel] = rgba[pixel * 4 + 3] ?? 0;
+  }
+
+  const coverage = getAlphaCoverage(alpha);
+  if (coverage < 2400) {
+    return "";
+  }
+
+  const denseCore = Buffer.alloc(alpha.length);
+  let denseCoreCount = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const localDensity = countMaskedPixelsInRadius(alpha, width, height, x, y, 5) / 121;
+
+    if (localDensity >= 0.62) {
+      denseCore[pixel] = 255;
+      denseCoreCount += 1;
+    }
+  }
+
+  if (denseCoreCount < Math.max(1600, coverage * 0.18)) {
+    return "";
+  }
+
+  const denseBounds = getMaskBounds(denseCore, width, height);
+  const denseHeight = denseBounds.maxY - denseBounds.minY + 1;
+  const expandedMinX = Math.max(0, denseBounds.minX - Math.round(width * 0.035));
+  const expandedMaxX = Math.min(width - 1, denseBounds.maxX + Math.round(width * 0.035));
+  const expandedMinY = Math.max(0, denseBounds.minY - Math.round(height * 0.03));
+  const expandedMaxY = Math.min(height - 1, denseBounds.maxY + Math.round(height * 0.03));
+
+  let sparseBackdropPixels = 0;
+  let topHalfSparsePixels = 0;
+
+  for (let pixel = 0; pixel < alpha.length; pixel += 1) {
+    if ((alpha[pixel] ?? 0) < 24 || (denseCore[pixel] ?? 0) >= 24) {
+      continue;
+    }
+
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const outsideDenseCoreBox = x < expandedMinX || x > expandedMaxX || y < expandedMinY || y > expandedMaxY;
+    const localDensity = countMaskedPixelsInRadius(alpha, width, height, x, y, 4) / 81;
+
+    if (!outsideDenseCoreBox || localDensity > 0.34) {
+      continue;
+    }
+
+    const index = pixel * 4;
+    const r = rgba[index] ?? 0;
+    const g = rgba[index + 1] ?? 0;
+    const b = rgba[index + 2] ?? 0;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const saturation = getRgbSaturation(r, g, b);
+    const channelSpread = Math.max(r, g, b) - Math.min(r, g, b);
+
+    if (luminance > 178 || saturation > 0.24 || channelSpread > 110) {
+      continue;
+    }
+
+    sparseBackdropPixels += 1;
+    if (y < denseBounds.minY + denseHeight * 0.45) {
+      topHalfSparsePixels += 1;
+    }
+  }
+
+  if (
+    sparseBackdropPixels >= Math.max(2200, coverage * 0.045) &&
+    topHalfSparsePixels >= Math.max(1400, sparseBackdropPixels * 0.42)
+  ) {
+    return "mask appears to include sparse branded backdrop structure rather than only the product";
+  }
+
+  return "";
+};
+
 const removePalePhotoCardFromProductBuffer = async (productBuffer: Buffer): Promise<Buffer> => {
   const metadata = await sharp(productBuffer).metadata();
 
@@ -8005,9 +8223,14 @@ const removeDetachedTextLogoComponentsFromProductBuffer = async (
     const meanGradient = totalGradient / Math.max(1, pixels.length);
     const darkShare = darkPixels / Math.max(1, pixels.length);
     const aspect = componentWidth / Math.max(1, componentHeight);
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    const horizontalCenterScore = 1 - Math.min(1, Math.abs(centerX - width / 2) / (width / 2));
+    const verticalFocusScore = 1 - Math.min(1, Math.abs(centerY - height * 0.62) / (height * 0.62));
     const productScore = pixels.length *
       Math.max(0.1, density) *
-      (1 + Math.min(meanGradient, 60) / 18 + meanSaturation * 5 + (meanLuminance < 120 ? 0.7 : 0));
+      (1 + Math.min(meanGradient, 60) / 18 + meanSaturation * 5 + (meanLuminance < 120 ? 0.7 : 0)) *
+      (0.55 + horizontalCenterScore * 0.25 + verticalFocusScore * 0.2);
 
     return {
       pixels,
@@ -8037,6 +8260,7 @@ const removeDetachedTextLogoComponentsFromProductBuffer = async (
       metric.bounds.minY > primary.bounds.maxY - height * 0.04 ||
       metric.bounds.maxX < primary.bounds.minX - width * 0.03 ||
       metric.bounds.minX > primary.bounds.maxX + width * 0.03;
+    const detachedAbove = metric.bounds.maxY < primary.bounds.minY + height * 0.08;
     const textOrLogoLike =
       metric.pixels.length >= Math.max(180, imageArea * 0.00016) &&
       metric.pixels.length < primary.pixels.length * 0.9 &&
@@ -8052,8 +8276,12 @@ const removeDetachedTextLogoComponentsFromProductBuffer = async (
       metric.bounds.minY > height * 0.48 &&
       metric.bounds.maxX < width * 0.48 &&
       metric.pixels.length < primary.pixels.length * 0.95;
+    const upperBrandingMark =
+      metric.bounds.maxY < height * 0.58 &&
+      metric.bounds.maxX < width * 0.62 &&
+      metric.pixels.length < primary.pixels.length * 0.95;
 
-    if (!(farFromPrimary && textOrLogoLike && (detachedBelowOrSide || backgroundCornerMark))) {
+    if (!(farFromPrimary && textOrLogoLike && (detachedBelowOrSide || detachedAbove || backgroundCornerMark || upperBrandingMark))) {
       continue;
     }
 
@@ -9246,9 +9474,31 @@ export const processImageForProduct = async ({
     };
   }
 
+  const shouldFocusCropFlexibleSource =
+    !preserveProductExactly &&
+    !requiresCustomBackground &&
+    getString(getObject(processingSettings.background).preset, background) !== "transparent" &&
+    background !== "transparent" &&
+    !edgeEnabled;
+  const focusedFlexibleSource = shouldFocusCropFlexibleSource
+    ? await cropFlexibleSourceToPrimaryProductFocus(originalImage.buffer)
+    : {
+      buffer: originalImage.buffer,
+      contentType: originalImage.contentType,
+      cropped: false
+    };
+
+  if (focusedFlexibleSource.cropped) {
+    console.info("Flexible source focus crop applied before matte generation", {
+      imageJobId,
+      originalWidth: originalImageDimensions.width,
+      originalHeight: originalImageDimensions.height
+    });
+  }
+
   const [openAiInput, preservedOriginalInput] = await Promise.all([
-    normalizeImageForOpenAi(originalImage.buffer),
-    normalizeImageForPreservedProduct(originalImage.buffer)
+    normalizeImageForOpenAi(focusedFlexibleSource.buffer),
+    normalizeImageForPreservedProduct(focusedFlexibleSource.buffer)
   ]);
   if (savePipelineDebugAssets) {
     await uploadPipelineDebugAsset(
@@ -9289,15 +9539,16 @@ export const processImageForProduct = async ({
       flexiblePipelineWarnings.push("Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.");
     }
 
-    if (processingSettings.disableOpenAiStudioRender === true) {
-      console.warn("Flexible mode OpenAI final render cannot be disabled for preset/transparent backgrounds; continuing with AI primary routing", {
+    if (processingSettings.disableOpenAiStudioRender === true && backgroundIsTransparent) {
+      console.warn("Flexible transparent-background mode still requires OpenAI as the primary renderer; continuing with AI primary routing", {
         imageJobId
       });
     }
 
     const shouldUseOpenAiPrimaryRender =
       !effectiveBackgroundImageUrl &&
-      !backgroundImageBuffer;
+      !backgroundImageBuffer &&
+      backgroundIsTransparent;
     if (shouldUseOpenAiPrimaryRender) {
       console.info("Flexible studio enhancement selected OpenAI as the primary final render path", {
         imageJobId,
@@ -9349,6 +9600,12 @@ export const processImageForProduct = async ({
         });
         flexiblePipelineWarnings.push(`OpenAI primary flexible render failed at the service layer, so local fallback was used: ${serviceFailureReason}`);
       }
+    } else if (!effectiveBackgroundImageUrl && !backgroundImageBuffer) {
+      console.info("Flexible studio enhancement selected source-locked local processing before any OpenAI studio recovery for opaque preset backgrounds", {
+        imageJobId,
+        backgroundIsTransparent,
+        providerIntent: "opaque-source-locked-first"
+      });
     }
   }
 
@@ -9385,11 +9642,12 @@ export const processImageForProduct = async ({
     }
   } else {
     cutoutResult = await processImageFlexiblePreserveMode(
-        originalImage.buffer,
+        focusedFlexibleSource.buffer,
         openAiInput,
-        originalImage.contentType,
+        focusedFlexibleSource.contentType,
         processingSettings.preserveFallbackFromStrictMode === true,
-        Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer),
+      Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer),
+        !backgroundIsTransparent && !Boolean(effectiveBackgroundImageUrl || backgroundImageBuffer),
         getString(processingSettings.processingMode, "standard_background_replacement")
       );
   }
@@ -9475,14 +9733,14 @@ export const processImageForProduct = async ({
       );
     }
   }
-  if (!preserveProductExactly && removeBackgroundTextLogos) {
+  if (!preserveProductExactly) {
     const detachedTextCleanup = await removeDetachedTextLogoComponentsFromProductBuffer(productBuffer);
     if (detachedTextCleanup.removedPixels > 0) {
       productBuffer = detachedTextCleanup.buffer;
       productFallbackWarnings.push(
         `Removed ${detachedTextCleanup.removedPixels} detached background text/logo pixels outside the main product layer.`
       );
-    } else {
+    } else if (removeBackgroundTextLogos) {
       productFallbackWarnings.push("Background text/logo removal was enabled, but no safe detached text or logo component was found outside the main product layer.");
     }
   }
@@ -9559,6 +9817,28 @@ export const processImageForProduct = async ({
     },
     [...strictSourceLockedRescueWarnings, ...flexiblePipelineWarnings, ...productFallbackWarnings]
   );
+  const sparseBackdropScaffoldIssue = !preserveProductExactly
+    ? await getSparseBackdropScaffoldIssue(productBuffer)
+    : "";
+  if (sparseBackdropScaffoldIssue) {
+    outputValidation = {
+      ...outputValidation,
+      status: "Failed",
+      checks: {
+        ...outputValidation.checks,
+        background: "Failed",
+        productPreservation: "Failed"
+      },
+      warnings: Array.from(new Set([
+        ...outputValidation.warnings,
+        sparseBackdropScaffoldIssue
+      ])),
+      failureReasons: Array.from(new Set([
+        ...outputValidation.failureReasons,
+        sparseBackdropScaffoldIssue
+      ]))
+    };
+  }
   if (
     processingSettings.preserveFallbackFromStrictMode === true &&
     outputValidation.status === "Failed" &&

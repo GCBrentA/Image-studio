@@ -496,8 +496,8 @@ const assertPromptPolicy = (): void => {
   assert.match(imageProcessing, /Exact preserve mode exhausted source-locked methods without using a non-pixel-perfect fallback/);
   assert.doesNotMatch(imageProcessing, /source-locked-strict-review-rescue/);
   assert.match(imageProcessing, /processImageFlexiblePreserveMode/);
-  assert.match(imageProcessing, /Flexible studio enhancement selected OpenAI as the primary final render path/);
-  assert.match(imageProcessing, /OpenAI primary flexible render failed at the service layer, so local fallback was used/);
+  assert.match(imageProcessing, /Flexible studio enhancement selected source-locked local processing before any OpenAI studio recovery for opaque preset backgrounds/);
+  assert.match(imageProcessing, /Flexible source-locked matte failed; trying OpenAI studio recovery render/);
   assert.doesNotMatch(imageProcessing, /Exact preserve mode is using OpenAI contaminated-source recovery/);
   assert.doesNotMatch(imageProcessing, /Exact preserve vision QA failed; trying OpenAI/);
   assert.doesNotMatch(imageProcessing, /editProductImageWithOpenAi/);
