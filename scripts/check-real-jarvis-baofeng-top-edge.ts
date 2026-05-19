@@ -72,7 +72,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): P
 }) as typeof fetch;
 
 const uploadDir = "C:/Users/brent/Local Sites/jarvis-test/app/public/wp-content/uploads/2026/04";
-const artifactDir = path.resolve("tmp", "real-jarvis-baofeng-top-edge");
+const artifactRootDir = path.resolve("tmp", "real-jarvis-baofeng-top-edge");
 
 const countDarkPixelsInRegion = async (
   imageBuffer: Buffer,
@@ -113,8 +113,8 @@ async function main() {
   const backgroundFile = "Light-azraels-default-background.png";
   const source = await readFile(path.join(uploadDir, sourceFile));
   const backgroundBuffer = await readFile(path.join(uploadDir, backgroundFile));
+  const artifactDir = path.join(artifactRootDir, new Date().toISOString().replace(/[:.]/g, "-"));
 
-  await rm(artifactDir, { recursive: true, force: true });
   await mkdir(artifactDir, { recursive: true });
 
   const result = await processImageForProduct({

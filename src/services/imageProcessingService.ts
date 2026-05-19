@@ -9533,11 +9533,12 @@ export const processImageForProduct = async ({
   let left = Math.min(Math.max(Math.round((outputSize - productWidth) / 2), edgeLeft ? 0 : margin), outputSize - productWidth - (edgeRight ? 0 : margin));
   const verticalPresentationOffset = shadowSettings.mode === "off" ? 0 : -Math.round(outputSize * 0.015);
   let top = Math.min(Math.max(Math.round((outputSize - productHeight) / 2) + verticalPresentationOffset, edgeTop ? 0 : margin), outputSize - productHeight - (edgeBottom ? 0 : margin));
+  const edgeVisualInset = Math.max(1, Math.round(outputSize * 0.002));
 
-  if (edgeLeft && !edgeRight) left = 0;
-  if (edgeRight && !edgeLeft) left = outputSize - productWidth;
-  if (edgeTop && !edgeBottom) top = 0;
-  if (edgeBottom && !edgeTop) top = outputSize - productHeight;
+  if (edgeLeft && !edgeRight) left = Math.min(edgeVisualInset, Math.max(0, outputSize - productWidth));
+  if (edgeRight && !edgeLeft) left = Math.max(0, outputSize - productWidth - edgeVisualInset);
+  if (edgeTop && !edgeBottom) top = Math.min(edgeVisualInset, Math.max(0, outputSize - productHeight));
+  if (edgeBottom && !edgeTop) top = Math.max(0, outputSize - productHeight - edgeVisualInset);
 
   const shadow = await buildShadow(outputSize, outputSize, productBuffer, productWidth, productHeight, left, top, shadowSettings);
   let outputValidation = await buildOutputQualityValidation(
