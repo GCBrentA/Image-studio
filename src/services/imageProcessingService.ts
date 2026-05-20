@@ -9539,16 +9539,10 @@ export const processImageForProduct = async ({
       flexiblePipelineWarnings.push("Custom background selected; OpenAI studio background generation was skipped so the user-selected background remains authoritative.");
     }
 
-    if (processingSettings.disableOpenAiStudioRender === true && backgroundIsTransparent) {
-      console.warn("Flexible transparent-background mode still requires OpenAI as the primary renderer; continuing with AI primary routing", {
-        imageJobId
-      });
-    }
-
     const shouldUseOpenAiPrimaryRender =
       !effectiveBackgroundImageUrl &&
       !backgroundImageBuffer &&
-      backgroundIsTransparent;
+      !backgroundIsTransparent;
     if (shouldUseOpenAiPrimaryRender) {
       console.info("Flexible studio enhancement selected OpenAI as the primary final render path", {
         imageJobId,
@@ -9601,11 +9595,14 @@ export const processImageForProduct = async ({
         flexiblePipelineWarnings.push(`OpenAI primary flexible render failed at the service layer, so local fallback was used: ${serviceFailureReason}`);
       }
     } else if (!effectiveBackgroundImageUrl && !backgroundImageBuffer) {
-      console.info("Flexible studio enhancement selected source-locked local processing before any OpenAI studio recovery for opaque preset backgrounds", {
+      console.info("Flexible studio enhancement selected source-locked local processing before any OpenAI studio recovery", {
         imageJobId,
         backgroundIsTransparent,
-        providerIntent: "opaque-source-locked-first"
+        providerIntent: backgroundIsTransparent ? "transparent-source-locked-first" : "opaque-source-locked-first"
       });
+      if (backgroundIsTransparent) {
+        flexiblePipelineWarnings.push("Transparent flexible jobs stay on the source-locked local path first so a good cutout is not replaced by a second AI render.");
+      }
     }
   }
 
